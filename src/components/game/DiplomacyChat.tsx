@@ -98,8 +98,11 @@ export function DiplomacyChat({
     }
   }
 
+  // Debug: Log render to verify component is executing
+  console.log('DiplomacyChat render', { messagesLength: messages.length, extracting, busy });
+
   return (
-    <div className="rounded-lg border bg-white p-4">
+    <div className="rounded-lg border bg-white p-4" style={{ overflow: 'visible' }}>
       <div className="text-sm font-semibold">Diplomacy Chat</div>
       <div className="mt-3 h-64 overflow-auto rounded border bg-gray-50 p-3 text-sm">
         {sorted.length === 0 ? (
@@ -144,11 +147,31 @@ export function DiplomacyChat({
         </button>
       </div>
 
-      <div className="mt-2 flex items-center gap-2">
+      {/* Extract Deal Button - Always Visible */}
+      <div 
+        className="mt-2 flex items-center gap-2"
+        style={{ 
+          display: 'flex', 
+          marginTop: '0.5rem', 
+          minHeight: '2rem',
+          visibility: 'visible',
+          opacity: 1
+        }}
+      >
         <button
           type="button"
-          className="rounded border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-          onClick={() => void extractDeal()}
+          className="rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ 
+            display: 'inline-block',
+            visibility: 'visible',
+            minWidth: '100px',
+            height: 'auto',
+            padding: '0.375rem 0.75rem'
+          }}
+          onClick={() => {
+            console.log('Extract Deal button clicked', { messagesLength: messages.length, extracting, busy });
+            void extractDeal();
+          }}
           disabled={extracting || busy || messages.length === 0}
           title={messages.length === 0 ? "Start a conversation to extract a deal" : undefined}
         >

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import type { Country, CountryStats } from "@/types/country";
+import type { DealExtractionResult } from "@/lib/deals/DealExtractor";
 
 interface ChatMessage {
   id: string;
@@ -26,6 +27,10 @@ export function CountryCard({
   const [chatMessage, setChatMessage] = useState("");
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const [extractedDeal, setExtractedDeal] = useState<DealExtractionResult | null>(null);
+  const [extractionError, setExtractionError] = useState<string | null>(null);
+  const [chatId, setChatId] = useState<string>("");
 
   if (!country || !stats) {
     return (
@@ -80,6 +85,10 @@ export function CountryCard({
       }
 
       const data = await response.json();
+      // Store chatId if returned
+      if (data.chatId && !chatId) {
+        setChatId(data.chatId);
+      }
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         sender: "country",
@@ -104,6 +113,74 @@ export function CountryCard({
 
   const handleCloseChat = () => {
     setShowChat(false);
+  };
+
+  const handleExtractDeal = async () => {
+    if (!gameId || !playerCountryId || !country.id || chatHistory.length === 0) {
+      setExtractionError("Cannot extract deal: missing information or no messages");
+      return;
+    }
+
+    // Find or create chatId by querying the database
+    let currentChatId = chatId;
+    if (!currentChatId) {
+      try {
+        // Query for existing chat
+        const findChatRes = await fetch(`/api/game?gameId=${gameId}`);
+        if (findChatRes.ok) {
+          const gameData = await findChatRes.json();
+          // Look for chat between player and this country
+          // For now, we'll create a chatId by combining IDs (temporary solution)
+          // In production, we'd query diplomacy_chats table
+          currentChatId = `${gameId}-${playerCountryId}-${country.id}`;
+        }
+      } catch (e) {
+        console.error("Failed to get chatId:", e);
+      }
+    }
+
+    // If still no chatId, try to get/create it via a helper endpoint
+    // For now, we'll use a simple approach: create chatId from game and country IDs
+    if (!currentChatId) {
+      // Create a deterministic chatId
+      const ids = [gameId, playerCountryId, country.id].sort();
+      currentChatId = ids.join('-');
+    }
+
+    setExtracting(true);
+    setExtractionError(null);
+    setExtractedDeal(null);
+
+    try {
+      const res = await fetch("/api/deals/extract", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          gameId,
+          chatId: currentChatId,
+          countryAId: playerCountryId,
+          countryBId: country.id,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        throw new Error(errorText || "Failed to extract deal");
+      }
+
+      const data = (await res.json()) as { deal: DealExtractionResult | null; message?: string };
+      if (data.deal) {
+        setExtractedDeal(data.deal);
+      } else {
+        setExtractionError(data.message || "No deal detected in the conversation");
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to extract deal";
+      setExtractionError(errorMessage);
+      console.error("Deal extraction error:", error);
+    } finally {
+      setExtracting(false);
+    }
   };
 
   // Map existing data to display format
@@ -241,7 +318,7 @@ export function CountryCard({
             </div>
 
             {/* Input Field */}
-            <div className="border-t border-white/10 p-4">
+            <div className="border-t border-white/10 p-4 space-y-2">
               <div className="flex gap-2">
                 <input
                   type="text"
@@ -266,6 +343,77 @@ export function CountryCard({
                   Send
                 </button>
               </div>
+              
+              {/* Extract Deal Button - Always Visible */}
+              <div className="flex items-center gap-2" style={{ display: 'flex', minHeight: '2rem' }}>
+                <button
+                  type="button"
+                  onClick={() => void handleExtractDeal()}
+                  disabled={extracting || isLoading || chatHistory.length === 0}
+                  className="rounded-lg border border-white/20 bg-slate-700/50 px-3 py-1.5 text-xs font-medium text-white/90 hover:bg-slate-600/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  style={{ 
+                    display: 'inline-block',
+                    visibility: 'visible',
+                    minWidth: '100px'
+                  }}
+                  title={chatHistory.length === 0 ? "Start a conversation to extract a deal" : undefined}
+                >
+                  {extracting ? "Extracting..." : "Extract Deal"}
+                </button>
+                {extractionError && (
+                  <span className="text-xs text-red-400">{extractionError}</span>
+                )}
+              </div>
+
+              {/* Extracted Deal Display */}
+              {extractedDeal && (
+                <div className="mt-2 rounded-lg border border-blue-400/30 bg-blue-900/20 p-3 text-xs">
+                  <div className="font-semibold text-blue-300">Deal Extracted!</div>
+                  <div className="mt-1 text-blue-200">
+                    Type: <span className="font-medium">{extractedDeal.dealType}</span>
+                    {extractedDeal.reasoning && (
+                      <div className="mt-1 italic text-blue-300/80">{extractedDeal.reasoning}</div>
+                    )}
+                  </div>
+                  <div className="mt-2 space-y-1 text-blue-200">
+                    <div>
+                      <strong>You commit:</strong>{" "}
+                      {extractedDeal.dealTerms.proposerCommitments.length > 0
+                        ? extractedDeal.dealTerms.proposerCommitments
+                            .map((c) => {
+                              if (c.type === "resource_transfer") {
+                                return `${c.amount} ${c.resource}`;
+                              } else if (c.type === "budget_transfer") {
+                                return `${c.amount} credits`;
+                              }
+                              return c.type;
+                            })
+                            .join(", ")
+                        : "Nothing"}
+                    </div>
+                    <div>
+                      <strong>They commit:</strong>{" "}
+                      {extractedDeal.dealTerms.receiverCommitments.length > 0
+                        ? extractedDeal.dealTerms.receiverCommitments
+                            .map((c) => {
+                              if (c.type === "resource_transfer") {
+                                return `${c.amount} ${c.resource}`;
+                              } else if (c.type === "budget_transfer") {
+                                return `${c.amount} credits`;
+                              }
+                              return c.type;
+                            })
+                            .join(", ")
+                        : "Nothing"}
+                    </div>
+                    {extractedDeal.confidence && (
+                      <div className="text-blue-300/80">
+                        Confidence: {Math.round(extractedDeal.confidence * 100)}%
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>,
