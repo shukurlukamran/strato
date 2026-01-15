@@ -30,19 +30,20 @@ export async function POST(req: Request) {
           .eq("country_b_id", countryId)
           .maybeSingle();
 
-        const chatRes2 = chatRes1.data 
-          ? null 
-          : await supabase
-              .from("diplomacy_chats")
-              .select("id")
-              .eq("game_id", gameId)
-              .eq("country_a_id", countryId)
-              .eq("country_b_id", playerCountryId)
-              .maybeSingle();
+        let chatRes2 = null;
+        if (!chatRes1.data) {
+          chatRes2 = await supabase
+            .from("diplomacy_chats")
+            .select("id")
+            .eq("game_id", gameId)
+            .eq("country_a_id", countryId)
+            .eq("country_b_id", playerCountryId)
+            .maybeSingle();
+        }
 
         if (chatRes1.data) {
           chatId = chatRes1.data.id;
-        } else if (chatRes2.data) {
+        } else if (chatRes2 && chatRes2.data) {
           chatId = chatRes2.data.id;
         } else {
           // Create a new chat if it doesn't exist
