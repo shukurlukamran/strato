@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import type { Country, CountryStats } from "@/types/country";
 import type { DealExtractionResult } from "@/lib/deals/DealExtractor";
@@ -16,12 +16,16 @@ export function CountryCard({
   country, 
   stats,
   gameId,
-  playerCountryId
+  playerCountryId,
+  chatId: initialChatId,
+  onChatIdCreated
 }: { 
   country: Country | null;
   stats: CountryStats | null;
   gameId?: string;
   playerCountryId?: string;
+  chatId?: string;
+  onChatIdCreated?: (countryId: string, chatId: string) => void;
 }) {
   const [showChat, setShowChat] = useState(false);
   const [chatMessage, setChatMessage] = useState("");
@@ -30,7 +34,23 @@ export function CountryCard({
   const [extracting, setExtracting] = useState(false);
   const [extractedDeal, setExtractedDeal] = useState<DealExtractionResult | null>(null);
   const [extractionError, setExtractionError] = useState<string | null>(null);
-  const [chatId, setChatId] = useState<string>("");
+  // Use the chatId from props (from game page state) or local state as fallback
+  const [chatId, setChatId] = useState<string>(initialChatId || "");
+
+  // Update chatId when initialChatId prop changes (e.g., when selecting a different country)
+  useEffect(() => {
+    if (initialChatId && initialChatId !== chatId) {
+      setChatId(initialChatId);
+      console.log("ChatId updated from props:", initialChatId);
+    }
+  }, [initialChatId]);
+
+  // Reset chat history when country changes
+  useEffect(() => {
+    setChatHistory([]);
+    setExtractedDeal(null);
+    setExtractionError(null);
+  }, [country?.id]);
 
   if (!country || !stats) {
     return (
@@ -43,8 +63,40 @@ export function CountryCard({
     );
   }
 
-  const handleProposeDeal = () => {
+  const handleProposeDeal = async () => {
     setShowChat(true);
+    
+    // Load existing chat history from database if we have a chatId
+    if (chatId && gameId && playerCountryId && country.id) {
+      try {
+        console.log(`Loading chat history for chatId: ${chatId}`);
+        const response = await fetch(`/api/chat?chatId=${encodeURIComponent(chatId)}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          
+          // Convert database messages to our ChatMessage format
+          if (data.messages && Array.isArray(data.messages)) {
+            const loadedHistory: ChatMessage[] = data.messages.map((msg: any) => ({
+              id: msg.id,
+              sender: msg.senderCountryId === playerCountryId ? "player" : "country",
+              text: msg.messageText,
+              timestamp: new Date(msg.createdAt),
+            }));
+            
+            setChatHistory(loadedHistory);
+            console.log(`Loaded ${loadedHistory.length} messages from database`);
+          }
+        } else {
+          console.warn("Failed to load chat history:", await response.text());
+        }
+      } catch (error) {
+        console.error("Failed to load chat history:", error);
+      }
+    } else if (!chatId) {
+      // No chatId yet - will be created on first message
+      console.log("No chatId yet - chat will be created on first message");
+    }
   };
 
   const handleSendMessage = async () => {
@@ -85,19 +137,29 @@ export function CountryCard({
       }
 
       const data = await response.json();
+      
       // Store chatId if returned and it's a valid UUID
       if (data.chatId && typeof data.chatId === 'string' && data.chatId.length > 0) {
         // Validate it's a UUID format
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
         if (uuidRegex.test(data.chatId)) {
-          setChatId(data.chatId);
-          console.log("ChatId stored:", data.chatId);
+          // Only update if it's different (to avoid unnecessary re-renders)
+          if (chatId !== data.chatId) {
+            setChatId(data.chatId);
+            console.log("ChatId stored:", data.chatId);
+            
+            // Notify parent component that a new chat was created
+            if (onChatIdCreated && country) {
+              onChatIdCreated(country.id, data.chatId);
+            }
+          }
         } else {
           console.warn("Invalid chatId format received:", data.chatId);
         }
       } else {
         console.warn("No valid chatId in response:", data);
       }
+      
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
         sender: "country",

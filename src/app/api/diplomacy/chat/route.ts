@@ -85,6 +85,56 @@ export async function POST(req: Request) {
           messageText: message,
         });
 
+        // CRITICAL: Save messages to database so chat history persists
+        if (chatId) {
+          const now = new Date().toISOString();
+          
+          // Save user's message
+          const humanInsert = await supabase
+            .from("chat_messages")
+            .insert({
+              chat_id: chatId,
+              sender_country_id: playerCountryId,
+              message_text: message,
+              is_ai_generated: false,
+              created_at: now,
+            })
+            .select("id");
+          
+          if (humanInsert.error) {
+            console.error("Failed to save user message:", humanInsert.error);
+          }
+
+          // Save AI's response
+          const aiInsert = await supabase
+            .from("chat_messages")
+            .insert({
+              chat_id: chatId,
+              sender_country_id: countryId,
+              message_text: aiResponse.messageText,
+              is_ai_generated: true,
+              created_at: new Date().toISOString(),
+            })
+            .select("id");
+          
+          if (aiInsert.error) {
+            console.error("Failed to save AI message:", aiInsert.error);
+          }
+
+          // Update chat's last_message_at timestamp
+          await supabase
+            .from("diplomacy_chats")
+            .update({ 
+              last_message_at: new Date().toISOString(), 
+              updated_at: new Date().toISOString() 
+            })
+            .eq("id", chatId);
+
+          console.log("Messages saved to database for chatId:", chatId);
+        } else {
+          console.warn("No chatId - messages not persisted to database");
+        }
+
         // Log if we got a fallback response (indicates an issue)
         if (aiResponse.messageText.includes("I've received your message") || 
             aiResponse.messageText.includes("I need more context")) {

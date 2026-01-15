@@ -202,6 +202,15 @@ export default function GamePage() {
               stats={selectedStats}
               gameId={gameId}
               playerCountryId={playerCountryId}
+              chatId={selectedCountry ? chatByCounterpartCountryId[selectedCountry.id] : undefined}
+              onChatIdCreated={(countryId: string, newChatId: string) => {
+                // Update the chat mapping when a new chat is created
+                setChatByCounterpartCountryId(prev => ({
+                  ...prev,
+                  [countryId]: newChatId
+                }));
+                console.log(`[Game Page] New chat created: ${countryId} -> ${newChatId}`);
+              }}
             />
 
             {/* Resources */}
