@@ -318,7 +318,9 @@ Respond naturally and strategically.`;
         // If model not found error, try alternative models
         if (error.message.includes("not found") || error.message.includes("404")) {
           console.warn("Model not found, trying alternative models...");
-          return await this.tryAlternativeModels(context, turn.messageText, historyMessages);
+          const systemPrompt = this.buildSystemPrompt(context);
+          const historyMessages = this.buildHistoryMessages(context);
+          return await this.tryAlternativeModels(context, turn.messageText, systemPrompt, historyMessages);
         }
         
         // Check for specific error types
@@ -339,6 +341,7 @@ Respond naturally and strategically.`;
   private async tryAlternativeModels(
     context: GameContext,
     messageText: string,
+    systemPrompt: string,
     historyMessages: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }>
   ): Promise<ChatResponse> {
     // Try alternative model names if the primary one fails
@@ -348,7 +351,6 @@ Respond naturally and strategically.`;
       try {
         console.log(`Trying alternative model: ${modelName}`);
         const altModel = this.genAI!.getGenerativeModel({ model: modelName });
-        const systemPrompt = this.buildSystemPrompt(context);
         
         const chat = altModel.startChat({
           history: [
