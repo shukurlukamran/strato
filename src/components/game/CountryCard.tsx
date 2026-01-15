@@ -23,6 +23,7 @@ export function CountryCard({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadingChat, setLoadingChat] = useState(false);
   const loadingRef = useRef(false);
+  const lastLoadedCountryIdRef = useRef<string | null>(null);
 
   if (!country || !stats) {
     return (
@@ -35,45 +36,58 @@ export function CountryCard({
     );
   }
 
-  // Load or create chat when opening
+  // Load or create chat when opening - use a separate effect that only runs when showChat changes
+  const prevShowChatRef = useRef(false);
+  
   useEffect(() => {
-    if (showChat && gameId && playerCountryId && country.id && !chatId && !loadingRef.current) {
-      loadingRef.current = true;
-      setLoadingChat(true);
-      
-      fetch("/api/chats/get-or-create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          gameId,
-          countryAId: playerCountryId,
-          countryBId: country.id,
-        }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.chatId) {
-            setChatId(data.chatId);
-            // Load existing messages
-            return fetch(`/api/chat?chatId=${data.chatId}`);
-          }
-          throw new Error("Failed to get chat ID");
-        })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.messages) {
-            setMessages(data.messages);
-          }
-        })
-        .catch((error) => {
-          console.error("Error loading chat:", error);
-        })
-        .finally(() => {
-          setLoadingChat(false);
-          loadingRef.current = false;
-        });
+    // Only run when showChat changes from false to true
+    const justOpened = showChat && !prevShowChatRef.current;
+    prevShowChatRef.current = showChat;
+
+    if (!justOpened || !gameId || !playerCountryId || !country?.id || chatId || loadingRef.current) {
+      return;
     }
-  }, [showChat, gameId, playerCountryId, country.id, chatId]);
+
+    // Mark that we're loading for this country
+    lastLoadedCountryIdRef.current = country.id;
+    loadingRef.current = true;
+    setLoadingChat(true);
+    
+    const currentCountryId = country.id;
+    
+    fetch("/api/chats/get-or-create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        gameId,
+        countryAId: playerCountryId,
+        countryBId: currentCountryId,
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.chatId) {
+          setChatId(data.chatId);
+          // Load existing messages
+          return fetch(`/api/chat?chatId=${data.chatId}`);
+        }
+        throw new Error("Failed to get chat ID");
+      })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.messages) {
+          setMessages(data.messages);
+        }
+      })
+      .catch((error) => {
+        console.error("Error loading chat:", error);
+        lastLoadedCountryIdRef.current = null;
+      })
+      .finally(() => {
+        setLoadingChat(false);
+        loadingRef.current = false;
+      });
+  }, [showChat, gameId, playerCountryId, country?.id, chatId]);
 
   // Reset chat state when closing
   useEffect(() => {
@@ -81,6 +95,8 @@ export function CountryCard({
       setChatId(null);
       setMessages([]);
       loadingRef.current = false;
+      setLoadingChat(false);
+      lastLoadedCountryIdRef.current = null;
     }
   }, [showChat]);
 
