@@ -211,6 +211,48 @@ export default function GamePage() {
                 }));
                 console.log(`[Game Page] New chat created: ${countryId} -> ${newChatId}`);
               }}
+              onStatsUpdate={async (countryIds: string[]) => {
+                // Refresh stats for specified countries after deal execution
+                try {
+                  const res = await fetch(`/api/game?id=${encodeURIComponent(gameId)}`);
+                  if (!res.ok) throw new Error(await res.text());
+                  const data = (await res.json()) as {
+                    game: ApiGame;
+                    countries: ApiCountry[];
+                    stats: ApiStats[];
+                    chats: ApiChat[];
+                  };
+                  
+                  const statsMap: Record<string, CountryStats> = {};
+                  for (const s of data.stats) {
+                    if (countryIds.includes(s.country_id)) {
+                      statsMap[s.country_id] = {
+                        id: s.id,
+                        countryId: s.country_id,
+                        turn: s.turn,
+                        population: s.population,
+                        budget: Number(s.budget),
+                        technologyLevel: Number(s.technology_level),
+                        militaryStrength: s.military_strength,
+                        militaryEquipment: s.military_equipment ?? {},
+                        resources: s.resources ?? {},
+                        diplomaticRelations: s.diplomatic_relations ?? {},
+                        createdAt: s.created_at,
+                      };
+                    }
+                  }
+                  
+                  // Update only the affected countries' stats
+                  setStatsByCountryId(prev => ({
+                    ...prev,
+                    ...statsMap
+                  }));
+                  
+                  console.log(`[Game Page] Stats updated for countries:`, countryIds);
+                } catch (e) {
+                  console.error("Failed to refresh stats:", e);
+                }
+              }}
             />
 
             {/* Resources */}

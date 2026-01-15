@@ -18,7 +18,8 @@ export function CountryCard({
   gameId,
   playerCountryId,
   chatId: initialChatId,
-  onChatIdCreated
+  onChatIdCreated,
+  onStatsUpdate
 }: { 
   country: Country | null;
   stats: CountryStats | null;
@@ -26,6 +27,7 @@ export function CountryCard({
   playerCountryId?: string;
   chatId?: string;
   onChatIdCreated?: (countryId: string, chatId: string) => void;
+  onStatsUpdate?: (countryIds: string[]) => void;
 }) {
   const [showChat, setShowChat] = useState(false);
   const [chatMessage, setChatMessage] = useState("");
@@ -293,8 +295,13 @@ export function CountryCard({
         
         if (data.executed) {
           console.log("Deal automatically confirmed and executed:", data.createdDeal);
-          // Optionally reload game state to show updated resources/budget
-          // You might want to trigger a refresh here
+          
+          // Refresh stats for both countries involved in the deal
+          if (onStatsUpdate && country && playerCountryId) {
+            // Refresh stats for both the player country and the counterpart country
+            onStatsUpdate([playerCountryId, country.id]);
+            console.log("Triggered stats refresh for countries:", [playerCountryId, country.id]);
+          }
         } else if (data.warning) {
           console.warn("Deal created but execution had issues:", data.executionErrors);
           setExtractionError(
