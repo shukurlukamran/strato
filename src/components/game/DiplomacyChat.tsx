@@ -144,19 +144,21 @@ export function DiplomacyChat({
         </button>
       </div>
 
-      <div className="mt-2 flex items-center gap-2">
-        <button
-          type="button"
-          className="rounded border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-          onClick={() => void extractDeal()}
-          disabled={extracting || busy || messages.length === 0}
-        >
-          {extracting ? "Extracting..." : "Extract Deal"}
-        </button>
-        {extractionError && (
-          <span className="text-xs text-red-600">{extractionError}</span>
-        )}
-      </div>
+      {messages.length > 0 && (
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            type="button"
+            className="rounded border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            onClick={() => void extractDeal()}
+            disabled={extracting || busy}
+          >
+            {extracting ? "Extracting..." : "Extract Deal"}
+          </button>
+          {extractionError && (
+            <span className="text-xs text-red-600">{extractionError}</span>
+          )}
+        </div>
+      )}
 
       {extractedDeal && (
         <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-3 text-sm">

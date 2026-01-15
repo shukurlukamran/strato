@@ -1,11 +1,15 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import type { Country, CountryStats } from "@/types/country";
-import { DiplomacyChat } from "./DiplomacyChat";
-import type { ChatMessage } from "@/types/chat";
-import type { DealExtractionResult } from "@/lib/deals/DealExtractor";
+
+interface ChatMessage {
+  id: string;
+  sender: "player" | "country";
+  text: string;
+  timestamp: Date;
+}
 
 export function CountryCard({ 
   country, 
@@ -18,14 +22,10 @@ export function CountryCard({
   gameId?: string;
   playerCountryId?: string;
 }) {
-  // ALL HOOKS MUST BE CALLED BEFORE ANY EARLY RETURNS
   const [showChat, setShowChat] = useState(false);
-  const [chatId, setChatId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [loadingChat, setLoadingChat] = useState(false);
-  const loadingRef = useRef(false);
-  const lastLoadedCountryIdRef = useRef<string | null>(null);
-  const prevShowChatRef = useRef(false);
+  const [chatMessage, setChatMessage] = useState("");
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
   if (!country || !stats) {
     return (
@@ -37,83 +37,73 @@ export function CountryCard({
       </div>
     );
   }
-  
-  useEffect(() => {
-    // Only run when showChat changes from false to true
-    const justOpened = showChat && !prevShowChatRef.current;
-    prevShowChatRef.current = showChat;
-
-    if (!justOpened || !gameId || !playerCountryId || !country?.id || chatId || loadingRef.current) {
-      return;
-    }
-
-    // Mark that we're loading for this country
-    lastLoadedCountryIdRef.current = country.id;
-    loadingRef.current = true;
-    setLoadingChat(true);
-    
-    const currentCountryId = country.id;
-    
-    fetch("/api/chats/get-or-create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        gameId,
-        countryAId: playerCountryId,
-        countryBId: currentCountryId,
-      }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.chatId) {
-          setChatId(data.chatId);
-          // Load existing messages
-          return fetch(`/api/chat?chatId=${data.chatId}`);
-        }
-        throw new Error("Failed to get chat ID");
-      })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.messages) {
-          setMessages(data.messages);
-        }
-      })
-      .catch((error) => {
-        console.error("Error loading chat:", error);
-        lastLoadedCountryIdRef.current = null;
-      })
-      .finally(() => {
-        setLoadingChat(false);
-        loadingRef.current = false;
-      });
-  }, [showChat, gameId, playerCountryId, country?.id, chatId]);
-
-  // Reset chat state when closing
-  useEffect(() => {
-    if (!showChat) {
-      setChatId(null);
-      setMessages([]);
-      loadingRef.current = false;
-      setLoadingChat(false);
-      lastLoadedCountryIdRef.current = null;
-    }
-  }, [showChat]);
 
   const handleProposeDeal = () => {
     setShowChat(true);
   };
 
+  const handleSendMessage = async () => {
+    if (!chatMessage.trim() || isLoading) return;
+
+    const userMessage: ChatMessage = {
+      id: Date.now().toString(),
+      sender: "player",
+      text: chatMessage.trim(),
+      timestamp: new Date(),
+    };
+
+    const updatedHistory = [...chatHistory, userMessage];
+    setChatHistory(updatedHistory);
+    setChatMessage("");
+    setIsLoading(true);
+
+    try {
+      const response = await fetch("/api/diplomacy/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          gameId: gameId || "",
+          countryId: country.id,
+          playerCountryId: playerCountryId || "",
+          message: userMessage.text,
+          chatHistory: updatedHistory.map((msg) => ({
+            sender: msg.sender,
+            text: msg.text,
+          })),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to send message");
+      }
+
+      const data = await response.json();
+      const aiMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        sender: "country",
+        text: data.response,
+        timestamp: new Date(),
+      };
+
+      setChatHistory([...updatedHistory, aiMessage]);
+    } catch (error) {
+      console.error("Error sending message:", error);
+      const errorMessage: ChatMessage = {
+        id: (Date.now() + 1).toString(),
+        sender: "country",
+        text: "Sorry, I encountered an error. Please try again.",
+        timestamp: new Date(),
+      };
+      setChatHistory([...updatedHistory, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleCloseChat = () => {
     setShowChat(false);
-  };
-
-  const handleNewMessages = (newMessages: ChatMessage[]) => {
-    setMessages(newMessages);
-  };
-
-  const handleDealExtracted = (deal: DealExtractionResult) => {
-    // Could show a notification or open deal proposal UI here
-    console.log("Deal extracted:", deal);
   };
 
   // Map existing data to display format
@@ -214,29 +204,68 @@ export function CountryCard({
               </button>
             </div>
 
-            {/* Chat Component */}
-            <div className="flex-1 overflow-hidden p-4">
-              {loadingChat ? (
+            {/* Chat Messages Area */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {chatHistory.length === 0 ? (
                 <div className="flex h-full items-center justify-center text-white/60">
-                  <p>Loading chat...</p>
-                </div>
-              ) : chatId && gameId && playerCountryId ? (
-                <div className="h-full">
-                  <DiplomacyChat
-                    gameId={gameId}
-                    chatId={chatId}
-                    playerCountryId={playerCountryId}
-                    counterpartCountryId={country.id}
-                    messages={messages}
-                    onNewMessages={handleNewMessages}
-                    onDealExtracted={handleDealExtracted}
-                  />
+                  <p>Start a conversation with {country.name}...</p>
                 </div>
               ) : (
-                <div className="flex h-full items-center justify-center text-white/60">
-                  <p>Failed to load chat</p>
+                chatHistory.map((msg) => (
+                  <div
+                    key={msg.id}
+                    className={`flex ${msg.sender === "player" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[75%] rounded-lg px-4 py-2 ${
+                        msg.sender === "player"
+                          ? "bg-blue-600 text-white"
+                          : "bg-slate-700 text-white"
+                      }`}
+                    >
+                      <p className="whitespace-pre-wrap break-words">{msg.text}</p>
+                      <p className="mt-1 text-xs opacity-70">
+                        {msg.timestamp.toLocaleTimeString()}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+              {isLoading && (
+                <div className="flex justify-start">
+                  <div className="rounded-lg bg-slate-700 px-4 py-2 text-white">
+                    <p>Thinking...</p>
+                  </div>
                 </div>
               )}
+            </div>
+
+            {/* Input Field */}
+            <div className="border-t border-white/10 p-4">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={chatMessage}
+                  onChange={(e) => setChatMessage(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendMessage();
+                    }
+                  }}
+                  placeholder="Type your message..."
+                  disabled={isLoading}
+                  className="flex-1 rounded-lg border border-white/20 bg-slate-800/50 px-4 py-2 text-white placeholder:text-white/50 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50"
+                />
+                <button
+                  type="button"
+                  onClick={handleSendMessage}
+                  disabled={isLoading || !chatMessage.trim()}
+                  className="rounded-lg bg-blue-600 px-6 py-2 font-semibold text-white transition-all hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Send
+                </button>
+              </div>
             </div>
           </div>
         </div>,
