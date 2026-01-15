@@ -10,7 +10,8 @@
     "setup:supabase": "bash scripts/setup-supabase.sh",
     "db:push": "npx supabase db push",
     "db:reset": "npx supabase db reset",
-    "db:seed": "npx supabase db reset"
+    "db:seed": "npx supabase db reset",
+    "postinstall": "echo 'Installation complete'"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
