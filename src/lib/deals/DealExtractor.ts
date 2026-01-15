@@ -344,6 +344,15 @@ If absolutely NO negotiation or deal discussion is happening, return: {"hasDeal"
       return null;
     }
 
+    // ADD THIS DEBUGGING CODE (around line 321, before calling buildExtractionPrompt)
+console.log("\n=== CHAT MESSAGES DEBUG ===");
+console.log("Number of messages:", context.chatMessages.length);
+context.chatMessages.forEach((msg, idx) => {
+  const sender = msg.senderCountryId === context.countryA.id ? context.countryA.name : context.countryB.name;
+  console.log(`[${idx + 1}] ${sender}: "${msg.messageText}"`);
+});
+console.log("=== END CHAT DEBUG ===\n");
+
 
     const prompt = this.buildExtractionPrompt(context);
 
