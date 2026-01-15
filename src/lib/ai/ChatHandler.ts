@@ -276,10 +276,10 @@ Respond naturally and strategically.`;
       }
     }
 
-    try {
-      const systemPrompt = this.buildSystemPrompt(context);
-      const historyMessages = this.buildHistoryMessages(context);
+    const systemPrompt = this.buildSystemPrompt(context);
+    const historyMessages = this.buildHistoryMessages(context);
 
+    try {
       // Start a chat session with the system prompt and history
       const chat = this.model.startChat({
         history: [
@@ -318,8 +318,6 @@ Respond naturally and strategically.`;
         // If model not found error, try alternative models
         if (error.message.includes("not found") || error.message.includes("404")) {
           console.warn("Model not found, trying alternative models...");
-          const systemPrompt = this.buildSystemPrompt(context);
-          const historyMessages = this.buildHistoryMessages(context);
           return await this.tryAlternativeModels(context, turn.messageText, systemPrompt, historyMessages);
         }
         
