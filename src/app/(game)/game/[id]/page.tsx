@@ -197,7 +197,12 @@ export default function GamePage() {
             </button>
 
             {/* Country Card */}
-            <CountryCard country={selectedCountry} stats={selectedStats} />
+            <CountryCard 
+              country={selectedCountry} 
+              stats={selectedStats}
+              gameId={gameId}
+              playerCountryId={playerCountryId}
+            />
 
             {/* Resources */}
             <div className="mt-4">

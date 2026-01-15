@@ -12,10 +12,14 @@ interface ChatMessage {
 
 export function CountryCard({ 
   country, 
-  stats 
+  stats,
+  gameId,
+  playerCountryId
 }: { 
   country: Country | null;
   stats: CountryStats | null;
+  gameId?: string;
+  playerCountryId?: string;
 }) {
   const [showChat, setShowChat] = useState(false);
   const [chatMessage, setChatMessage] = useState("");
@@ -59,7 +63,9 @@ export function CountryCard({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          gameId: gameId || "",
           countryId: country.id,
+          playerCountryId: playerCountryId || "",
           message: userMessage.text,
           chatHistory: updatedHistory.map((msg) => ({
             sender: msg.sender,
