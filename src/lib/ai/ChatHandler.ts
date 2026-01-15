@@ -254,10 +254,25 @@ Respond naturally and strategically.`;
         receiverCountryId: turn.receiverCountryId,
         chatId: turn.chatId,
       });
-      // Fallback if we can't fetch context
-      return {
-        messageText: `I understand your message: "${turn.messageText}". However, I need more context to provide a proper response.`,
-      };
+      
+      // Try to use Gemini even without full context - provide a basic prompt
+      try {
+        const basicPrompt = `You are a diplomatic representative in a strategy game. A player has sent you this message: "${turn.messageText}". Respond diplomatically and strategically, as if you represent an AI-controlled country. Keep your response concise (2-3 sentences).`;
+        
+        const result = await this.model!.generateContent(basicPrompt);
+        const response = result.response;
+        const responseText = response.text().trim() || "I'm considering your proposal.";
+        
+        return {
+          messageText: responseText,
+        };
+      } catch (fallbackError) {
+        console.error("Even fallback Gemini call failed:", fallbackError);
+        // Final fallback
+        return {
+          messageText: `I understand your message: "${turn.messageText}". However, I need more context to provide a proper response.`,
+        };
+      }
     }
 
     try {
