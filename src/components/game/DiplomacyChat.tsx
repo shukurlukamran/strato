@@ -99,21 +99,19 @@ export function DiplomacyChat({
   }
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="text-sm font-semibold text-white mb-3">Diplomacy Chat</div>
-      <div className="flex-1 overflow-auto rounded border border-white/10 bg-slate-800/50 p-3 text-sm mb-3">
+    <div className="rounded-lg border bg-white p-4">
+      <div className="text-sm font-semibold">Diplomacy Chat</div>
+      <div className="mt-3 h-64 overflow-auto rounded border bg-gray-50 p-3 text-sm">
         {sorted.length === 0 ? (
-          <div className="text-white/60">Start a conversation.</div>
+          <div className="text-gray-600">Start a conversation.</div>
         ) : (
           <div className="space-y-2">
             {sorted.map((m) => (
               <div key={m.id} className="flex">
                 <div
                   className={[
-                    "max-w-[85%] rounded-lg px-3 py-2",
-                    m.senderCountryId === playerCountryId 
-                      ? "ml-auto bg-blue-600 text-white" 
-                      : "bg-slate-700 text-white border border-white/10",
+                    "max-w-[85%] rounded px-3 py-2",
+                    m.senderCountryId === playerCountryId ? "ml-auto bg-black text-white" : "bg-white border",
                   ].join(" ")}
                 >
                   <div className="whitespace-pre-wrap">{m.messageText}</div>
@@ -125,9 +123,9 @@ export function DiplomacyChat({
         )}
       </div>
 
-      <div className="flex gap-2">
+      <div className="mt-3 flex gap-2">
         <input
-          className="flex-1 rounded-lg border border-white/20 bg-slate-800/50 px-3 py-2 text-sm text-white placeholder:text-white/50 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 disabled:opacity-50"
+          className="w-full rounded border px-3 py-2 text-sm"
           placeholder="Negotiate in natural language..."
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -138,7 +136,7 @@ export function DiplomacyChat({
         />
         <button
           type="button"
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition-all hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="rounded bg-black px-3 py-2 text-sm text-white hover:bg-gray-800 disabled:opacity-50"
           onClick={() => void send()}
           disabled={busy}
         >
@@ -146,32 +144,30 @@ export function DiplomacyChat({
         </button>
       </div>
 
-      {messages.length > 0 && (
-        <div className="mt-2 flex items-center gap-2">
-          <button
-            type="button"
-            className="rounded-lg border border-white/20 bg-slate-700 px-3 py-1.5 text-xs text-white hover:bg-slate-600 disabled:opacity-50"
-            onClick={() => void extractDeal()}
-            disabled={extracting || busy}
-          >
-            {extracting ? "Extracting..." : "Extract Deal"}
-          </button>
-          {extractionError && (
-            <span className="text-xs text-red-400">{extractionError}</span>
-          )}
-        </div>
-      )}
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="button"
+          className="rounded border border-gray-300 bg-white px-3 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          onClick={() => void extractDeal()}
+          disabled={extracting || busy || messages.length === 0}
+        >
+          {extracting ? "Extracting..." : "Extract Deal"}
+        </button>
+        {extractionError && (
+          <span className="text-xs text-red-600">{extractionError}</span>
+        )}
+      </div>
 
       {extractedDeal && (
-        <div className="mt-3 rounded-lg border border-blue-500/50 bg-blue-900/30 p-3 text-sm">
-          <div className="font-semibold text-blue-300">Deal Extracted!</div>
-          <div className="mt-1 text-xs text-blue-200">
+        <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-3 text-sm">
+          <div className="font-semibold text-blue-900">Deal Extracted!</div>
+          <div className="mt-1 text-xs text-blue-700">
             Type: <span className="font-medium">{extractedDeal.dealType}</span>
             {extractedDeal.reasoning && (
-              <div className="mt-1 text-xs italic text-blue-300">{extractedDeal.reasoning}</div>
+              <div className="mt-1 text-xs italic">{extractedDeal.reasoning}</div>
             )}
           </div>
-          <div className="mt-2 text-xs text-blue-200">
+          <div className="mt-2 text-xs text-blue-800">
             <div>
               <strong>You commit:</strong>{" "}
               {extractedDeal.dealTerms.proposerCommitments.length > 0
@@ -203,7 +199,7 @@ export function DiplomacyChat({
                 : "Nothing"}
             </div>
             {extractedDeal.confidence && (
-              <div className="mt-1 text-xs text-blue-300">
+              <div className="mt-1 text-xs text-blue-600">
                 Confidence: {Math.round(extractedDeal.confidence * 100)}%
               </div>
             )}
@@ -211,7 +207,7 @@ export function DiplomacyChat({
         </div>
       )}
 
-      <div className="mt-2 text-xs text-white/50">Tip: Ctrl/⌘ + Enter to send.</div>
+      <div className="mt-2 text-xs text-gray-600">Tip: Ctrl/⌘ + Enter to send.</div>
     </div>
   );
 }
