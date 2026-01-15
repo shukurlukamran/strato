@@ -42,12 +42,18 @@ export class ChatHandler {
   private model: ReturnType<GoogleGenerativeAI["getGenerativeModel"]> | null = null;
 
   constructor() {
-    const apiKey = process.env.GOOGLE_GEMINI_API_KEY || "AIzaSyDqT4HScdQUQtTHweKC9sZiH2wLZf2C3oY";
+    // Use environment variable for API key (never hardcode in production)
+    const apiKey = process.env.GOOGLE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      console.error("ChatHandler: GOOGLE_GEMINI_API_KEY or GEMINI_API_KEY environment variable is not set.");
+      return;
+    }
+    
     if (apiKey) {
       this.genAI = new GoogleGenerativeAI(apiKey);
-      // Use gemini-1.5-flash-002 (versioned model name)
-      // If this doesn't work, try: gemini-1.5-pro, gemini-pro, or gemini-1.0-pro
-      this.model = this.genAI.getGenerativeModel({ model: "gemini-1.5-flash-002" });
+      // Use Gemini 2.x models (1.5 models were retired on Sept 24, 2025)
+      // Primary: gemini-2.5-flash (fastest, recommended)
+      this.model = this.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     }
   }
 
@@ -342,12 +348,25 @@ Respond naturally and strategically.`;
     systemPrompt: string,
     historyMessages: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }>
   ): Promise<ChatResponse> {
-    // Try alternative model names if the primary one fails
-    const alternativeModels = ["gemini-1.5-pro", "gemini-pro", "gemini-1.0-pro"];
+    // Try alternative Gemini 2.x models (1.5 models were retired on Sept 24, 2025)
+    const alternativeModels = [
+      "gemini-2.5-flash-lite",  // Fallback 1: Even faster variant
+      "gemini-2.0-flash",       // Fallback 2: Previous generation
+      "gemini-3-flash-preview"  // Fallback 3: Preview version
+    ];
     
-    for (const modelName of alternativeModels) {
+    for (let i = 0; i < alternativeModels.length; i++) {
+      const modelName = alternativeModels[i];
       try {
-        console.log(`Trying alternative model: ${modelName}`);
+        console.log(`[${i + 1}/${alternativeModels.length}] Trying alternative model: ${modelName}`);
+        
+        // Exponential backoff: wait before retrying (except first attempt)
+        if (i > 0) {
+          const delayMs = Math.min(1000 * Math.pow(2, i - 1), 5000); // Max 5 seconds
+          console.log(`Waiting ${delayMs}ms before next attempt...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+        
         const altModel = this.genAI!.getGenerativeModel({ model: modelName });
         
         const chat = altModel.startChat({
@@ -368,17 +387,36 @@ Respond naturally and strategically.`;
         const response = result.response;
         const responseText = response.text().trim() || "I'm considering your proposal.";
         
-        console.log(`Successfully used model: ${modelName}`);
+        console.log(`✓ Successfully used model: ${modelName}`);
         return {
           messageText: responseText,
         };
       } catch (altError) {
-        console.warn(`Model ${modelName} also failed:`, altError instanceof Error ? altError.message : altError);
+        const errorMsg = altError instanceof Error ? altError.message : String(altError);
+        console.warn(`✗ Model ${modelName} failed:`, errorMsg);
+        
+        // Log full error details for debugging
+        if (altError instanceof Error && altError.stack) {
+          console.warn(`Error stack:`, altError.stack);
+        }
+        
+        // Check for specific error types
+        if (errorMsg.includes("quota") || errorMsg.includes("rate limit")) {
+          console.error("API quota or rate limit exceeded. Please check your Google Cloud quota.");
+          break; // Don't try more models if quota is exceeded
+        }
+        
+        if (errorMsg.includes("API_KEY") || errorMsg.includes("401") || errorMsg.includes("403")) {
+          console.error("API key authentication failed. Check GOOGLE_GEMINI_API_KEY environment variable.");
+          break; // Don't try more models if auth fails
+        }
+        
         continue;
       }
     }
     
     // If all models fail, return fallback
+    console.error("All Gemini models failed. Returning fallback response.");
     return {
       messageText: `I've received your message: "${messageText}". Let me consider this carefully and get back to you.`,
     };
