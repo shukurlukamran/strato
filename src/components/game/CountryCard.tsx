@@ -85,9 +85,18 @@ export function CountryCard({
       }
 
       const data = await response.json();
-      // Store chatId if returned
-      if (data.chatId && !chatId) {
-        setChatId(data.chatId);
+      // Store chatId if returned and it's a valid UUID
+      if (data.chatId && typeof data.chatId === 'string' && data.chatId.length > 0) {
+        // Validate it's a UUID format
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (uuidRegex.test(data.chatId)) {
+          setChatId(data.chatId);
+          console.log("ChatId stored:", data.chatId);
+        } else {
+          console.warn("Invalid chatId format received:", data.chatId);
+        }
+      } else {
+        console.warn("No valid chatId in response:", data);
       }
       const aiMessage: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -115,37 +124,73 @@ export function CountryCard({
     setShowChat(false);
   };
 
+  // Helper function to validate UUID
+  const isValidUUID = (str: string): boolean => {
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return uuidRegex.test(str);
+  };
+
   const handleExtractDeal = async () => {
     if (!gameId || !playerCountryId || !country.id || chatHistory.length === 0) {
       setExtractionError("Cannot extract deal: missing information or no messages");
       return;
     }
 
-    // Find or create chatId by querying the database
+    // Use stored chatId or try to get/create it
     let currentChatId = chatId;
-    if (!currentChatId) {
+    
+    // Validate that chatId is a valid UUID
+    if (!currentChatId || !isValidUUID(currentChatId)) {
+      console.log("ChatId missing or invalid, attempting to get/create chat:", { 
+        currentChatId, 
+        gameId, 
+        playerCountryId, 
+        countryId: country.id 
+      });
+      
+      // Try to get chatId by making a request to find/create the chat
       try {
-        // Query for existing chat
-        const findChatRes = await fetch(`/api/game?gameId=${gameId}`);
+        const findChatRes = await fetch("/api/diplomacy/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            gameId,
+            countryId: country.id,
+            playerCountryId,
+            message: " ", // Minimal message to trigger chat creation
+            chatHistory: [],
+          }),
+        });
+
         if (findChatRes.ok) {
-          const gameData = await findChatRes.json();
-          // Look for chat between player and this country
-          // For now, we'll create a chatId by combining IDs (temporary solution)
-          // In production, we'd query diplomacy_chats table
-          currentChatId = `${gameId}-${playerCountryId}-${country.id}`;
+          const findData = await findChatRes.json();
+          if (findData.chatId && isValidUUID(findData.chatId)) {
+            currentChatId = findData.chatId;
+            setChatId(currentChatId);
+            console.log("ChatId obtained from API:", currentChatId);
+          } else {
+            setExtractionError("Chat not properly initialized. Please send a message first.");
+            return;
+          }
+        } else {
+          setExtractionError("Failed to initialize chat. Please send a message first.");
+          return;
         }
       } catch (e) {
         console.error("Failed to get chatId:", e);
+        setExtractionError("Chat not initialized. Send a message first.");
+        return;
       }
     }
 
-    // If still no chatId, try to get/create it via a helper endpoint
-    // For now, we'll use a simple approach: create chatId from game and country IDs
-    if (!currentChatId) {
-      // Create a deterministic chatId
-      const ids = [gameId, playerCountryId, country.id].sort();
-      currentChatId = ids.join('-');
+    // Final validation
+    if (!currentChatId || !isValidUUID(currentChatId)) {
+      setExtractionError("Invalid chat ID. Please send a message first.");
+      console.error("Invalid chatId before extraction:", currentChatId);
+      return;
     }
+
+    console.log("Extracting deal with:", { gameId, chatId: currentChatId, countryAId: playerCountryId, countryBId: country.id });
 
     setExtracting(true);
     setExtractionError(null);

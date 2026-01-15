@@ -96,7 +96,10 @@ export async function POST(req: Request) {
           console.warn("3. Gemini API key is invalid or quota exceeded");
         }
 
-        return NextResponse.json({ response: aiResponse.messageText });
+        return NextResponse.json({ 
+          response: aiResponse.messageText,
+          chatId: chatId || undefined
+        });
       } catch (error) {
         console.error("Error using ChatHandler:", error);
         // Log the full error for debugging
@@ -110,6 +113,7 @@ export async function POST(req: Request) {
     // Fallback response if ChatHandler fails or required data is missing
     return NextResponse.json({
       response: "I'm interested in your proposal. What terms do you suggest?",
+      chatId: undefined,
     });
   } catch (error) {
     console.error("Error in diplomacy chat route:", error);
