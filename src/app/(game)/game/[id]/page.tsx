@@ -10,8 +10,6 @@ import { CountryCard } from "@/components/game/CountryCard";
 import { TurnIndicator } from "@/components/game/TurnIndicator";
 import { ResourceDisplay } from "@/components/game/ResourceDisplay";
 import { ActionPanel } from "@/components/game/ActionPanel";
-import { DiplomacyChat } from "@/components/game/DiplomacyChat";
-import { DealProposal } from "@/components/game/DealProposal";
 import { ActiveDeals } from "@/components/game/ActiveDeals";
 import { useGameStore } from "@/lib/store/gameStore";
 
@@ -46,24 +44,6 @@ export default function GamePage() {
 
   const setGameId = useGameStore((s) => s.setGameId);
   const selectedCountryId = useGameStore((s) => s.selectedCountryId);
-  const activeChatCountryId = useGameStore((s) => s.activeChatCountryId);
-  
-  // #region agent log - Force re-render test
-  const [renderKey, setRenderKey] = useState(0);
-  useEffect(() => {
-    if (activeChatCountryId) {
-      console.log('[DEBUG] page: activeChatCountryId is set, forcing re-render', activeChatCountryId);
-      setRenderKey(prev => prev + 1);
-    }
-  }, [activeChatCountryId]);
-  // #endregion
-  
-  // #region agent log
-  useEffect(() => {
-    console.log('[DEBUG] page: activeChatCountryId changed', { activeChatCountryId, selectedCountryId });
-    fetch('http://127.0.0.1:7242/ingest/5cfd136f-1fa7-464e-84d5-bcaf3c90cae7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:useEffect',message:'activeChatCountryId changed',data:{activeChatCountryId,selectedCountryId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-  }, [activeChatCountryId, selectedCountryId]);
-  // #endregion
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -149,52 +129,6 @@ export default function GamePage() {
     [countries, selectedCountryId],
   );
   const selectedStats = selectedCountry ? statsByCountryId[selectedCountry.id] ?? null : null;
-
-  const activeChatId = activeChatCountryId ? chatByCounterpartCountryId[activeChatCountryId] : null;
-  const activeMessages = activeChatId ? messagesByChatId[activeChatId] ?? [] : [];
-  
-  // #region agent log
-  useEffect(() => {
-    console.log('[DEBUG] page: Computed values', { 
-      activeChatCountryId, 
-      activeChatId, 
-      chatByCounterpartCountryId, 
-      hasChatMapping: activeChatCountryId ? chatByCounterpartCountryId[activeChatCountryId] !== undefined : false
-    });
-  }, [activeChatCountryId, activeChatId, chatByCounterpartCountryId]);
-  // #endregion
-
-  // Load messages when a chat is opened, and ensure chat exists
-  useEffect(() => {
-    if (!activeChatCountryId || !playerCountryId) return;
-
-    const counterpartId = activeChatCountryId;
-    const currentChatId = chatByCounterpartCountryId[counterpartId];
-
-    // If chat doesn't exist in mapping, reload game data to get updated chats
-    if (!currentChatId) {
-      void load();
-      return;
-    }
-
-    async function loadMessages() {
-      try {
-        const res = await fetch(`/api/chat?chatId=${encodeURIComponent(currentChatId)}`);
-        if (res.ok) {
-          const data = (await res.json()) as { messages: ChatMessage[] };
-          setMessagesByChatId((prev) => ({ ...prev, [currentChatId]: data.messages }));
-        }
-      } catch (e) {
-        console.error("Failed to load messages:", e);
-      }
-    }
-
-    // Only load if we don't already have messages for this chat
-    if (!messagesByChatId[currentChatId]) {
-      void loadMessages();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeChatCountryId, playerCountryId]);
 
   if (loading) {
     return (
@@ -304,137 +238,6 @@ export default function GamePage() {
           <Map countries={countries} />
         </div>
 
-        {/* Right Sidebar - Diplomacy Chat */}
-        {/* #region agent log - Always show panel for debugging */}
-        {activeChatCountryId && (
-          <div className="fixed right-4 top-16 z-50 bg-red-600 text-white p-4 rounded shadow-lg">
-            DEBUG: activeChatCountryId = {activeChatCountryId}
-          </div>
-        )}
-        {/* #endregion */}
-        <div
-          key={renderKey}
-          className={`fixed right-0 top-12 z-30 h-[calc(100vh-3rem)] w-96 transform border-l border-white/10 bg-slate-900/95 backdrop-blur-md transition-transform duration-300 shadow-2xl ${
-            activeChatCountryId ? "translate-x-0" : "translate-x-full"
-          }`}
-          style={{
-            // #region agent log
-            transform: activeChatCountryId ? 'translateX(0) !important' : 'translateX(100%)',
-            ...(activeChatCountryId ? { 
-              border: '3px solid red', // Visual debug indicator
-              display: 'block',
-              visibility: 'visible',
-            } : {}),
-            // #endregion
-          }}
-          ref={(el) => {
-            // #region agent log
-            if (el) {
-              const computedStyle = window.getComputedStyle(el);
-              console.log('[DEBUG] page: Chat panel render', { 
-                activeChatCountryId, 
-                hasActiveChatId: !!activeChatId, 
-                className: activeChatCountryId ? "translate-x-0" : "translate-x-full",
-                transform: computedStyle.transform,
-                display: computedStyle.display,
-                visibility: computedStyle.visibility,
-                zIndex: computedStyle.zIndex
-              });
-              fetch('http://127.0.0.1:7242/ingest/5cfd136f-1fa7-464e-84d5-bcaf3c90cae7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'page.tsx:chatPanel',message:'Panel render',data:{activeChatCountryId,hasActiveChatId:!!activeChatId,className:activeChatCountryId ? "translate-x-0" : "translate-x-full",computedStyle:computedStyle.transform},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
-            }
-            // #endregion
-          }}
-        >
-          {activeChatCountryId ? (
-            activeChatId ? (
-              <div className="flex h-full flex-col">
-                <div className="flex items-center justify-between border-b border-white/10 p-4">
-                  <div className="flex items-center gap-2">
-                    {countries
-                      .find((c) => c.id === activeChatCountryId)
-                      ?.color && (
-                      <span
-                        className="inline-block h-3 w-3 rounded border border-white/30"
-                        style={{
-                          backgroundColor: countries.find((c) => c.id === activeChatCountryId)?.color,
-                        }}
-                      />
-                    )}
-                    <span className="font-semibold text-white">
-                      {countries.find((c) => c.id === activeChatCountryId)?.name}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => useGameStore.getState().closeChat()}
-                    className="text-white/70 hover:text-white"
-                  >
-                    ✕
-                  </button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-4">
-                  <DiplomacyChat
-                    gameId={gameId}
-                    chatId={activeChatId}
-                    playerCountryId={playerCountryId}
-                    counterpartCountryId={activeChatCountryId}
-                    messages={activeMessages}
-                    onNewMessages={(msgs) => setMessagesByChatId((prev) => ({ ...prev, [activeChatId]: msgs }))}
-                  />
-                </div>
-                <div className="border-t border-white/10 p-4">
-                  <DealProposal
-                    gameId={gameId}
-                    proposingCountryId={playerCountryId}
-                    receivingCountryId={activeChatCountryId}
-                    turnCreated={turn}
-                    onCreated={(deal) => setDeals((prev) => [deal, ...prev])}
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="flex h-full flex-col">
-                <div className="flex items-center justify-between border-b border-white/10 p-4">
-                  <div className="flex items-center gap-2">
-                    {countries
-                      .find((c) => c.id === activeChatCountryId)
-                      ?.color && (
-                      <span
-                        className="inline-block h-3 w-3 rounded border border-white/30"
-                        style={{
-                          backgroundColor: countries.find((c) => c.id === activeChatCountryId)?.color,
-                        }}
-                      />
-                    )}
-                    <span className="font-semibold text-white">
-                      {countries.find((c) => c.id === activeChatCountryId)?.name}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => useGameStore.getState().closeChat()}
-                    className="text-white/70 hover:text-white"
-                  >
-                    ✕
-                  </button>
-                </div>
-                <div className="flex h-full items-center justify-center p-4">
-                  <div className="text-center text-white/60">
-                    <div className="mb-2 text-lg">💬</div>
-                    <div className="text-sm">Loading chat...</div>
-                  </div>
-                </div>
-              </div>
-            )
-          ) : (
-            <div className="flex h-full items-center justify-center p-4">
-              <div className="text-center text-white/60">
-                <div className="mb-2 text-lg">💬</div>
-                <div className="text-sm">Click a country on the map to start diplomacy</div>
-              </div>
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Bottom Status Bar */}
@@ -448,14 +251,6 @@ export default function GamePage() {
                 <span className="h-2 w-px bg-white/20" />
               </>
             )}
-            {/* #region agent log */}
-            {activeChatCountryId && (
-              <>
-                <span className="text-yellow-400 font-bold">CHAT OPEN: {activeChatCountryId.slice(0, 8)}</span>
-                <span className="h-2 w-px bg-white/20" />
-              </>
-            )}
-            {/* #endregion */}
             <span>Turn {turn}</span>
           </div>
         </div>
