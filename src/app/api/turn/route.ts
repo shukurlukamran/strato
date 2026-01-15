@@ -152,6 +152,62 @@ export async function POST(req: Request) {
     created_at: new Date().toISOString(),
   });
 
+  // Create stats for the next turn based on current turn's stats
+  // First, fetch the current stats again in case they were modified by deals/actions
+  const updatedStatsRes = await supabase
+    .from("country_stats")
+    .select(
+      "id, country_id, turn, population, budget, technology_level, military_strength, military_equipment, resources, diplomatic_relations, created_at",
+    )
+    .eq("turn", turn)
+    .in(
+      "country_id",
+      (countriesRes.data ?? []).map((c) => c.id),
+    );
+  
+  if (updatedStatsRes.error) {
+    console.error("Failed to fetch updated stats for next turn creation:", updatedStatsRes.error);
+  } else if (updatedStatsRes.data && updatedStatsRes.data.length > 0) {
+    // Check if stats for next turn already exist
+    const nextTurnStatsRes = await supabase
+      .from("country_stats")
+      .select("country_id")
+      .eq("turn", turn + 1)
+      .in(
+        "country_id",
+        (countriesRes.data ?? []).map((c) => c.id),
+      );
+    
+    const existingCountryIds = new Set(
+      (nextTurnStatsRes.data ?? []).map((s) => s.country_id)
+    );
+    
+    // Create new stats entries for the next turn for countries that don't have them yet
+    const nextTurnStats = updatedStatsRes.data
+      .filter((s) => !existingCountryIds.has(s.country_id))
+      .map((s) => ({
+        country_id: s.country_id,
+        turn: turn + 1,
+        population: s.population,
+        budget: Number(s.budget),
+        technology_level: Number(s.technology_level),
+        military_strength: s.military_strength,
+        military_equipment: s.military_equipment ?? {},
+        resources: s.resources ?? {},
+        diplomatic_relations: s.diplomatic_relations ?? {},
+        created_at: new Date().toISOString(),
+      }));
+    
+    if (nextTurnStats.length > 0) {
+      const insertRes = await supabase.from("country_stats").insert(nextTurnStats);
+      if (insertRes.error) {
+        console.error("Failed to create stats for next turn:", insertRes.error);
+      } else {
+        console.log(`Created stats for turn ${turn + 1} for ${nextTurnStats.length} countries`);
+      }
+    }
+  }
+
   await supabase.from("games").update({ current_turn: turn + 1, updated_at: new Date().toISOString() }).eq("id", gameId);
 
   return NextResponse.json({ ok: true, nextTurn: turn + 1, events: result.events });
