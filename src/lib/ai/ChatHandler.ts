@@ -45,8 +45,9 @@ export class ChatHandler {
     const apiKey = process.env.GOOGLE_GEMINI_API_KEY || "AIzaSyDqT4HScdQUQtTHweKC9sZiH2wLZf2C3oY";
     if (apiKey) {
       this.genAI = new GoogleGenerativeAI(apiKey);
-      // Use gemini-1.5-flash for faster responses, or gemini-1.5-flash-lite for even faster
-      this.model = this.genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      // Use gemini-1.5-flash-002 (versioned model name)
+      // If this doesn't work, try: gemini-1.5-pro, gemini-pro, or gemini-1.0-pro
+      this.model = this.genAI.getGenerativeModel({ model: "gemini-1.5-flash-002" });
     }
   }
 
