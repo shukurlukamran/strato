@@ -186,13 +186,13 @@ export class DealExtractor {
   private buildExtractionPrompt(context: ExtractionContext): string {
     const { countryA, countryB, countryAStats, countryBStats, chatMessages, turn } = context;
 
-    // Build chat history string
+    // Build chat history string with clear formatting
     const chatHistory = chatMessages
-      .map((msg) => {
+      .map((msg, idx) => {
         const sender = msg.senderCountryId === countryA.id ? countryA.name : countryB.name;
-        return `${sender}: ${msg.messageText}`;
+        return `[Message ${idx + 1}] ${sender}: ${msg.messageText}`;
       })
-      .join("\n");
+      .join("\n\n");
 
     return `You are analyzing a diplomatic conversation between two countries in a strategy game to extract any deal or agreement that has been discussed.
 
@@ -233,9 +233,12 @@ COMMITMENT TYPES:
 - "action_commitment": Commit to specific actions (e.g., "no_attack", "mutual_defense")
 
 INSTRUCTIONS:
-1. Analyze the conversation to determine if a deal or agreement has been discussed
-2. If NO clear deal is present, return null
-3. If a deal IS present, extract:
+1. CAREFULLY analyze the conversation to determine if a deal or agreement has been discussed
+2. A deal can be:
+   - Explicitly stated (e.g., "I'll give you 100 oil for 200 credits")
+   - Implied through negotiation (e.g., "How about 100 oil?" followed by "That works for me")
+   - Mentioned in any form (trade, exchange, agreement, deal, alliance, etc.)
+3. If a deal IS present (even if not fully finalized), extract:
    - Deal type (one of the types above)
    - What Country A commits to give/do
    - What Country B commits to give/do
@@ -243,9 +246,11 @@ INSTRUCTIONS:
    - Any conditions or requirements
 
 4. Be specific with amounts, resources, and durations mentioned in the conversation
-5. If amounts are vague (e.g., "some oil"), use reasonable estimates based on context
+5. If amounts are vague (e.g., "some oil", "a lot"), use reasonable estimates based on context and available resources
 6. If duration is not specified, use 1 turn for trades, 5 turns for alliances/non-aggression
-7. Only extract deals where BOTH parties have agreed or shown clear intent to agree
+7. Extract deals even if they're still being negotiated - if both parties are discussing terms, that's a deal
+8. Look for keywords: "trade", "exchange", "deal", "agreement", "alliance", "give", "receive", "for", "in return", etc.
+9. If one party proposes something and the other responds positively (even with "ok", "sure", "yes", "agreed"), extract it
 
 Return your analysis as JSON in this exact format:
 {
@@ -302,9 +307,17 @@ If no deal is present, return: {"hasDeal": false}`;
     const prompt = this.buildExtractionPrompt(context);
 
     try {
+      console.log("DealExtractor: Sending prompt to LLM with", {
+        messageCount: context.chatMessages.length,
+        countryA: context.countryA.name,
+        countryB: context.countryB.name,
+      });
+
       const result = await this.model.generateContent(prompt);
       const response = result.response;
       const responseText = response.text().trim();
+
+      console.log("DealExtractor: LLM raw response:", responseText.substring(0, 500));
 
       // Parse JSON response
       let parsed: {
@@ -325,13 +338,20 @@ If no deal is present, return: {"hasDeal": false}`;
         } else {
           parsed = JSON.parse(responseText);
         }
+        console.log("DealExtractor: Parsed response:", JSON.stringify(parsed, null, 2));
       } catch (parseError) {
-        console.error("Failed to parse LLM response as JSON:", responseText);
+        console.error("DealExtractor: Failed to parse LLM response as JSON:", responseText);
+        console.error("Parse error:", parseError);
         return null;
       }
 
       // Check if deal was detected
       if (!parsed.hasDeal || !parsed.dealType) {
+        console.log("DealExtractor: No deal detected. Response:", {
+          hasDeal: parsed.hasDeal,
+          dealType: parsed.dealType,
+          reasoning: parsed.reasoning,
+        });
         return null;
       }
 
