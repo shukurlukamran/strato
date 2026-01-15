@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "setup:supabase": "bash scripts/setup-supabase.sh",
+    "db:push": "npx supabase db push",
+    "db:reset": "npx supabase db reset",
+    "db:seed": "npx supabase db reset"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.90.1",

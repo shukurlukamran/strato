@@ -1,36 +1,113 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Strato - Political Strategy Game
+
+A web-based turn-based strategy game where players manage a country competing with AI-controlled countries. Features chat-based diplomacy, complex economic systems, and intelligent AI opponents.
+
+## Tech Stack
+
+- **Frontend**: Next.js 14+ (App Router) with TypeScript
+- **Backend**: Supabase (PostgreSQL database, Auth, Realtime)
+- **Deployment**: Vercel
+- **State Management**: Zustand
+- **AI**: Custom decision engine with LLM integration for chat-based diplomacy
+
+## Features
+
+- **Chat-Based Diplomacy**: Negotiate deals through free-form conversation with AI countries
+- **Strategic AI**: Intelligent AI opponents that act in their country's best interests
+- **Complex Game Systems**: Resources, technology, military, economy, and population management
+- **Deal System**: Structured deal proposals with confirmation workflow
+- **Scalable Architecture**: Designed to support many countries and future multiplayer
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
+- Node.js 18+ 
+- npm or yarn
+- Supabase account
+- Vercel account (for deployment)
+
+### Local Development
+
+1. Clone the repository:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+git clone https://github.com/shukurlukamran/strato.git
+cd strato
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install dependencies:
+```bash
+npm install
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Set up environment variables:
+```bash
+cp env.local.example .env.local
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Fill in your Supabase credentials:
+- `NEXT_PUBLIC_SUPABASE_URL` - Your Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Your Supabase anon/public key
+- `SUPABASE_SERVICE_ROLE_KEY` - Your Supabase service role key (server-side only)
 
-## Learn More
+4. Set up Supabase database:
+```bash
+# Link to your Supabase project
+npx supabase link --project-ref your-project-ref
 
-To learn more about Next.js, take a look at the following resources:
+# Run migrations
+npx supabase db push
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+5. Run the development server:
+```bash
+npm run dev
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Open [http://localhost:3000](http://localhost:3000) to see the game.
 
-## Deploy on Vercel
+## Project Structure
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```
+strato/
+├── app/                    # Next.js App Router
+│   ├── (game)/            # Game routes
+│   ├── api/               # API routes
+│   └── page.tsx           # Landing page
+├── components/            # React components
+│   └── game/              # Game-specific components
+├── lib/                   # Core libraries
+│   ├── game-engine/       # Game logic
+│   ├── ai/                # AI system
+│   └── supabase/          # Supabase client
+├── types/                 # TypeScript definitions
+└── supabase/              # Database migrations
+    └── migrations/        # SQL migration files
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Deployment
+
+### Vercel
+
+1. Push your code to GitHub
+2. Import the repository in [Vercel](https://vercel.com)
+3. Add environment variables in Vercel dashboard
+4. Deploy!
+
+The app will automatically deploy on every push to main.
+
+## Development Roadmap
+
+- [x] Core game engine and state management
+- [x] Database schema and migrations
+- [x] Basic UI components
+- [x] Chat-based diplomacy system
+- [ ] AI chat handler with LLM integration
+- [ ] Turn processing and game mechanics
+- [ ] Advanced AI decision making
+- [ ] Multiplayer support
+- [ ] World map visualization
+
+## License
+
+MIT
