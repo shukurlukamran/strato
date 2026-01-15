@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import type { Country, CountryStats } from "@/types/country";
 import { DiplomacyChat } from "./DiplomacyChat";
@@ -22,6 +22,7 @@ export function CountryCard({
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadingChat, setLoadingChat] = useState(false);
+  const loadingRef = useRef(false);
 
   if (!country || !stats) {
     return (
@@ -36,8 +37,10 @@ export function CountryCard({
 
   // Load or create chat when opening
   useEffect(() => {
-    if (showChat && gameId && playerCountryId && country.id && !chatId && !loadingChat) {
+    if (showChat && gameId && playerCountryId && country.id && !chatId && !loadingRef.current) {
+      loadingRef.current = true;
       setLoadingChat(true);
+      
       fetch("/api/chats/get-or-create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -67,9 +70,19 @@ export function CountryCard({
         })
         .finally(() => {
           setLoadingChat(false);
+          loadingRef.current = false;
         });
     }
-  }, [showChat, gameId, playerCountryId, country.id, chatId, loadingChat]);
+  }, [showChat, gameId, playerCountryId, country.id, chatId]);
+
+  // Reset chat state when closing
+  useEffect(() => {
+    if (!showChat) {
+      setChatId(null);
+      setMessages([]);
+      loadingRef.current = false;
+    }
+  }, [showChat]);
 
   const handleProposeDeal = () => {
     setShowChat(true);
