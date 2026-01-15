@@ -168,7 +168,7 @@ export function CountryCard({
       </div>
 
       {showChat && typeof window !== "undefined" && createPortal(
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm" onClick={handleCloseChat}>
+        <div className="fixed inset-0 z-50 bg-black/50" onClick={handleCloseChat}>
           <div 
             className="fixed right-0 top-0 h-full w-96 flex flex-col border-l border-white/20 bg-gradient-to-br from-slate-800 to-slate-900 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
