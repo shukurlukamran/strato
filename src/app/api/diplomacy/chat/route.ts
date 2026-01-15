@@ -21,18 +21,29 @@ export async function POST(req: Request) {
         const supabase = getSupabaseServerClient();
         let chatId: string | undefined;
 
-        // Try to find existing chat
-        const chatRes = await supabase
+        // Try to find existing chat - check both possible orderings of countries
+        const chatRes1 = await supabase
           .from("diplomacy_chats")
           .select("id")
           .eq("game_id", gameId)
-          .or(`country_a_id.eq.${playerCountryId},country_b_id.eq.${playerCountryId}`)
-          .or(`country_a_id.eq.${countryId},country_b_id.eq.${countryId}`)
-          .limit(1)
-          .single();
+          .eq("country_a_id", playerCountryId)
+          .eq("country_b_id", countryId)
+          .maybeSingle();
 
-        if (chatRes.data) {
-          chatId = chatRes.data.id;
+        const chatRes2 = chatRes1.data 
+          ? null 
+          : await supabase
+              .from("diplomacy_chats")
+              .select("id")
+              .eq("game_id", gameId)
+              .eq("country_a_id", countryId)
+              .eq("country_b_id", playerCountryId)
+              .maybeSingle();
+
+        if (chatRes1.data) {
+          chatId = chatRes1.data.id;
+        } else if (chatRes2.data) {
+          chatId = chatRes2.data.id;
         } else {
           // Create a new chat if it doesn't exist
           const newChatRes = await supabase
@@ -45,8 +56,10 @@ export async function POST(req: Request) {
             .select("id")
             .single();
 
-          if (newChatRes.data) {
+          if (newChatRes.data && !newChatRes.error) {
             chatId = newChatRes.data.id;
+          } else {
+            console.error("Failed to create chat:", newChatRes.error);
           }
         }
 
@@ -54,15 +67,26 @@ export async function POST(req: Request) {
         const handler = new ChatHandler();
         const aiResponse = await handler.respond({
           gameId,
-          chatId,
+          chatId: chatId || undefined, // Pass undefined if chatId couldn't be created
           senderCountryId: playerCountryId,
           receiverCountryId: countryId,
           messageText: message,
         });
 
+        // Log if we got a fallback response (indicates an issue)
+        if (aiResponse.messageText.includes("I've received your message") || 
+            aiResponse.messageText.includes("I need more context")) {
+          console.warn("ChatHandler returned fallback response. Context might be missing.");
+          console.warn("Request data:", { gameId, chatId, playerCountryId, countryId });
+        }
+
         return NextResponse.json({ response: aiResponse.messageText });
       } catch (error) {
         console.error("Error using ChatHandler:", error);
+        // Log the full error for debugging
+        if (error instanceof Error) {
+          console.error("Error details:", error.message, error.stack);
+        }
         // Fall through to fallback response
       }
     }

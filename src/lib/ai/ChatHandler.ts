@@ -51,7 +51,7 @@ export class ChatHandler {
   }
 
   private async fetchGameContext(turn: ChatTurn): Promise<GameContext | null> {
-    if (!turn.gameId || !turn.senderCountryId || !turn.receiverCountryId || !turn.chatId) {
+    if (!turn.gameId || !turn.senderCountryId || !turn.receiverCountryId) {
       return null;
     }
 
@@ -64,18 +64,27 @@ export class ChatHandler {
         .select("id, current_turn")
         .eq("id", turn.gameId)
         .single();
-      if (gameRes.error) return null;
+      if (gameRes.error) {
+        console.error("Failed to fetch game:", gameRes.error);
+        return null;
+      }
 
       // Fetch countries
       const countriesRes = await supabase
         .from("countries")
         .select("id, game_id, name, is_player_controlled, color, position_x, position_y")
         .in("id", [turn.senderCountryId, turn.receiverCountryId]);
-      if (countriesRes.error || !countriesRes.data || countriesRes.data.length !== 2) return null;
+      if (countriesRes.error || !countriesRes.data || countriesRes.data.length !== 2) {
+        console.error("Failed to fetch countries:", countriesRes.error);
+        return null;
+      }
 
       const senderCountry = countriesRes.data.find((c) => c.id === turn.senderCountryId);
       const receiverCountry = countriesRes.data.find((c) => c.id === turn.receiverCountryId);
-      if (!senderCountry || !receiverCountry) return null;
+      if (!senderCountry || !receiverCountry) {
+        console.error("Could not find sender or receiver country");
+        return null;
+      }
 
       // Fetch country stats
       const statsRes = await supabase
@@ -85,20 +94,38 @@ export class ChatHandler {
         )
         .eq("turn", gameRes.data.current_turn)
         .in("country_id", [turn.senderCountryId, turn.receiverCountryId]);
-      if (statsRes.error) return null;
+      if (statsRes.error) {
+        console.error("Failed to fetch country stats:", statsRes.error);
+        return null;
+      }
 
       const senderStats = statsRes.data.find((s) => s.country_id === turn.senderCountryId);
       const receiverStats = statsRes.data.find((s) => s.country_id === turn.receiverCountryId);
-      if (!senderStats || !receiverStats) return null;
+      if (!senderStats || !receiverStats) {
+        console.error("Could not find sender or receiver stats");
+        return null;
+      }
 
-      // Fetch chat history (excluding the current message)
-      const messagesRes = await supabase
-        .from("chat_messages")
-        .select("id, chat_id, sender_country_id, message_text, is_ai_generated, created_at")
-        .eq("chat_id", turn.chatId)
-        .order("created_at", { ascending: true })
-        .limit(20);
-      if (messagesRes.error) return null;
+      // Fetch chat history (only if chatId is provided)
+      let chatHistory: ChatMessage[] = [];
+      if (turn.chatId) {
+        const messagesRes = await supabase
+          .from("chat_messages")
+          .select("id, chat_id, sender_country_id, message_text, is_ai_generated, created_at")
+          .eq("chat_id", turn.chatId)
+          .order("created_at", { ascending: true })
+          .limit(20);
+        if (!messagesRes.error && messagesRes.data) {
+          chatHistory = messagesRes.data.map((m) => ({
+            id: m.id,
+            chatId: m.chat_id,
+            senderCountryId: m.sender_country_id,
+            messageText: m.message_text,
+            isAiGenerated: m.is_ai_generated,
+            createdAt: m.created_at,
+          }));
+        }
+      }
 
       return {
         gameId: turn.gameId,
@@ -147,15 +174,7 @@ export class ChatHandler {
           diplomaticRelations: receiverStats.diplomatic_relations ?? {},
           createdAt: receiverStats.created_at,
         },
-        chatHistory:
-          messagesRes.data?.map((m) => ({
-            id: m.id,
-            chatId: m.chat_id,
-            senderCountryId: m.sender_country_id,
-            messageText: m.message_text,
-            isAiGenerated: m.is_ai_generated,
-            createdAt: m.created_at,
-          })) ?? [],
+        chatHistory,
       };
     } catch {
       return null;
