@@ -18,12 +18,14 @@ export function CountryCard({
   gameId?: string;
   playerCountryId?: string;
 }) {
+  // ALL HOOKS MUST BE CALLED BEFORE ANY EARLY RETURNS
   const [showChat, setShowChat] = useState(false);
   const [chatId, setChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loadingChat, setLoadingChat] = useState(false);
   const loadingRef = useRef(false);
   const lastLoadedCountryIdRef = useRef<string | null>(null);
+  const prevShowChatRef = useRef(false);
 
   if (!country || !stats) {
     return (
@@ -35,9 +37,6 @@ export function CountryCard({
       </div>
     );
   }
-
-  // Load or create chat when opening - use a separate effect that only runs when showChat changes
-  const prevShowChatRef = useRef(false);
   
   useEffect(() => {
     // Only run when showChat changes from false to true
