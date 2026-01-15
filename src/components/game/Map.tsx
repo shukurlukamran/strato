@@ -106,15 +106,32 @@ export function Map({ countries }: { countries: Country[] }) {
   const selectedCountryId = useGameStore((s) => s.selectedCountryId);
   const selectCountry = useGameStore((s) => s.selectCountry);
   const [hoveredCountryId, setHoveredCountryId] = useState<string | null>(null);
+  const [zoomLevel, setZoomLevel] = useState(1); // 1 = normal, >1 = zoomed in, <1 = zoomed out
 
   // Generate connected territories once
   const territoryPaths = useMemo(() => generateConnectedTerritories(countries), [countries]) as globalThis.Map<string, string>;
+
+  // Calculate viewBox based on zoom level (centered zoom)
+  const baseViewBox = { width: 100, height: 80 };
+  const zoomedWidth = baseViewBox.width / zoomLevel;
+  const zoomedHeight = baseViewBox.height / zoomLevel;
+  const offsetX = (baseViewBox.width - zoomedWidth) / 2;
+  const offsetY = (baseViewBox.height - zoomedHeight) / 2;
+  const viewBox = `${offsetX} ${offsetY} ${zoomedWidth} ${zoomedHeight}`;
+
+  const handleZoomIn = () => {
+    setZoomLevel((prev) => Math.min(prev * 1.5, 5)); // Max 5x zoom
+  };
+
+  const handleZoomOut = () => {
+    setZoomLevel((prev) => Math.max(prev / 1.5, 0.5)); // Min 0.5x zoom (zoomed out)
+  };
 
   return (
     <div className="relative h-full w-full overflow-hidden">
       {/* SVG Map - Full Screen */}
       <svg
-        viewBox="0 0 100 80"
+        viewBox={viewBox}
         className="h-full w-full"
         style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.1))" }}
       >
@@ -216,6 +233,58 @@ export function Map({ countries }: { countries: Country[] }) {
           );
         })}
       </svg>
+
+      {/* Zoom Controls - Bottom of Map */}
+      <div className="absolute bottom-4 right-4 z-10 flex flex-col gap-2">
+        {/* Zoom In Button */}
+        <button
+          onClick={handleZoomIn}
+          disabled={zoomLevel >= 5}
+          className="flex h-8 w-8 items-center justify-center rounded bg-slate-800/90 text-white shadow-lg transition-all hover:bg-slate-700/90 disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Zoom In"
+          aria-label="Zoom In"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4 w-4"
+          >
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.35-4.35" />
+            <path d="M11 8v6" />
+            <path d="M8 11h6" />
+          </svg>
+        </button>
+
+        {/* Zoom Out Button */}
+        <button
+          onClick={handleZoomOut}
+          disabled={zoomLevel <= 0.5}
+          className="flex h-8 w-8 items-center justify-center rounded bg-slate-800/90 text-white shadow-lg transition-all hover:bg-slate-700/90 disabled:opacity-50 disabled:cursor-not-allowed"
+          title="Zoom Out"
+          aria-label="Zoom Out"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4 w-4"
+          >
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.35-4.35" />
+            <path d="M8 11h6" />
+          </svg>
+        </button>
+      </div>
     </div>
   );
 }
