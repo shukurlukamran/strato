@@ -10,3 +10,14 @@ export interface Game {
   updatedAt: string;
 }
 
+export interface Country {
+  id: string;
+  name: string;
+  flag: string;
+  government: string;
+  gdp: number;
+  militaryStrength: number;
+  population: number;
+  techLevel: number;
+}
+

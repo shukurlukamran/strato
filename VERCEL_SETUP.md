@@ -23,10 +23,11 @@ In the Vercel project settings, add these environment variables:
    - Value: Your Supabase service_role key (from Supabase dashboard → Settings → API)
    - ⚠️ Keep this secret! It has admin access.
 
-### Optional Variables (for future LLM integration):
+### Optional Variables (for LLM integration):
 
-4. **OPENAI_API_KEY** (optional, for AI chat)
-   - Value: Your OpenAI API key (if you want to use GPT for AI country responses)
+4. **GOOGLE_GEMINI_API_KEY** (optional, for AI chat)
+   - Value: Your Google Gemini API key (if you want to use Gemini Flash for AI country responses)
+   - Get your key from: https://makersuite.google.com/app/apikey
 
 ## Step 3: Deploy
 

@@ -30,16 +30,26 @@ export function DealProposal({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   async function propose() {
     setError(null);
+    setSuccess(null);
+    
+    // Validate required fields
+    if (!gameId || !proposingCountryId || !receivingCountryId) {
+      setError("Missing required game or country information.");
+      return;
+    }
+
     let dealTerms: DealTerms;
     try {
       dealTerms = JSON.parse(termsJson) as DealTerms;
-    } catch {
-      setError("Invalid JSON in deal terms.");
+    } catch (e) {
+      setError(`Invalid JSON in deal terms: ${e instanceof Error ? e.message : "Parse error"}`);
       return;
     }
+    
     setBusy(true);
     try {
       const res = await fetch("/api/deals", {
@@ -54,11 +64,50 @@ export function DealProposal({
           turnCreated,
         }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      
+      if (!res.ok) {
+        const errorText = await res.text();
+        let errorMessage = "Failed to propose deal.";
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.error) {
+            if (typeof errorJson.error === "string") {
+              errorMessage = errorJson.error;
+            } else if (errorJson.error._errors) {
+              errorMessage = errorJson.error._errors.join(", ");
+            } else if (errorJson.error.formErrors) {
+              errorMessage = errorJson.error.formErrors.join(", ");
+            }
+          }
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
+      
       const data = (await res.json()) as { deal: Deal };
       onCreated(data.deal);
+      setSuccess(`Deal proposed successfully! Status: ${data.deal.status}`);
+      
+      // Reset form after a short delay
+      setTimeout(() => {
+        setSuccess(null);
+        setTermsJson(
+          JSON.stringify(
+            {
+              proposerCommitments: [{ type: "resource_transfer", resource: "oil", amount: 100, durationTurns: 1 }],
+              receiverCommitments: [{ type: "budget_transfer", amount: 200, durationTurns: 1 }],
+              conditions: [],
+            } satisfies DealTerms,
+            null,
+            2,
+          ),
+        );
+      }, 2000);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to propose deal.");
+      const errorMessage = e instanceof Error ? e.message : "Failed to propose deal.";
+      setError(errorMessage);
+      console.error("Deal proposal error:", e);
     } finally {
       setBusy(false);
     }
@@ -101,14 +150,15 @@ export function DealProposal({
         </label>
 
         {error && <div className="rounded border border-red-300 bg-red-50 p-2 text-sm text-red-800">{error}</div>}
+        {success && <div className="rounded border border-green-300 bg-green-50 p-2 text-sm text-green-800">{success}</div>}
 
         <button
           type="button"
-          className="rounded bg-black px-3 py-2 text-sm text-white hover:bg-gray-800 disabled:opacity-50"
+          className="rounded bg-black px-3 py-2 text-sm text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
           onClick={() => void propose()}
-          disabled={busy}
+          disabled={busy || !gameId || !proposingCountryId || !receivingCountryId}
         >
-          Propose deal
+          {busy ? "Proposing..." : "Propose deal"}
         </button>
       </div>
     </div>

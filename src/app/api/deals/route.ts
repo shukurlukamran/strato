@@ -29,9 +29,21 @@ const CreateDealSchema = z.object({
 const memoryDealsByGameId = new Map<string, Deal[]>();
 
 export async function POST(req: Request) {
-  const json = await req.json().catch(() => null);
+  let json;
+  try {
+    json = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON in request body" }, { status: 400 });
+  }
+  
   const parsed = CreateDealSchema.safeParse(json);
-  if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  if (!parsed.success) {
+    const errors = parsed.error.flatten();
+    const errorMessage = errors.formErrors?.length 
+      ? errors.formErrors.join(", ")
+      : Object.values(errors.fieldErrors).flat().join(", ") || "Validation failed";
+    return NextResponse.json({ error: errorMessage, details: errors }, { status: 400 });
+  }
 
   const { gameId, proposingCountryId, receivingCountryId, dealType, dealTerms, turnCreated, turnExpires } =
     parsed.data;
@@ -62,7 +74,10 @@ export async function POST(req: Request) {
       )
       .single();
 
-    if (inserted.error) throw inserted.error;
+    if (inserted.error) {
+      console.error("Supabase insert error:", inserted.error);
+      throw new Error(`Database error: ${inserted.error.message || "Failed to create deal"}`);
+    }
     const d = inserted.data;
 
     return NextResponse.json({
@@ -83,28 +98,36 @@ export async function POST(req: Request) {
         updatedAt: d.updated_at,
       } satisfies Deal,
     });
-  } catch {
-    const deal: Deal = {
-      id: crypto.randomUUID(),
-      gameId,
-      proposingCountryId,
-      receivingCountryId,
-      dealType: dealType as Deal["dealType"],
-      dealTerms: dealTerms,
-      status: "proposed",
-      proposedAt: now,
-      acceptedAt: null,
-      expiresAt: null,
-      turnCreated,
-      turnExpires: turnExpires ?? null,
-      createdAt: now,
-      updatedAt: now,
-    };
-    const existing = memoryDealsByGameId.get(gameId) ?? [];
-    const next = [deal, ...existing];
-    memoryDealsByGameId.set(gameId, next);
+  } catch (error) {
+    // If Supabase is not configured (missing env vars), fall back to in-memory storage
+    if (error instanceof Error && error.message.includes("Missing env")) {
+      const deal: Deal = {
+        id: crypto.randomUUID(),
+        gameId,
+        proposingCountryId,
+        receivingCountryId,
+        dealType: dealType as Deal["dealType"],
+        dealTerms: dealTerms,
+        status: "proposed",
+        proposedAt: now,
+        acceptedAt: null,
+        expiresAt: null,
+        turnCreated,
+        turnExpires: turnExpires ?? null,
+        createdAt: now,
+        updatedAt: now,
+      };
+      const existing = memoryDealsByGameId.get(gameId) ?? [];
+      const next = [deal, ...existing];
+      memoryDealsByGameId.set(gameId, next);
 
-    return NextResponse.json({ deal, note: "Supabase not configured; using in-memory deals store." });
+      return NextResponse.json({ deal, note: "Supabase not configured; using in-memory deals store." });
+    }
+    
+    // For other errors, return error response
+    console.error("Deal creation error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to create deal";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 

@@ -105,6 +105,8 @@ function sortBoundaryPoints(boundary: Array<{ x: number; y: number }>, center: C
 export function Map({ countries }: { countries: Country[] }) {
   const selectedCountryId = useGameStore((s) => s.selectedCountryId);
   const selectCountry = useGameStore((s) => s.selectCountry);
+  const openChatWith = useGameStore((s) => s.openChatWith);
+  const playerCountry = useMemo(() => countries.find((c) => c.isPlayerControlled), [countries]);
   const [hoveredCountryId, setHoveredCountryId] = useState<string | null>(null);
 
   // Generate connected territories once
@@ -173,7 +175,33 @@ export function Map({ countries }: { countries: Country[] }) {
                     ? "url(#countryHover)"
                     : "none",
                 }}
-                onClick={() => selectCountry(country.id)}
+                onClick={() => {
+                  // #region agent log
+                  console.log('[DEBUG] Map: Country clicked', { countryId: country.id, countryName: country.name, isPlayerControlled: country.isPlayerControlled, playerCountryId: playerCountry?.id });
+                  fetch('http://127.0.0.1:7242/ingest/5cfd136f-1fa7-464e-84d5-bcaf3c90cae7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Map.tsx:onClick',message:'Country clicked',data:{countryId:country.id,countryName:country.name,isPlayerControlled:country.isPlayerControlled,playerCountryId:playerCountry?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                  // #endregion
+                  selectCountry(country.id);
+                  // If clicking a non-player country, open chat with them
+                  if (!country.isPlayerControlled && country.id !== playerCountry?.id) {
+                    // #region agent log
+                    console.log('[DEBUG] Map: Calling openChatWith', country.id);
+                    fetch('http://127.0.0.1:7242/ingest/5cfd136f-1fa7-464e-84d5-bcaf3c90cae7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Map.tsx:onClick',message:'Calling openChatWith',data:{countryId:country.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                    // #endregion
+                    openChatWith(country.id);
+                    // #region agent log
+                    setTimeout(() => {
+                      const stateAfter = useGameStore.getState();
+                      console.log('[DEBUG] Map: State after openChatWith (delayed)', { countryId: country.id, stateAfter: stateAfter.activeChatCountryId });
+                    }, 100);
+                    fetch('http://127.0.0.1:7242/ingest/5cfd136f-1fa7-464e-84d5-bcaf3c90cae7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Map.tsx:onClick',message:'openChatWith called',data:{countryId:country.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                    // #endregion
+                  } else {
+                    // #region agent log
+                    console.log('[DEBUG] Map: Skipping openChatWith', { reason: country.isPlayerControlled ? 'isPlayerControlled' : 'sameCountry' });
+                    fetch('http://127.0.0.1:7242/ingest/5cfd136f-1fa7-464e-84d5-bcaf3c90cae7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'Map.tsx:onClick',message:'Skipping openChatWith',data:{reason:country.isPlayerControlled?'isPlayerControlled':'sameCountry',countryId:country.id,playerCountryId:playerCountry?.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+                    // #endregion
+                  }
+                }}
                 onMouseEnter={() => setHoveredCountryId(country.id)}
                 onMouseLeave={() => setHoveredCountryId(null)}
               />

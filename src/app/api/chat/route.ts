@@ -23,6 +23,51 @@ const memoryMessagesByChatId = new Map<
   }>
 >();
 
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const chatId = url.searchParams.get("chatId");
+  
+  if (!chatId) {
+    return NextResponse.json({ error: "chatId is required" }, { status: 400 });
+  }
+
+  try {
+    const supabase = getSupabaseServerClient();
+    const list = await supabase
+      .from("chat_messages")
+      .select("id, chat_id, sender_country_id, message_text, is_ai_generated, created_at")
+      .eq("chat_id", chatId)
+      .order("created_at", { ascending: true })
+      .limit(50);
+    
+    if (list.error) throw list.error;
+
+    return NextResponse.json({
+      messages: (list.data ?? []).map((m) => ({
+        id: m.id,
+        chatId: m.chat_id,
+        senderCountryId: m.sender_country_id,
+        messageText: m.message_text,
+        isAiGenerated: m.is_ai_generated,
+        createdAt: m.created_at,
+      })),
+    });
+  } catch {
+    const existing = memoryMessagesByChatId.get(chatId) ?? [];
+    return NextResponse.json({
+      messages: existing.map((m) => ({
+        id: m.id,
+        chatId: m.chat_id,
+        senderCountryId: m.sender_country_id,
+        messageText: m.message_text,
+        isAiGenerated: m.is_ai_generated,
+        createdAt: m.created_at,
+      })),
+      note: "Supabase not configured; using in-memory chat store.",
+    });
+  }
+}
+
 export async function POST(req: Request) {
   const json = await req.json().catch(() => null);
   const parsed = BodySchema.safeParse(json);
