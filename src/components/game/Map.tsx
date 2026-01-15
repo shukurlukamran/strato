@@ -120,11 +120,11 @@ export function Map({ countries }: { countries: Country[] }) {
   const viewBox = `${offsetX} ${offsetY} ${zoomedWidth} ${zoomedHeight}`;
 
   const handleZoomIn = () => {
-    setZoomLevel((prev) => Math.min(prev * 1.5, 5)); // Max 5x zoom
+    setZoomLevel((prev) => Math.min(prev * 1.2, 5)); // Max 5x zoom
   };
 
   const handleZoomOut = () => {
-    setZoomLevel((prev) => Math.max(prev / 1.5, 0.5)); // Min 0.5x zoom (zoomed out)
+    setZoomLevel((prev) => Math.max(prev / 1.2, 0.5)); // Min 0.5x zoom (zoomed out)
   };
 
   return (
@@ -235,7 +235,7 @@ export function Map({ countries }: { countries: Country[] }) {
       </svg>
 
       {/* Zoom Controls - Bottom of Map */}
-      <div className="absolute bottom-4 right-4 z-10 flex flex-col gap-2">
+      <div className="absolute bottom-6 left-1/2 z-10 flex -translate-x-1/2 flex-row gap-2">
         {/* Zoom In Button */}
         <button
           onClick={handleZoomIn}
