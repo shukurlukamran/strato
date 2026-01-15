@@ -314,6 +314,13 @@ Respond naturally and strategically.`;
       if (error instanceof Error) {
         console.error("Error message:", error.message);
         console.error("Error stack:", error.stack);
+        
+        // If model not found error, try alternative models
+        if (error.message.includes("not found") || error.message.includes("404")) {
+          console.warn("Model not found, trying alternative models...");
+          return await this.tryAlternativeModels(context, turn.messageText, historyMessages);
+        }
+        
         // Check for specific error types
         if (error.message.includes("API_KEY")) {
           console.error("API key issue detected. Check GOOGLE_GEMINI_API_KEY environment variable.");
@@ -327,6 +334,54 @@ Respond naturally and strategically.`;
         messageText: `I've received your message: "${turn.messageText}". Let me consider this carefully and get back to you.`,
       };
     }
+  }
+
+  private async tryAlternativeModels(
+    context: GameContext,
+    messageText: string,
+    historyMessages: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }>
+  ): Promise<ChatResponse> {
+    // Try alternative model names if the primary one fails
+    const alternativeModels = ["gemini-1.5-pro", "gemini-pro", "gemini-1.0-pro"];
+    
+    for (const modelName of alternativeModels) {
+      try {
+        console.log(`Trying alternative model: ${modelName}`);
+        const altModel = this.genAI!.getGenerativeModel({ model: modelName });
+        const systemPrompt = this.buildSystemPrompt(context);
+        
+        const chat = altModel.startChat({
+          history: [
+            {
+              role: "user",
+              parts: [{ text: systemPrompt }],
+            },
+            {
+              role: "model",
+              parts: [{ text: "Understood. I'm ready to negotiate as the representative of " + context.receiverCountry.name + "." }],
+            },
+            ...historyMessages,
+          ],
+        });
+
+        const result = await chat.sendMessage(messageText);
+        const response = result.response;
+        const responseText = response.text().trim() || "I'm considering your proposal.";
+        
+        console.log(`Successfully used model: ${modelName}`);
+        return {
+          messageText: responseText,
+        };
+      } catch (altError) {
+        console.warn(`Model ${modelName} also failed:`, altError instanceof Error ? altError.message : altError);
+        continue;
+      }
+    }
+    
+    // If all models fail, return fallback
+    return {
+      messageText: `I've received your message: "${messageText}". Let me consider this carefully and get back to you.`,
+    };
   }
 
   private extractDealSuggestion(response: string, context: GameContext): ChatResponse["suggestedDeal"] | undefined {
