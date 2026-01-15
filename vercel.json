@@ -1,7 +1,7 @@
 {
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
-  "installCommand": "npm install 2>&1 | grep -v 'deprecated' || true",
+  "installCommand": "npm install --no-audit --no-fund || true",
   "framework": "nextjs",
   "regions": ["iad1"]
 }
