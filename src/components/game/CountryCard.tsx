@@ -167,8 +167,8 @@ export function CountryCard({
       </div>
 
       {showChat && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="flex h-[80vh] w-[90vw] max-w-2xl flex-col rounded-lg border border-white/20 bg-gradient-to-br from-slate-800 to-slate-900 shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm">
+          <div className="fixed right-0 top-0 h-full w-[90vw] max-w-md flex-col border-l border-white/20 bg-gradient-to-br from-slate-800 to-slate-900 shadow-2xl flex">
             {/* Header */}
             <div className="flex items-center justify-between border-b border-white/10 p-4">
               <div className="flex items-center gap-3">
