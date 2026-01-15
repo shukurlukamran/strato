@@ -4,6 +4,7 @@ import type { ChatMessage } from "@/types/chat";
 import type { DealType, DealTerms, DealCommitment } from "@/types/deals";
 import type { Country, CountryStats } from "@/types/country";
 
+
 export interface DealExtractionResult {
   dealType: DealType;
   dealTerms: DealTerms;
@@ -11,6 +12,7 @@ export interface DealExtractionResult {
   extractedFromMessages: string[]; // message IDs
   reasoning?: string; // Why this deal was extracted
 }
+
 
 interface ExtractionContext {
   gameId: string;
@@ -22,6 +24,7 @@ interface ExtractionContext {
   chatMessages: ChatMessage[];
 }
 
+
 /**
  * Extracts structured deal terms from chat conversations using LLM.
  * Falls back to null if no deal is detected or if extraction fails.
@@ -30,6 +33,7 @@ export class DealExtractor {
   private genAI: GoogleGenerativeAI | null = null;
   private model: ReturnType<GoogleGenerativeAI["getGenerativeModel"]> | null = null;
 
+
   constructor() {
     const apiKey = process.env.GOOGLE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -37,9 +41,11 @@ export class DealExtractor {
       return;
     }
 
+
     this.genAI = new GoogleGenerativeAI(apiKey);
     this.model = this.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
   }
+
 
   /**
    * Fetches game context needed for deal extraction
@@ -53,6 +59,7 @@ export class DealExtractor {
     try {
       const supabase = getSupabaseServerClient();
 
+
       // Fetch game info
       const gameRes = await supabase
         .from("games")
@@ -64,6 +71,7 @@ export class DealExtractor {
         return null;
       }
 
+
       // Fetch countries
       const countriesRes = await supabase
         .from("countries")
@@ -74,12 +82,14 @@ export class DealExtractor {
         return null;
       }
 
+
       const countryA = countriesRes.data.find((c) => c.id === countryAId);
       const countryB = countriesRes.data.find((c) => c.id === countryBId);
       if (!countryA || !countryB) {
         console.error("Could not find countries");
         return null;
       }
+
 
       // Fetch country stats
       const statsRes = await supabase
@@ -94,12 +104,14 @@ export class DealExtractor {
         return null;
       }
 
+
       const countryAStats = statsRes.data.find((s) => s.country_id === countryAId);
       const countryBStats = statsRes.data.find((s) => s.country_id === countryBId);
       if (!countryAStats || !countryBStats) {
         console.error("Could not find country stats");
         return null;
       }
+
 
       // Fetch recent chat messages (last 20 messages)
       const messagesRes = await supabase
@@ -124,6 +136,7 @@ export class DealExtractor {
             }))
         );
       }
+
 
       return {
         gameId,
@@ -180,11 +193,13 @@ export class DealExtractor {
     }
   }
 
+
   /**
    * Builds the prompt for LLM to extract deal terms
    */
   private buildExtractionPrompt(context: ExtractionContext): string {
     const { countryA, countryB, countryAStats, countryBStats, chatMessages, turn } = context;
+
 
     // Build chat history string with clear formatting
     const chatHistory = chatMessages
@@ -194,12 +209,15 @@ export class DealExtractor {
       })
       .join("\n\n");
 
+
     return `You are analyzing a diplomatic conversation between two countries in a strategy game to extract any deal or agreement that has been discussed.
+
 
 GAME CONTEXT:
 - Current Turn: ${turn}
 - Country A: ${countryA.name} (${countryA.isPlayerControlled ? "Player" : "AI"})
 - Country B: ${countryB.name} (${countryB.isPlayerControlled ? "Player" : "AI"})
+
 
 COUNTRY A (${countryA.name}) RESOURCES:
 - Budget: ${countryAStats.budget.toLocaleString()} credits
@@ -207,14 +225,17 @@ COUNTRY A (${countryA.name}) RESOURCES:
 - Technology Level: ${countryAStats.technologyLevel}
 - Military Strength: ${countryAStats.militaryStrength}
 
+
 COUNTRY B (${countryB.name}) RESOURCES:
 - Budget: ${countryBStats.budget.toLocaleString()} credits
 - Resources: ${JSON.stringify(countryBStats.resources)}
 - Technology Level: ${countryBStats.technologyLevel}
 - Military Strength: ${countryBStats.militaryStrength}
 
+
 CHAT HISTORY:
 ${chatHistory}
+
 
 DEAL TYPES:
 - "trade": Exchange of resources, budget, or goods
@@ -224,6 +245,7 @@ DEAL TYPES:
 - "technology_share": Sharing technology or research
 - "custom": Complex multi-term agreement
 
+
 COMMITMENT TYPES:
 - "resource_transfer": Transfer a resource (oil, minerals, food, etc.)
 - "budget_transfer": Transfer budget/credits
@@ -232,27 +254,40 @@ COMMITMENT TYPES:
 - "technology_boost": Increase technology level
 - "action_commitment": Commit to specific actions (e.g., "no_attack", "mutual_defense")
 
-INSTRUCTIONS:
-1. CAREFULLY analyze the conversation to determine if a deal or agreement has been discussed
-2. A deal can be:
-   - Explicitly stated (e.g., "I'll give you 100 oil for 200 credits")
-   - Implied through negotiation (e.g., "How about 100 oil?" followed by "That works for me")
-   - Mentioned in any form (trade, exchange, agreement, deal, alliance, etc.)
-3. If a deal IS present (even if not fully finalized), extract:
-   - Deal type (one of the types above)
-   - What Country A commits to give/do
-   - What Country B commits to give/do
-   - Duration (in turns, if specified, default to 1 turn for one-time trades)
-   - Any conditions or requirements
 
-4. Be specific with amounts, resources, and durations mentioned in the conversation
-5. If amounts are vague (e.g., "some oil", "a lot"), use reasonable estimates based on context and available resources
-6. If duration is not specified, use 1 turn for trades, 5 turns for alliances/non-aggression
-7. Extract deals even if they're still being negotiated - if both parties are discussing terms, that's a deal
-8. Look for keywords: "trade", "exchange", "deal", "agreement", "alliance", "give", "receive", "for", "in return", etc.
-9. If one party proposes something and the other responds positively (even with "ok", "sure", "yes", "agreed"), extract it
+CRITICAL INSTRUCTIONS - READ CAREFULLY:
 
-Return your analysis as JSON in this exact format:
+1. DETECT DEALS LIBERALLY:
+   You should set hasDeal: true if ANY of these are present:
+   - Explicit agreements ("I'll give you X for Y", "Deal!", "Agreed", "Sounds good")
+   - Implicit negotiations ("How about 100 oil?" followed by "That works", "OK", "Sure", "Yes")
+   - One-sided offers being discussed ("I can offer you X" without rejection)
+   - Mentions of trade/exchange/alliance/cooperation even without full terms
+   - ANY indication both parties are discussing cooperation, trade, or agreements
+   - Questions about trades that receive positive responses
+   - Proposals that aren't explicitly rejected
+
+2. DEFAULT BEHAVIOR - PREFER FALSE POSITIVES:
+   - When in doubt, extract the deal with lower confidence (0.3-0.5)
+   - It's better to extract a potential deal than miss it completely
+   - Use reasonable defaults if amounts aren't specified
+   - Extract deals even if they're still being negotiated
+   - If one party proposes and the other doesn't reject, that's a deal in progress
+
+3. HANDLING VAGUE INFORMATION:
+   - If amounts are vague ("some", "a bit", "a lot"), estimate based on context
+   - If duration not specified: use 1 turn for trades, 5 turns for alliances
+   - If only one side commits, that's still valid (military aid, gifts)
+   - Look for keywords: "trade", "exchange", "deal", "agreement", "alliance", "give", "offer", "help", "support"
+
+4. EXAMPLES OF WHAT TO EXTRACT:
+   - "Want to trade?" → "Yes" = hasDeal: true (even without terms yet)
+   - "I can give you 100 oil" → "Thanks" = hasDeal: true
+   - "Let's be allies" → "OK" = hasDeal: true
+   - "How about a non-aggression pact?" → "Sure" = hasDeal: true
+   - Any discussion of trade terms without explicit rejection
+
+Return ONLY valid JSON in this exact format (no markdown, no code blocks):
 {
   "hasDeal": true/false,
   "dealType": "trade" | "alliance" | "non_aggression" | "military_aid" | "technology_share" | "custom" | null,
@@ -276,8 +311,10 @@ Return your analysis as JSON in this exact format:
   "reasoning": "Brief explanation of why this deal was extracted"
 }
 
-If no deal is present, return: {"hasDeal": false}`;
+
+If absolutely NO negotiation or deal discussion is happening, return: {"hasDeal": false, "reasoning": "No trade or agreement discussion detected"}`;
   }
+
 
   /**
    * Extracts deal from chat conversation
@@ -293,6 +330,7 @@ If no deal is present, return: {"hasDeal": false}`;
       return null;
     }
 
+
     // Fetch context
     const context = await this.fetchContext(gameId, chatId, countryAId, countryBId);
     if (!context) {
@@ -300,11 +338,15 @@ If no deal is present, return: {"hasDeal": false}`;
       return null;
     }
 
+
     if (context.chatMessages.length === 0) {
+      console.log("DealExtractor: No messages in chat");
       return null;
     }
 
+
     const prompt = this.buildExtractionPrompt(context);
+
 
     try {
       console.log("DealExtractor: Sending prompt to LLM with", {
@@ -313,11 +355,25 @@ If no deal is present, return: {"hasDeal": false}`;
         countryB: context.countryB.name,
       });
 
+
       const result = await this.model.generateContent(prompt);
       const response = result.response;
-      const responseText = response.text().trim();
+      let responseText = response.text().trim();
 
-      console.log("DealExtractor: LLM raw response:", responseText.substring(0, 500));
+
+      console.log("\n=== DEAL EXTRACTION DEBUG ===");
+      console.log("Full LLM Response:", responseText);
+
+
+      // IMPROVED JSON EXTRACTION - Handle markdown code blocks from Gemini
+      let cleanedResponse = responseText;
+      
+      // Remove markdown code blocks (```json, ```, etc.)
+      cleanedResponse = cleanedResponse.replace(/^```json\s*/gm, '');
+      cleanedResponse = cleanedResponse.replace(/^```\s*/gm, '');
+      cleanedResponse = cleanedResponse.replace(/```$/gm, '');
+      cleanedResponse = cleanedResponse.trim();
+
 
       // Parse JSON response
       let parsed: {
@@ -330,39 +386,77 @@ If no deal is present, return: {"hasDeal": false}`;
         reasoning?: string;
       };
 
+
       try {
-        // Try to extract JSON from response (might have markdown code blocks)
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        // Try to extract JSON from response
+        const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          parsed = JSON.parse(jsonMatch[0]);
+          parsed = JSON.parse(jsonMatch);
         } else {
-          parsed = JSON.parse(responseText);
+          console.error("DealExtractor: No JSON object found in response");
+          return null;
         }
-        console.log("DealExtractor: Parsed response:", JSON.stringify(parsed, null, 2));
+        
+        console.log("Parsed Response:", JSON.stringify(parsed, null, 2));
       } catch (parseError) {
-        console.error("DealExtractor: Failed to parse LLM response as JSON:", responseText);
+        console.error("DealExtractor: Failed to parse LLM response as JSON");
+        console.error("Cleaned response:", cleanedResponse);
         console.error("Parse error:", parseError);
         return null;
       }
 
-      // Check if deal was detected
-      if (!parsed.hasDeal || !parsed.dealType) {
-        console.log("DealExtractor: No deal detected. Response:", {
-          hasDeal: parsed.hasDeal,
-          dealType: parsed.dealType,
-          reasoning: parsed.reasoning,
-        });
+
+      // Log detailed extraction info
+      console.log("hasDeal:", parsed.hasDeal);
+      console.log("dealType:", parsed.dealType);
+      console.log("Proposer commitments:", parsed.proposerCommitments?.length || 0);
+      console.log("Receiver commitments:", parsed.receiverCommitments?.length || 0);
+      console.log("Confidence:", parsed.confidence);
+      console.log("Reasoning:", parsed.reasoning);
+
+
+      // Check for keyword fallback if LLM says no deal
+      if (!parsed.hasDeal) {
+        const chatText = context.chatMessages.map(m => m.messageText.toLowerCase()).join(' ');
+        const dealKeywords = ['trade', 'deal', 'exchange', 'give you', 'offer', 'alliance', 'agreement', 'accept', 'agreed', 'sure', 'ok', 'yes'];
+        const hasKeywords = dealKeywords.some(kw => chatText.includes(kw));
+        
+        if (hasKeywords) {
+          console.warn("DealExtractor: Keywords suggest deal, but LLM said no. Reasoning:", parsed.reasoning);
+        }
+        
+        console.log("=== END DEBUG (NO DEAL) ===\n");
         return null;
       }
+
+
+      // RELAXED VALIDATION - Allow deals without explicit type
+      const dealType = parsed.dealType || "custom";
+      
+      if (!dealType) {
+        console.log("DealExtractor: No deal type specified, rejecting");
+        console.log("=== END DEBUG (NO TYPE) ===\n");
+        return null;
+      }
+
 
       // Validate and build deal terms
       const proposerCommitments: DealCommitment[] = parsed.proposerCommitments || [];
       const receiverCommitments: DealCommitment[] = parsed.receiverCommitments || [];
 
+
+      // RELAXED: Allow empty commitments if confidence is reasonable
+      // (e.g., non-aggression pacts, alliances without immediate transfers)
       if (proposerCommitments.length === 0 && receiverCommitments.length === 0) {
-        // No actual commitments, not a valid deal
-        return null;
+        const confidence = parsed.confidence ?? 0;
+        if (confidence < 0.4) {
+          console.log("DealExtractor: No commitments and low confidence, rejecting");
+          console.log("=== END DEBUG (NO COMMITMENTS) ===\n");
+          return null;
+        }
+        console.log("DealExtractor: No immediate commitments but treating as agreement/pact");
       }
+
 
       const dealTerms: DealTerms = {
         proposerCommitments,
@@ -370,14 +464,17 @@ If no deal is present, return: {"hasDeal": false}`;
         conditions: parsed.conditions || [],
       };
 
-      // Determine which country is the proposer (usually the one who initiated the deal in chat)
-      // For now, we'll use countryA as proposer, but this could be improved by analyzing chat
+
       const extractedFromMessages = context.chatMessages.map((m) => m.id);
 
+
+      console.log("=== DEAL EXTRACTED SUCCESSFULLY ===\n");
+
+
       return {
-        dealType: parsed.dealType,
+        dealType,
         dealTerms,
-        confidence: parsed.confidence ?? 0.7,
+        confidence: parsed.confidence ?? 0.5,
         extractedFromMessages,
         reasoning: parsed.reasoning,
       };
