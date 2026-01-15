@@ -7,6 +7,7 @@ export interface GameUIState {
   setGameId: (id: string | null) => void;
   selectCountry: (id: string | null) => void;
   openChatWith: (countryId: string | null) => void;
+  closeChat: () => void;
 }
 
 export const useGameStore = create<GameUIState>((set) => ({
@@ -16,5 +17,6 @@ export const useGameStore = create<GameUIState>((set) => ({
   setGameId: (gameId) => set({ gameId }),
   selectCountry: (selectedCountryId) => set({ selectedCountryId }),
   openChatWith: (activeChatCountryId) => set({ activeChatCountryId }),
+  closeChat: () => set({ activeChatCountryId: null }),
 }));
 

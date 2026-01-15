@@ -2,10 +2,9 @@
 
 export function TurnIndicator({ turn }: { turn: number }) {
   return (
-    <div className="rounded-lg border bg-white p-4">
-      <div className="text-xs text-gray-600">Current Turn</div>
-      <div className="text-2xl font-semibold">{turn}</div>
+    <div className="flex items-center gap-2 rounded-lg border border-white/20 bg-slate-800/80 px-3 py-1.5">
+      <div className="text-xs text-white/60">Turn</div>
+      <div className="text-lg font-bold text-white">{turn}</div>
     </div>
   );
 }
-

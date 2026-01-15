@@ -57,6 +57,7 @@ export default function GamePage() {
   const [chatByCounterpartCountryId, setChatByCounterpartCountryId] = useState<Record<string, string>>({});
   const [messagesByChatId, setMessagesByChatId] = useState<Record<string, ChatMessage[]>>({});
   const [deals, setDeals] = useState<Deal[]>([]);
+  const [showSidebar, setShowSidebar] = useState(true);
 
   useEffect(() => setGameId(gameId), [gameId, setGameId]);
 
@@ -134,70 +135,190 @@ export default function GamePage() {
 
   if (loading) {
     return (
-      <main className="mx-auto max-w-6xl p-6">
-        <div className="text-sm text-gray-600">Loading game…</div>
-      </main>
+      <div className="flex h-screen items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
+        <div className="text-lg text-white">Loading game…</div>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <main className="mx-auto max-w-6xl p-6">
-        <div className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-800">{error}</div>
-        <button type="button" className="mt-4 rounded border px-3 py-2 text-sm" onClick={() => void load()}>
-          Retry
-        </button>
-      </main>
+      <div className="flex h-screen items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
+        <div className="rounded-lg border border-red-500 bg-red-900/50 p-6 text-white">
+          <div className="mb-4 font-semibold">Error</div>
+          <div className="mb-4">{error}</div>
+          <button
+            type="button"
+            className="rounded bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-gray-100"
+            onClick={() => void load()}
+          >
+            Retry
+          </button>
+        </div>
+      </div>
     );
   }
 
+  const playerCountry = countries.find((c) => c.isPlayerControlled);
+
   return (
-    <main className="mx-auto max-w-6xl p-6">
-      <div className="mb-6 flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold">Strato</h1>
-        <div className="text-sm text-gray-600">Game: {gameId}</div>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2 space-y-6">
-          <Map countries={countries} />
-
-          {activeChatCountryId && activeChatId ? (
-            <DiplomacyChat
-              gameId={gameId}
-              chatId={activeChatId}
-              playerCountryId={playerCountryId}
-              counterpartCountryId={activeChatCountryId}
-              messages={activeMessages}
-              onNewMessages={(msgs) => setMessagesByChatId((prev) => ({ ...prev, [activeChatId]: msgs }))}
-            />
-          ) : (
-            <div className="rounded-lg border bg-white p-4 text-sm text-gray-600">
-              Open a chat from the map to negotiate diplomacy in natural language.
+    <div className="relative h-screen w-screen overflow-hidden bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
+      {/* Top HUD Bar */}
+      <div className="absolute left-0 right-0 top-0 z-20 flex items-center justify-between border-b border-white/10 bg-slate-900/80 backdrop-blur-sm px-4 py-2">
+        <div className="flex items-center gap-4">
+          <h1 className="text-xl font-bold text-white">STRATO</h1>
+          <div className="h-4 w-px bg-white/20" />
+          {playerCountry && (
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block h-3 w-3 rounded border border-white/30"
+                style={{ backgroundColor: playerCountry.color }}
+              />
+              <span className="text-sm text-white">{playerCountry.name}</span>
             </div>
           )}
         </div>
+        <TurnIndicator turn={turn} />
+      </div>
 
-        <div className="space-y-6">
-          <TurnIndicator turn={turn} />
-          <CountryPanel country={selectedCountry} stats={selectedStats} />
-          <ResourceDisplay resources={selectedStats?.resources ?? {}} />
-          <ActionPanel onEndTurn={() => setTurn((t) => t + 1)} />
+      {/* Main Game Area */}
+      <div className="flex h-full pt-12">
+        {/* Left Sidebar - Country Info & Actions */}
+        <div
+          className={`absolute left-0 top-12 z-10 h-[calc(100vh-3rem)] w-80 transform border-r border-white/10 bg-slate-900/95 backdrop-blur-md transition-transform duration-300 ${
+            showSidebar ? "translate-x-0" : "-translate-x-full"
+          }`}
+        >
+          <div className="flex h-full flex-col overflow-y-auto p-4">
+            {/* Toggle button */}
+            <button
+              type="button"
+              onClick={() => setShowSidebar(!showSidebar)}
+              className="absolute -right-10 top-4 rounded-r bg-slate-800/90 px-2 py-4 text-white hover:bg-slate-700"
+            >
+              {showSidebar ? "◀" : "▶"}
+            </button>
 
-          {activeChatCountryId ? (
-            <DealProposal
-              gameId={gameId}
-              proposingCountryId={playerCountryId}
-              receivingCountryId={activeChatCountryId}
-              turnCreated={turn}
-              onCreated={(deal) => setDeals((prev) => [deal, ...prev])}
-            />
-          ) : null}
+            {/* Country Panel */}
+            <CountryPanel country={selectedCountry} stats={selectedStats} />
 
-          <ActiveDeals deals={deals} />
+            {/* Resources */}
+            <div className="mt-4">
+              <ResourceDisplay resources={selectedStats?.resources ?? {}} />
+            </div>
+
+            {/* Actions */}
+            <div className="mt-4">
+              <ActionPanel
+                onEndTurn={async () => {
+                  try {
+                    const res = await fetch("/api/turn", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ gameId }),
+                    });
+                    if (res.ok) {
+                      const data = await res.json();
+                      setTurn(data.nextTurn);
+                      await load(); // Reload game state
+                    }
+                  } catch (e) {
+                    console.error("Failed to end turn:", e);
+                  }
+                }}
+              />
+            </div>
+
+            {/* Active Deals */}
+            <div className="mt-4">
+              <ActiveDeals deals={deals} />
+            </div>
+          </div>
+        </div>
+
+        {/* Center - Map */}
+        <div className="flex-1">
+          <Map countries={countries} />
+        </div>
+
+        {/* Right Sidebar - Diplomacy Chat */}
+        <div
+          className={`absolute right-0 top-12 z-10 h-[calc(100vh-3rem)] w-96 transform border-l border-white/10 bg-slate-900/95 backdrop-blur-md transition-transform duration-300 ${
+            activeChatCountryId ? "translate-x-0" : "translate-x-full"
+          }`}
+        >
+          {activeChatCountryId && activeChatId ? (
+            <div className="flex h-full flex-col">
+              <div className="flex items-center justify-between border-b border-white/10 p-4">
+                <div className="flex items-center gap-2">
+                  {countries
+                    .find((c) => c.id === activeChatCountryId)
+                    ?.color && (
+                    <span
+                      className="inline-block h-3 w-3 rounded border border-white/30"
+                      style={{
+                        backgroundColor: countries.find((c) => c.id === activeChatCountryId)?.color,
+                      }}
+                    />
+                  )}
+                  <span className="font-semibold text-white">
+                    {countries.find((c) => c.id === activeChatCountryId)?.name}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => useGameStore.getState().closeChat()}
+                  className="text-white/70 hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                <DiplomacyChat
+                  gameId={gameId}
+                  chatId={activeChatId}
+                  playerCountryId={playerCountryId}
+                  counterpartCountryId={activeChatCountryId}
+                  messages={activeMessages}
+                  onNewMessages={(msgs) => setMessagesByChatId((prev) => ({ ...prev, [activeChatId]: msgs }))}
+                />
+              </div>
+              <div className="border-t border-white/10 p-4">
+                <DealProposal
+                  gameId={gameId}
+                  proposingCountryId={playerCountryId}
+                  receivingCountryId={activeChatCountryId}
+                  turnCreated={turn}
+                  onCreated={(deal) => setDeals((prev) => [deal, ...prev])}
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="flex h-full items-center justify-center p-4">
+              <div className="text-center text-white/60">
+                <div className="mb-2 text-lg">💬</div>
+                <div className="text-sm">Click a country on the map to start diplomacy</div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
-    </main>
+
+      {/* Bottom Status Bar */}
+      <div className="absolute bottom-0 left-0 right-0 z-20 border-t border-white/10 bg-slate-900/80 backdrop-blur-sm px-4 py-2">
+        <div className="flex items-center justify-between text-xs text-white/70">
+          <div>Game ID: {gameId.slice(0, 8)}...</div>
+          <div className="flex items-center gap-4">
+            {selectedCountry && (
+              <>
+                <span>Selected: {selectedCountry.name}</span>
+                <span className="h-2 w-px bg-white/20" />
+              </>
+            )}
+            <span>Turn {turn}</span>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
-

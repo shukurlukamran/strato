@@ -2,188 +2,218 @@
 
 import type { Country } from "@/types/country";
 import { useGameStore } from "@/lib/store/gameStore";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
-// Generate voronoi-style polygons for each country based on their position
-function generateCountryPath(country: Country): string {
-  const { positionX: x, positionY: y } = country;
+// Generate connected territories using a simpler, faster approach
+// Creates regions that share borders by using distance-based expansion
+function generateConnectedTerritories(countries: Country[]): globalThis.Map<string, string> {
+  const cells = new globalThis.Map<string, string>();
+  const viewBox = { width: 100, height: 80 };
   
-  // Create an organic polygon shape centered on the country's position
-  // Using a simple algorithm that creates variety while avoiding overlaps
-  const seed = country.id.charCodeAt(0) + country.id.charCodeAt(1);
-  const baseRadius = 12;
-  const points = 8; // 8-sided polygon for organic look
+  // For each country, find all points that are closest to it
+  // This creates a Voronoi-like diagram but with connected regions
+  const resolution = 1; // Grid resolution
+  const countryRegions = new globalThis.Map<string, Array<{ x: number; y: number }>>();
   
-  const path: Array<[number, number]> = [];
-  
-  for (let i = 0; i < points; i++) {
-    const angle = (i / points) * Math.PI * 2;
-    // Add some randomness based on country ID for variety
-    const radiusVariation = 0.7 + (Math.sin(seed + i * 2.5) * 0.3);
-    const angleVariation = (Math.sin(seed * 1.3 + i * 1.7) * 0.15);
-    
-    const radius = baseRadius * radiusVariation;
-    const adjustedAngle = angle + angleVariation;
-    
-    const px = x + Math.cos(adjustedAngle) * radius;
-    const py = y + Math.sin(adjustedAngle) * radius;
-    
-    path.push([px, py]);
+  // Initialize regions
+  for (const country of countries) {
+    countryRegions.set(country.id, []);
   }
   
-  // Convert to SVG path
-  const pathStr = path
-    .map(([px, py], i) => `${i === 0 ? "M" : "L"} ${px} ${py}`)
-    .join(" ") + " Z";
+  // Assign each grid point to nearest country
+  for (let y = 0; y < viewBox.height; y += resolution) {
+    for (let x = 0; x < viewBox.width; x += resolution) {
+      let minDist = Infinity;
+      let closestCountryId: string | null = null;
+      
+      for (const country of countries) {
+        const dx = x - country.positionX;
+        const dy = y - country.positionY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < minDist) {
+          minDist = dist;
+          closestCountryId = country.id;
+        }
+      }
+      
+      if (closestCountryId) {
+        countryRegions.get(closestCountryId)!.push({ x, y });
+      }
+    }
+  }
   
-  return pathStr;
+  // Create paths for each country using boundary tracing
+  for (const [countryId, points] of countryRegions.entries()) {
+    if (points.length === 0) continue;
+    
+    // Find boundary points (points on the edge of the region)
+    const boundary = findBoundary(points, viewBox);
+    if (boundary.length < 3) continue;
+    
+    // Sort boundary points to form a closed path
+    const sortedBoundary = sortBoundaryPoints(boundary, countries.find(c => c.id === countryId)!);
+    
+    // Create SVG path
+    const pathStr = sortedBoundary
+      .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+      .join(" ") + " Z";
+    
+    cells.set(countryId, pathStr);
+  }
+  
+  return cells;
+}
+
+// Find boundary points of a region
+function findBoundary(points: Array<{ x: number; y: number }>, viewBox: { width: number; height: number }): Array<{ x: number; y: number }> {
+  const pointSet = new Set(points.map(p => `${p.x},${p.y}`));
+  const boundary: Array<{ x: number; y: number }> = [];
+  
+  for (const point of points) {
+    // Check if this point is on the boundary (has a neighbor that's not in the set)
+    const neighbors = [
+      { x: point.x - 1, y: point.y },
+      { x: point.x + 1, y: point.y },
+      { x: point.x, y: point.y - 1 },
+      { x: point.x, y: point.y + 1 },
+    ];
+    
+    const isBoundary = neighbors.some(n => 
+      !pointSet.has(`${n.x},${n.y}`) || 
+      n.x < 0 || n.x >= viewBox.width || 
+      n.y < 0 || n.y >= viewBox.height
+    );
+    
+    if (isBoundary) {
+      boundary.push(point);
+    }
+  }
+  
+  return boundary;
+}
+
+// Sort boundary points to form a closed path
+function sortBoundaryPoints(boundary: Array<{ x: number; y: number }>, center: Country): Array<{ x: number; y: number }> {
+  // Sort by angle from center
+  return [...boundary].sort((a, b) => {
+    const angleA = Math.atan2(a.y - center.positionY, a.x - center.positionX);
+    const angleB = Math.atan2(b.y - center.positionY, b.x - center.positionX);
+    return angleA - angleB;
+  });
 }
 
 export function Map({ countries }: { countries: Country[] }) {
   const selectedCountryId = useGameStore((s) => s.selectedCountryId);
   const selectCountry = useGameStore((s) => s.selectCountry);
-  const openChatWith = useGameStore((s) => s.openChatWith);
   const [hoveredCountryId, setHoveredCountryId] = useState<string | null>(null);
 
-  const playerCountry = countries.find((c) => c.isPlayerControlled);
+  // Generate connected territories once
+  const territoryPaths = useMemo(() => generateConnectedTerritories(countries), [countries]) as globalThis.Map<string, string>;
 
   return (
-    <div className="rounded-lg border bg-gradient-to-br from-blue-50 to-green-50 p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <div className="text-sm font-semibold text-gray-800">World Map</div>
-        <div className="text-xs text-gray-600">
-          {playerCountry && `Playing as: ${playerCountry.name}`}
-        </div>
-      </div>
+    <div className="relative h-full w-full overflow-hidden">
+      {/* SVG Map - Full Screen */}
+      <svg
+        viewBox="0 0 100 80"
+        className="h-full w-full"
+        style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.1))" }}
+      >
+        {/* Ocean/background texture */}
+        <defs>
+          <pattern id="ocean" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+            <circle cx="1" cy="1" r="0.5" fill="#3b82f680" opacity="0.1" />
+          </pattern>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="1" result="coloredBlur" />
+            <feMerge>
+              <feMergeNode in="coloredBlur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <filter id="countryHover">
+            <feGaussianBlur stdDeviation="0.3" />
+            <feOffset dx="0" dy="0" result="offsetblur" />
+            <feComponentTransfer>
+              <feFuncA type="linear" slope="1.2" />
+            </feComponentTransfer>
+            <feMerge>
+              <feMergeNode />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+        
+        <rect x="0" y="0" width="100" height="80" fill="url(#ocean)" />
 
-      {/* SVG Map */}
-      <div className="relative overflow-hidden rounded-lg bg-gradient-to-br from-slate-100 to-blue-100 shadow-inner">
-        <svg
-          viewBox="0 0 100 80"
-          className="h-[500px] w-full"
-          style={{ filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.1))" }}
-        >
-          {/* Ocean/background texture */}
-          <defs>
-            <pattern id="ocean" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
-              <circle cx="1" cy="1" r="0.5" fill="#3b82f680" opacity="0.1" />
-            </pattern>
-            <filter id="glow">
-              <feGaussianBlur stdDeviation="0.5" result="coloredBlur" />
-              <feMerge>
-                <feMergeNode in="coloredBlur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-          </defs>
-          
-          <rect x="0" y="0" width="100" height="80" fill="url(#ocean)" />
+        {/* Country regions - connected territories */}
+        {countries.map((country) => {
+          const isSelected = country.id === selectedCountryId;
+          const isHovered = country.id === hoveredCountryId;
+          const isPlayer = country.isPlayerControlled;
+          const path = territoryPaths.get(country.id) || "";
 
-          {/* Country regions */}
-          {countries.map((country) => {
-            const isSelected = country.id === selectedCountryId;
-            const isHovered = country.id === hoveredCountryId;
-            const isPlayer = country.isPlayerControlled;
-            const path = generateCountryPath(country);
+          if (!path) return null;
 
-            return (
-              <g key={country.id}>
-                {/* Country territory */}
-                <path
-                  d={path}
-                  fill={country.color}
-                  stroke={isPlayer ? "#000" : isSelected ? "#374151" : "#fff"}
-                  strokeWidth={isPlayer ? "0.5" : isSelected ? "0.4" : "0.3"}
-                  opacity={isHovered ? 0.9 : 0.75}
-                  className="cursor-pointer transition-all duration-200"
-                  style={{
-                    filter: isPlayer ? "url(#glow) drop-shadow(0 0 2px rgba(0,0,0,0.3))" : 
-                            isSelected ? "drop-shadow(0 0 3px rgba(0,0,0,0.4))" : "none",
-                  }}
-                  onClick={() => selectCountry(country.id)}
-                  onMouseEnter={() => setHoveredCountryId(country.id)}
-                  onMouseLeave={() => setHoveredCountryId(null)}
-                />
+          return (
+            <g key={country.id}>
+              {/* Country territory */}
+              <path
+                d={path}
+                fill={country.color}
+                stroke={isPlayer ? "#000" : isSelected ? "#1f2937" : "#fff"}
+                strokeWidth={isPlayer ? "0.6" : isSelected ? "0.5" : "0.4"}
+                opacity={isHovered ? 0.95 : isSelected ? 0.85 : 0.8}
+                className="cursor-pointer transition-all duration-200"
+                style={{
+                  filter: isPlayer 
+                    ? "url(#glow) drop-shadow(0 0 3px rgba(0,0,0,0.4))" 
+                    : isSelected 
+                    ? "drop-shadow(0 0 4px rgba(0,0,0,0.5))" 
+                    : isHovered
+                    ? "url(#countryHover)"
+                    : "none",
+                }}
+                onClick={() => selectCountry(country.id)}
+                onMouseEnter={() => setHoveredCountryId(country.id)}
+                onMouseLeave={() => setHoveredCountryId(null)}
+              />
 
-                {/* Country name label */}
+              {/* Country name label */}
+              <text
+                x={country.positionX}
+                y={country.positionY}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                className="pointer-events-none select-none text-[3.5px] font-bold"
+                fill="#fff"
+                stroke="#000"
+                strokeWidth="0.2"
+                paintOrder="stroke"
+                opacity={isHovered || isSelected ? 1 : 0.9}
+              >
+                {country.name}
+              </text>
+
+              {/* Player indicator (crown) */}
+              {isPlayer && (
                 <text
                   x={country.positionX}
-                  y={country.positionY}
+                  y={country.positionY - 7}
                   textAnchor="middle"
-                  dominantBaseline="middle"
-                  className="pointer-events-none select-none text-[3px] font-bold"
-                  fill="#fff"
+                  className="pointer-events-none text-[5px]"
+                  fill="#FFD700"
                   stroke="#000"
                   strokeWidth="0.15"
                   paintOrder="stroke"
-                  opacity={isHovered || isSelected ? 1 : 0.9}
+                  opacity="1"
                 >
-                  {country.name}
+                  ⚜
                 </text>
-
-                {/* Player indicator (star) */}
-                {isPlayer && (
-                  <text
-                    x={country.positionX}
-                    y={country.positionY - 6}
-                    textAnchor="middle"
-                    className="pointer-events-none text-[4px]"
-                    opacity="0.9"
-                  >
-                    ★
-                  </text>
-                )}
-              </g>
-            );
-          })}
-        </svg>
-      </div>
-
-      {/* Country interaction panel below map */}
-      <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {countries.map((c) => {
-          const selected = c.id === selectedCountryId;
-          return (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => selectCountry(c.id)}
-              onMouseEnter={() => setHoveredCountryId(c.id)}
-              onMouseLeave={() => setHoveredCountryId(null)}
-              className={[
-                "rounded-md border p-2 text-left transition-all",
-                selected
-                  ? "border-black bg-white shadow-md"
-                  : "border-gray-200 bg-white/60 hover:border-gray-400 hover:bg-white",
-              ].join(" ")}
-            >
-              <div className="flex items-center gap-2">
-                <span
-                  className="inline-block h-3 w-3 rounded-sm border border-white shadow-sm"
-                  style={{ backgroundColor: c.color }}
-                />
-                <div className="text-xs font-medium">{c.name}</div>
-                {c.isPlayerControlled && (
-                  <span className="ml-auto text-xs">★</span>
-                )}
-              </div>
-              {!c.isPlayerControlled && (
-                <button
-                  type="button"
-                  className="mt-1 w-full rounded border border-gray-300 bg-white px-2 py-1 text-[11px] hover:bg-gray-50"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openChatWith(c.id);
-                  }}
-                >
-                  Open Chat
-                </button>
               )}
-            </button>
+            </g>
           );
         })}
-      </div>
+      </svg>
     </div>
   );
 }
-
