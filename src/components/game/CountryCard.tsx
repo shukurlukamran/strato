@@ -34,6 +34,7 @@ export function CountryCard({
   const [extracting, setExtracting] = useState(false);
   const [extractedDeal, setExtractedDeal] = useState<DealExtractionResult | null>(null);
   const [extractionError, setExtractionError] = useState<string | null>(null);
+  const [dealExecuted, setDealExecuted] = useState(false);
   // Use the chatId from props (from game page state) or local state as fallback
   const [chatId, setChatId] = useState<string>(initialChatId || "");
 
@@ -50,6 +51,7 @@ export function CountryCard({
     setChatHistory([]);
     setExtractedDeal(null);
     setExtractionError(null);
+    setDealExecuted(false);
   }, [country?.id]);
 
   if (!country || !stats) {
@@ -257,6 +259,7 @@ export function CountryCard({
     setExtracting(true);
     setExtractionError(null);
     setExtractedDeal(null);
+    setDealExecuted(false);
 
     try {
       const res = await fetch("/api/deals/extract", {
@@ -275,9 +278,29 @@ export function CountryCard({
         throw new Error(errorText || "Failed to extract deal");
       }
 
-      const data = (await res.json()) as { deal: DealExtractionResult | null; message?: string };
+      const data = (await res.json()) as { 
+        deal: DealExtractionResult | null; 
+        message?: string;
+        executed?: boolean;
+        createdDeal?: any;
+        executionErrors?: string[];
+        warning?: boolean;
+      };
+      
       if (data.deal) {
         setExtractedDeal(data.deal);
+        setDealExecuted(data.executed === true);
+        
+        if (data.executed) {
+          console.log("Deal automatically confirmed and executed:", data.createdDeal);
+          // Optionally reload game state to show updated resources/budget
+          // You might want to trigger a refresh here
+        } else if (data.warning) {
+          console.warn("Deal created but execution had issues:", data.executionErrors);
+          setExtractionError(
+            `Deal created but some terms failed: ${data.executionErrors?.join(", ") || "Unknown error"}`
+          );
+        }
       } else {
         setExtractionError(data.message || "No deal detected in the conversation");
       }
@@ -474,8 +497,24 @@ export function CountryCard({
 
               {/* Extracted Deal Display */}
               {extractedDeal && (
-                <div className="mt-2 rounded-lg border border-blue-400/30 bg-blue-900/20 p-3 text-xs">
-                  <div className="font-semibold text-blue-300">Deal Extracted!</div>
+                <div className={`mt-2 rounded-lg border p-3 text-xs ${
+                  dealExecuted 
+                    ? "border-green-400/30 bg-green-900/20" 
+                    : "border-blue-400/30 bg-blue-900/20"
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <div className={`font-semibold ${dealExecuted ? "text-green-300" : "text-blue-300"}`}>
+                      {dealExecuted ? "✓ Deal Confirmed & Executed!" : "Deal Extracted!"}
+                    </div>
+                    {dealExecuted && (
+                      <span className="text-green-400 text-lg">✓</span>
+                    )}
+                  </div>
+                  {dealExecuted && (
+                    <div className="mt-1 text-xs text-green-200/80">
+                      The deal has been automatically confirmed and implemented. Resources and budget have been transferred.
+                    </div>
+                  )}
                   <div className="mt-1 text-blue-200">
                     Type: <span className="font-medium">{extractedDeal.dealType}</span>
                     {extractedDeal.reasoning && (
