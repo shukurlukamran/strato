@@ -391,7 +391,7 @@ If absolutely NO negotiation or deal discussion is happening, return: {"hasDeal"
         // Try to extract JSON from response
         const jsonMatch = cleanedResponse.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
-          parsed = JSON.parse(jsonMatch);
+          parsed = JSON.parse(jsonMatch[0]);  // ✅ FIX: Access first match element
         } else {
           console.error("DealExtractor: No JSON object found in response");
           return null;
@@ -404,6 +404,7 @@ If absolutely NO negotiation or deal discussion is happening, return: {"hasDeal"
         console.error("Parse error:", parseError);
         return null;
       }
+
 
 
       // Log detailed extraction info
