@@ -66,6 +66,17 @@ export async function POST(req: Request) {
 
         // Use ChatHandler with Gemini
         const handler = new ChatHandler();
+        
+        // Log request details for debugging
+        console.log("ChatHandler request:", {
+          gameId,
+          chatId: chatId || "none",
+          senderCountryId: playerCountryId,
+          receiverCountryId: countryId,
+          messageLength: message.length,
+          hasChatHistory: !!chatHistory && chatHistory.length > 0,
+        });
+        
         const aiResponse = await handler.respond({
           gameId,
           chatId: chatId || undefined, // Pass undefined if chatId couldn't be created
@@ -79,6 +90,10 @@ export async function POST(req: Request) {
             aiResponse.messageText.includes("I need more context")) {
           console.warn("ChatHandler returned fallback response. Context might be missing.");
           console.warn("Request data:", { gameId, chatId, playerCountryId, countryId });
+          console.warn("This usually means:");
+          console.warn("1. Supabase is not configured or connection failed");
+          console.warn("2. Game/country data not found in database");
+          console.warn("3. Gemini API key is invalid or quota exceeded");
         }
 
         return NextResponse.json({ response: aiResponse.messageText });

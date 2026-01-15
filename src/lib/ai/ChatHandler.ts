@@ -239,6 +239,7 @@ Respond naturally and strategically.`;
   async respond(turn: ChatTurn): Promise<ChatResponse> {
     // If Gemini is not configured, use fallback
     if (!this.model) {
+      console.error("ChatHandler: Gemini model not initialized. Check GOOGLE_GEMINI_API_KEY.");
       return {
         messageText: `Acknowledged. What exactly are you proposing, and for how many turns? (You said: "${turn.messageText}")`,
       };
@@ -247,6 +248,12 @@ Respond naturally and strategically.`;
     // Fetch game context
     const context = await this.fetchGameContext(turn);
     if (!context) {
+      console.error("ChatHandler: Failed to fetch game context.", {
+        gameId: turn.gameId,
+        senderCountryId: turn.senderCountryId,
+        receiverCountryId: turn.receiverCountryId,
+        chatId: turn.chatId,
+      });
       // Fallback if we can't fetch context
       return {
         messageText: `I understand your message: "${turn.messageText}". However, I need more context to provide a proper response.`,
@@ -288,6 +295,17 @@ Respond naturally and strategically.`;
       };
     } catch (error) {
       console.error("Google Gemini API error:", error);
+      if (error instanceof Error) {
+        console.error("Error message:", error.message);
+        console.error("Error stack:", error.stack);
+        // Check for specific error types
+        if (error.message.includes("API_KEY")) {
+          console.error("API key issue detected. Check GOOGLE_GEMINI_API_KEY environment variable.");
+        }
+        if (error.message.includes("quota") || error.message.includes("rate limit")) {
+          console.error("API quota or rate limit exceeded.");
+        }
+      }
       // Fallback response on error
       return {
         messageText: `I've received your message: "${turn.messageText}". Let me consider this carefully and get back to you.`,
