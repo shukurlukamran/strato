@@ -256,7 +256,6 @@ export function ResourceDisplay({ country, stats, resources }: ResourceDisplayPr
                             </Tooltip>
                           </div>
                         </div>
-                      </div>
                     );
                   })}
                   </div>
