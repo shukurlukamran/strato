@@ -190,7 +190,8 @@ export function ActionPanel({
             End Turn
           </button>
         </div>
-        </div>
+          </div>
+        </>
       )}
     </div>
   );
