@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 
 interface TooltipProps {
   content: string;
@@ -11,23 +12,42 @@ interface TooltipProps {
 export function Tooltip({ content, children, className = "" }: TooltipProps) {
   const [show, setShow] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const elementRef = useRef<HTMLDivElement>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const elementRef = useRef<HTMLElement>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  const updatePosition = (element: HTMLElement) => {
+    const rect = element.getBoundingClientRect();
+    setPosition({
+      x: rect.left + rect.width / 2,
+      y: rect.top - 5
+    });
+  };
 
   const handleMouseEnter = (e: React.MouseEvent) => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
     
+    const target = e.currentTarget as HTMLElement;
+    elementRef.current = target;
+    updatePosition(target);
+    
     timeoutRef.current = setTimeout(() => {
-      const target = e.currentTarget as HTMLElement;
-      const rect = target.getBoundingClientRect();
-      setPosition({
-        x: rect.left + rect.width / 2,
-        y: rect.top - 5
-      });
-      setShow(true);
-    }, 3000); // 3 seconds
+      if (elementRef.current) {
+        updatePosition(elementRef.current);
+        setShow(true);
+      }
+    }, 2000); // 2 seconds
   };
 
   const handleMouseLeave = () => {
@@ -36,43 +56,34 @@ export function Tooltip({ content, children, className = "" }: TooltipProps) {
       timeoutRef.current = null;
     }
     setShow(false);
+    elementRef.current = null;
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (show) {
-      const target = e.currentTarget as HTMLElement;
-      const rect = target.getBoundingClientRect();
-      setPosition({
-        x: rect.left + rect.width / 2,
-        y: rect.top - 5
-      });
+    if (show && elementRef.current) {
+      updatePosition(elementRef.current);
     }
   };
-
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, []);
 
   if (!content || content.trim() === '') {
     return <>{children}</>;
   }
 
   return (
-    <div
-      ref={elementRef}
-      className={`relative inline-block ${className}`}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      onMouseMove={handleMouseMove}
-    >
-      {children}
-      {show && (
+    <>
+      <div
+        ref={elementRef as any}
+        className={`inline-block ${className}`}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        onMouseMove={handleMouseMove}
+        style={{ display: 'inline-block', width: 'fit-content' }}
+      >
+        {children}
+      </div>
+      {mounted && typeof window !== 'undefined' && show && createPortal(
         <div
-          className="fixed z-50 max-w-xs rounded-lg border border-white/20 bg-slate-900/95 px-3 py-2 text-xs text-white shadow-xl backdrop-blur-sm whitespace-pre-line"
+          className="fixed z-[9999] max-w-xs rounded-lg border border-white/20 bg-slate-900/95 px-3 py-2 text-xs text-white shadow-xl backdrop-blur-sm whitespace-pre-line"
           style={{
             left: `${position.x}px`,
             top: `${position.y}px`,
@@ -86,8 +97,9 @@ export function Tooltip({ content, children, className = "" }: TooltipProps) {
             className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-slate-900/95"
             style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))' }}
           />
-        </div>
+        </div>,
+        document.body
       )}
-    </div>
+    </>
   );
 }
