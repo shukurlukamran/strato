@@ -68,11 +68,20 @@ export function ActionPanel({
       });
 
       if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Failed to create action");
+        const errorText = await res.text();
+        let errorMessage = "Failed to create action";
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+        console.error("Action creation failed:", errorMessage);
+        throw new Error(errorMessage);
       }
 
       const data = await res.json();
+      console.log("Action created successfully:", data);
       if (onActionCreated) {
         onActionCreated();
       }

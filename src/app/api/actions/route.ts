@@ -13,25 +13,56 @@ const CreateActionSchema = z.object({
 
 export async function POST(req: Request) {
   const json = await req.json().catch(() => null);
+  if (!json) {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+  
   const parsed = CreateActionSchema.safeParse(json);
   if (!parsed.success) {
+    console.error("Action validation error:", parsed.error);
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
   const { gameId, countryId, actionType, actionData, turn } = parsed.data;
+  
+  // Validate UUID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(gameId)) {
+    return NextResponse.json({ error: "Invalid game ID format" }, { status: 400 });
+  }
+  if (!uuidRegex.test(countryId)) {
+    return NextResponse.json({ error: "Invalid country ID format" }, { status: 400 });
+  }
 
   try {
     const supabase = getSupabaseServerClient();
 
-    // Get the game's current turn
+    // Get the game's current turn - first verify game exists
+    console.log("Looking for game:", gameId);
     const gameRes = await supabase
       .from("games")
-      .select("current_turn")
+      .select("id, current_turn, status")
       .eq("id", gameId)
-      .single();
+      .maybeSingle(); // Use maybeSingle instead of single to avoid errors
 
-    if (gameRes.error || !gameRes.data) {
-      return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    if (gameRes.error) {
+      console.error("Game query error:", gameRes.error);
+      return NextResponse.json({ 
+        error: `Database error: ${gameRes.error.message || 'Failed to query game'}` 
+      }, { status: 500 });
+    }
+
+    if (!gameRes.data) {
+      console.error("Game not found for ID:", gameId);
+      // Double-check by trying to find any game with similar ID
+      const allGames = await supabase
+        .from("games")
+        .select("id")
+        .limit(5);
+      console.log("Sample game IDs in database:", allGames.data?.map(g => g.id));
+      return NextResponse.json({ 
+        error: `Game not found. Game ID: ${gameId}` 
+      }, { status: 404 });
     }
 
     const gameTurn = gameRes.data.current_turn as number;
