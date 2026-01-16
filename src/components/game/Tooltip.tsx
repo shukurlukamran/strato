@@ -14,13 +14,14 @@ export function Tooltip({ content, children, className = "" }: TooltipProps) {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const elementRef = useRef<HTMLDivElement>(null);
 
-  const handleMouseEnter = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleMouseEnter = (e: React.MouseEvent) => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
     
     timeoutRef.current = setTimeout(() => {
-      const rect = e.currentTarget.getBoundingClientRect();
+      const target = e.currentTarget as HTMLElement;
+      const rect = target.getBoundingClientRect();
       setPosition({
         x: rect.left + rect.width / 2,
         y: rect.top - 5
@@ -37,6 +38,17 @@ export function Tooltip({ content, children, className = "" }: TooltipProps) {
     setShow(false);
   };
 
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (show) {
+      const target = e.currentTarget as HTMLElement;
+      const rect = target.getBoundingClientRect();
+      setPosition({
+        x: rect.left + rect.width / 2,
+        y: rect.top - 5
+      });
+    }
+  };
+
   useEffect(() => {
     return () => {
       if (timeoutRef.current) {
@@ -45,12 +57,17 @@ export function Tooltip({ content, children, className = "" }: TooltipProps) {
     };
   }, []);
 
+  if (!content || content.trim() === '') {
+    return <>{children}</>;
+  }
+
   return (
     <div
       ref={elementRef}
-      className={`relative ${className}`}
+      className={`relative inline-block ${className}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
+      onMouseMove={handleMouseMove}
     >
       {children}
       {show && (

@@ -52,6 +52,9 @@ const categoryColors: Record<ResourceCategory, string> = {
 
 export function ResourceDisplay({ country, stats, resources }: ResourceDisplayProps) {
   const [isExpanded, setIsExpanded] = useState(true);
+  const [expandedCategories, setExpandedCategories] = useState<Set<ResourceCategory>>(
+    new Set(Object.values(ResourceCategory))
+  );
 
   if (!country || !stats) {
     return (
@@ -182,14 +185,31 @@ export function ResourceDisplay({ country, stats, resources }: ResourceDisplayPr
             const categoryResources = resourcesByCategory.get(category) || [];
             if (categoryResources.length === 0) return null;
 
+            const isCategoryExpanded = expandedCategories.has(category);
+            const categoryTotal = categoryResources.reduce((sum, r) => sum + r.resource.amount, 0);
+
             return (
               <div key={category} className="space-y-2">
                 <Tooltip content={`${categoryLabels[category]}: Resources in this category are used for ${category === ResourceCategory.BASIC ? 'population needs and basic production' : category === ResourceCategory.STRATEGIC ? 'military and advanced technology' : category === ResourceCategory.ECONOMIC ? 'trade and diplomatic influence' : 'industrial production and construction'}.`}>
-                  <div className={`text-xs font-semibold ${categoryColors[category]} cursor-help`}>
-                    {categoryLabels[category]}
-                  </div>
+                  <button
+                    onClick={() => {
+                      const newSet = new Set(expandedCategories);
+                      if (isCategoryExpanded) {
+                        newSet.delete(category);
+                      } else {
+                        newSet.add(category);
+                      }
+                      setExpandedCategories(newSet);
+                    }}
+                    className={`flex items-center gap-2 text-xs font-semibold ${categoryColors[category]} cursor-help hover:opacity-80 transition-opacity`}
+                  >
+                    <span>{isCategoryExpanded ? "▼" : "▶"}</span>
+                    <span>{categoryLabels[category]}</span>
+                    <span className="text-white/60">({categoryTotal.toLocaleString()})</span>
+                  </button>
                 </Tooltip>
-                <div className="space-y-1.5">
+                {isCategoryExpanded && (
+                  <div className="space-y-1.5">
                   {categoryResources.map(({ resource, production: prod, consumption: cons, netChange }) => {
                     const definition = ResourceRegistry.getResource(resource.resourceId);
                     if (!definition) return null;
@@ -198,37 +218,49 @@ export function ResourceDisplay({ country, stats, resources }: ResourceDisplayPr
                     const trendColor = netChange > 0 ? "text-green-400" : netChange < 0 ? "text-red-400" : "text-white/40";
 
                     return (
-                      <Tooltip
+                      <div
                         key={resource.resourceId}
-                        content={getResourceTooltip(resource.resourceId, prod, cons, resource.amount)}
+                        className="flex items-center justify-between rounded border border-white/10 bg-slate-800/50 px-3 py-2 text-sm"
                       >
-                        <div className="flex items-center justify-between rounded border border-white/10 bg-slate-800/50 px-3 py-2 text-sm cursor-help">
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             <span className="text-lg flex-shrink-0">{resourceIcons[resource.resourceId] || "📦"}</span>
                             <div className="flex-1 min-w-0">
-                              <div className="font-medium text-white/90 truncate">{definition.name}</div>
+                              <Tooltip content={getResourceTooltip(resource.resourceId, prod, cons, resource.amount)}>
+                                <div className="font-medium text-white/90 truncate cursor-help">{definition.name}</div>
+                              </Tooltip>
                               <div className="text-xs text-white/50">
-                                {prod > 0 && <span className="text-green-400">+{prod}/turn</span>}
+                                {prod > 0 && (
+                                  <Tooltip content={`Production: ${prod} units per turn`}>
+                                    <span className="text-green-400 cursor-help">+{prod}/turn</span>
+                                  </Tooltip>
+                                )}
                                 {cons > 0 && (
                                   <>
                                     {prod > 0 && " • "}
-                                    <span className="text-red-400">-{cons}/turn</span>
+                                    <Tooltip content={`Consumption: ${cons} units per turn`}>
+                                      <span className="text-red-400 cursor-help">-{cons}/turn</span>
+                                    </Tooltip>
                                   </>
                                 )}
                               </div>
                             </div>
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
-                            <span className="font-bold text-white">{resource.amount.toLocaleString()}</span>
-                            <span className={`text-xs ${trendColor}`}>
-                              {trend}
-                            </span>
+                            <Tooltip content={`Current stockpile: ${resource.amount.toLocaleString()} units`}>
+                              <span className="font-bold text-white cursor-help">{resource.amount.toLocaleString()}</span>
+                            </Tooltip>
+                            <Tooltip content={`Net change: ${netChange > 0 ? '+' : ''}${netChange}/turn`}>
+                              <span className={`text-xs ${trendColor} cursor-help`}>
+                                {trend}
+                              </span>
+                            </Tooltip>
                           </div>
                         </div>
-                      </Tooltip>
+                      </div>
                     );
                   })}
-                </div>
+                  </div>
+                )}
               </div>
             );
           })}

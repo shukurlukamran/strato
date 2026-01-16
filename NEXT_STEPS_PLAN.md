@@ -341,6 +341,7 @@ TurnProcessor
    - Environmental effects on production
    - Resource-specific storage limits
    - Import/export tariffs
+   - Constantly Changing resource prices on the global market each turn (not significantly unless big event)
 
 ***
 

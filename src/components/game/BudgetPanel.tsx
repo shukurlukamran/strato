@@ -14,6 +14,8 @@ interface BudgetPanelProps {
 
 export function BudgetPanel({ country, stats, activeDealsValue = 0 }: BudgetPanelProps) {
   const [isExpanded, setIsExpanded] = useState(true);
+  const [isRevenueExpanded, setIsRevenueExpanded] = useState(true);
+  const [isExpensesExpanded, setIsExpensesExpanded] = useState(true);
 
   if (!country || !stats) {
     return (
@@ -88,32 +90,44 @@ export function BudgetPanel({ country, stats, activeDealsValue = 0 }: BudgetPane
         {/* Revenue Section */}
         <div>
           <Tooltip content="Revenue: Income sources that add to your treasury each turn. Includes taxes from population, trade deals, and resource sales.">
-            <div className="mb-2 text-xs font-semibold text-green-400 cursor-help">Revenue</div>
+            <button
+              onClick={() => setIsRevenueExpanded(!isRevenueExpanded)}
+              className="mb-2 flex items-center gap-2 text-xs font-semibold text-green-400 cursor-help hover:opacity-80 transition-opacity"
+            >
+              <span>{isRevenueExpanded ? "▼" : "▶"}</span>
+              <span>Revenue</span>
+              <span className="text-white/60">${breakdown.totalRevenue.toLocaleString()}</span>
+            </button>
           </Tooltip>
-          <div className="space-y-1.5">
-            <Tooltip content={getTaxRevenueTooltip()}>
-              <div className="flex items-center justify-between rounded border border-white/10 bg-slate-800/50 px-3 py-2 cursor-help">
-                <div className="flex items-center gap-2">
+          {isRevenueExpanded && (
+            <div className="space-y-1.5">
+            <div className="flex items-center justify-between rounded border border-white/10 bg-slate-800/50 px-3 py-2">
+              <Tooltip content={getTaxRevenueTooltip()}>
+                <div className="flex items-center gap-2 cursor-help">
                   <span className="text-sm">💰</span>
                   <span className="text-sm text-white/90">Tax Revenue</span>
                 </div>
-                <span className="font-semibold text-green-400">
+              </Tooltip>
+              <Tooltip content={getTaxRevenueTooltip()}>
+                <span className="font-semibold text-green-400 cursor-help">
                   +{breakdown.taxRevenue.toLocaleString()}
                 </span>
-              </div>
-            </Tooltip>
+              </Tooltip>
+            </div>
             {breakdown.tradeRevenue > 0 && (
-              <Tooltip content={getTradeRevenueTooltip()}>
-                <div className="flex items-center justify-between rounded border border-white/10 bg-slate-800/50 px-3 py-2 cursor-help">
-                  <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between rounded border border-white/10 bg-slate-800/50 px-3 py-2">
+                <Tooltip content={getTradeRevenueTooltip()}>
+                  <div className="flex items-center gap-2 cursor-help">
                     <span className="text-sm">🤝</span>
                     <span className="text-sm text-white/90">Trade Revenue</span>
                   </div>
-                  <span className="font-semibold text-green-400">
+                </Tooltip>
+                <Tooltip content={getTradeRevenueTooltip()}>
+                  <span className="font-semibold text-green-400 cursor-help">
                     +{breakdown.tradeRevenue.toLocaleString()}
                   </span>
-                </div>
-              </Tooltip>
+                </Tooltip>
+              </div>
             )}
             {breakdown.resourceRevenue > 0 && (
               <div className="flex items-center justify-between rounded border border-white/10 bg-slate-800/50 px-3 py-2">
@@ -126,63 +140,67 @@ export function BudgetPanel({ country, stats, activeDealsValue = 0 }: BudgetPane
                 </span>
               </div>
             )}
-            <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-2">
-              <span className="text-xs font-semibold text-white/70">Total Revenue</span>
-              <span className="font-bold text-green-400">
-                {breakdown.totalRevenue.toLocaleString()}
-              </span>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Expenses Section */}
         <div>
           <Tooltip content="Expenses: Costs that reduce your treasury each turn. Includes maintenance, military upkeep, and infrastructure costs.">
-            <div className="mb-2 text-xs font-semibold text-red-400 cursor-help">Expenses</div>
+            <button
+              onClick={() => setIsExpensesExpanded(!isExpensesExpanded)}
+              className="mb-2 flex items-center gap-2 text-xs font-semibold text-red-400 cursor-help hover:opacity-80 transition-opacity"
+            >
+              <span>{isExpensesExpanded ? "▼" : "▶"}</span>
+              <span>Expenses</span>
+              <span className="text-white/60">${breakdown.totalExpenses.toLocaleString()}</span>
+            </button>
           </Tooltip>
-          <div className="space-y-1.5">
-            <Tooltip content={getMaintenanceTooltip()}>
-              <div className="flex items-center justify-between rounded border border-white/10 bg-slate-800/50 px-3 py-2 cursor-help">
-                <div className="flex items-center gap-2">
+          {isExpensesExpanded && (
+            <div className="space-y-1.5">
+            <div className="flex items-center justify-between rounded border border-white/10 bg-slate-800/50 px-3 py-2">
+              <Tooltip content={getMaintenanceTooltip()}>
+                <div className="flex items-center gap-2 cursor-help">
                   <span className="text-sm">🔧</span>
                   <span className="text-sm text-white/90">Maintenance</span>
                 </div>
-                <span className="font-semibold text-red-400">
+              </Tooltip>
+              <Tooltip content={getMaintenanceTooltip()}>
+                <span className="font-semibold text-red-400 cursor-help">
                   -{breakdown.maintenanceCost.toLocaleString()}
                 </span>
-              </div>
-            </Tooltip>
-            <Tooltip content={getMilitaryUpkeepTooltip()}>
-              <div className="flex items-center justify-between rounded border border-white/10 bg-slate-800/50 px-3 py-2 cursor-help">
-                <div className="flex items-center gap-2">
+              </Tooltip>
+            </div>
+            <div className="flex items-center justify-between rounded border border-white/10 bg-slate-800/50 px-3 py-2">
+              <Tooltip content={getMilitaryUpkeepTooltip()}>
+                <div className="flex items-center gap-2 cursor-help">
                   <span className="text-sm">⚔️</span>
                   <span className="text-sm text-white/90">Military Upkeep</span>
                 </div>
-                <span className="font-semibold text-red-400">
+              </Tooltip>
+              <Tooltip content={getMilitaryUpkeepTooltip()}>
+                <span className="font-semibold text-red-400 cursor-help">
                   -{breakdown.militaryUpkeep.toLocaleString()}
                 </span>
-              </div>
-            </Tooltip>
+              </Tooltip>
+            </div>
             {breakdown.infrastructureCost > 0 && (
-              <Tooltip content={getInfrastructureCostTooltip()}>
-                <div className="flex items-center justify-between rounded border border-white/10 bg-slate-800/50 px-3 py-2 cursor-help">
-                  <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between rounded border border-white/10 bg-slate-800/50 px-3 py-2">
+                <Tooltip content={getInfrastructureCostTooltip()}>
+                  <div className="flex items-center gap-2 cursor-help">
                     <span className="text-sm">🏗️</span>
                     <span className="text-sm text-white/90">Infrastructure</span>
                   </div>
-                  <span className="font-semibold text-red-400">
+                </Tooltip>
+                <Tooltip content={getInfrastructureCostTooltip()}>
+                  <span className="font-semibold text-red-400 cursor-help">
                     -{breakdown.infrastructureCost.toLocaleString()}
                   </span>
-                </div>
-              </Tooltip>
+                </Tooltip>
+              </div>
             )}
-            <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-2">
-              <span className="text-xs font-semibold text-white/70">Total Expenses</span>
-              <span className="font-bold text-red-400">
-                {breakdown.totalExpenses.toLocaleString()}
-              </span>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Visual Indicator */}
