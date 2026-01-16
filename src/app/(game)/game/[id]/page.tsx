@@ -283,6 +283,10 @@ export default function GamePage() {
             {/* Actions */}
             <div className="mt-4">
               <ActionPanel
+                country={selectedCountry}
+                stats={selectedStats}
+                gameId={gameId}
+                currentTurn={turn}
                 onEndTurn={async () => {
                   try {
                     const res = await fetch("/api/turn", {
@@ -298,6 +302,10 @@ export default function GamePage() {
                   } catch (e) {
                     console.error("Failed to end turn:", e);
                   }
+                }}
+                onActionCreated={async () => {
+                  // Reload stats after action is created
+                  await load();
                 }}
               />
             </div>

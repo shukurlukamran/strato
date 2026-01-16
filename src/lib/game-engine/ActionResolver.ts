@@ -1,25 +1,58 @@
 import type { GameAction } from "@/types/actions";
 import type { CountryStats } from "@/types/country";
 import { GameState } from "@/lib/game-engine/GameState";
+import { ECONOMIC_BALANCE } from "./EconomicBalance";
 
 export class ActionResolver {
   resolve(state: GameState, action: GameAction): GameAction {
-    // Placeholder: for now we just mark as executed.
-    // Later: validate, apply state mutations, and produce events.
     if (!state.data.countryStatsByCountryId[action.countryId]) {
       return { ...action, status: "failed" };
     }
 
-    // Example: basic research increases tech slightly.
-    if (action.actionType === "research") {
-      const prev = state.data.countryStatsByCountryId[action.countryId];
-      const next: CountryStats = {
-        ...prev,
-        technologyLevel: prev.technologyLevel + 1,
-      };
-      state.withUpdatedStats(action.countryId, next);
+    const prev = state.data.countryStatsByCountryId[action.countryId];
+    const cost = (action.actionData as any)?.cost || 0;
+    
+    // Check if country has enough budget
+    if (prev.budget < cost) {
+      return { ...action, status: "failed" };
     }
 
+    let next: CountryStats = { ...prev };
+
+    // Apply action effects and deduct cost
+    if (action.actionType === "research") {
+      // Technology upgrade: increase by 1 level
+      next = {
+        ...next,
+        technologyLevel: next.technologyLevel + 1,
+        budget: Math.max(0, next.budget - cost),
+      };
+    } else if (action.actionType === "economic") {
+      const subType = (action.actionData as any)?.subType;
+      
+      if (subType === "infrastructure") {
+        // Infrastructure upgrade: increase by 1 level
+        next = {
+          ...next,
+          infrastructureLevel: (next.infrastructureLevel || 0) + 1,
+          budget: Math.max(0, next.budget - cost),
+        };
+      }
+    } else if (action.actionType === "military") {
+      const subType = (action.actionData as any)?.subType;
+      
+      if (subType === "recruit") {
+        const amount = (action.actionData as any)?.amount || 1;
+        // Military recruitment: increase strength
+        next = {
+          ...next,
+          militaryStrength: next.militaryStrength + amount,
+          budget: Math.max(0, next.budget - cost),
+        };
+      }
+    }
+    
+    state.withUpdatedStats(action.countryId, next);
     return { ...action, status: "executed" };
   }
 }

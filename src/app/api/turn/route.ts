@@ -222,7 +222,7 @@ export async function POST(req: Request) {
   // Combine economic events with turn events
   const allEvents = [...economicEvents, ...result.events];
 
-  // Persist: mark executed actions, store snapshot, advance turn.
+  // Persist: mark executed actions, update stats, store snapshot, advance turn.
   if (result.executedActions.length) {
     await supabase
       .from("actions")
@@ -230,6 +230,25 @@ export async function POST(req: Request) {
         result.executedActions.map((a) => ({ id: a.id, status: a.status })),
         { onConflict: "id" },
       );
+    
+    // Update stats for countries that had actions executed
+    const updatedStats = result.executedActions
+      .map(a => state.data.countryStatsByCountryId[a.countryId])
+      .filter(Boolean);
+    
+    for (const stats of updatedStats) {
+      await supabase
+        .from("country_stats")
+        .update({
+          budget: stats.budget,
+          technology_level: stats.technologyLevel,
+          infrastructure_level: stats.infrastructureLevel || 0,
+          military_strength: stats.militaryStrength,
+          updated_at: new Date().toISOString()
+        })
+        .eq("country_id", stats.countryId)
+        .eq("turn", turn);
+    }
   }
 
   await supabase.from("turn_history").insert({
