@@ -115,7 +115,25 @@ export default function GamePage() {
         return;
       }
 
-      console.log("GamePage: Game loaded successfully", { gameId, gameName: data.game.name, turn: data.game.current_turn });
+      // CRITICAL: Verify the gameId from URL matches the gameId from database
+      if (data.game.id !== gameId) {
+        console.error("GamePage: GameId mismatch!", {
+          urlGameId: gameId,
+          dbGameId: data.game.id,
+          mismatch: true,
+        });
+        setGameExists(false);
+        setError(`Game ID mismatch. URL: ${gameId}, Database: ${data.game.id}`);
+        return;
+      }
+
+      console.log("GamePage: Game loaded successfully", { 
+        gameId, 
+        dbGameId: data.game.id,
+        gameName: data.game.name, 
+        turn: data.game.current_turn,
+        gameIdsMatch: data.game.id === gameId,
+      });
       setGameExists(true);
       setTurn(data.game.current_turn);
       setPlayerCountryId(data.game.player_country_id);
@@ -354,6 +372,17 @@ export default function GamePage() {
             {/* Actions - Only render if game exists and gameId is valid */}
             {gameExists && gameId && (
               <div className="mt-4">
+                {(() => {
+                  // Log the gameId being passed to ActionPanel for debugging
+                  console.log("GamePage: Rendering ActionPanel with gameId", {
+                    gameId,
+                    gameExists,
+                    urlParams: params.id,
+                    gameIdFromUrl: params.id,
+                    gameIdsMatch: gameId === params.id,
+                  });
+                  return null;
+                })()}
                 <ActionPanel
                   country={selectedCountry}
                   stats={selectedStats}

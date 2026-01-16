@@ -27,6 +27,14 @@ export function ActionPanel({
   const [error, setError] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(true);
 
+  // Log the gameId received as a prop
+  console.log("ActionPanel: Received gameId prop", {
+    gameId,
+    gameIdType: typeof gameId,
+    gameIdLength: gameId?.length,
+    isValid: gameId && gameId.length === 36,
+  });
+
   // Only show actions for player's own country
   const isPlayerCountry = country?.id === playerCountryId;
 

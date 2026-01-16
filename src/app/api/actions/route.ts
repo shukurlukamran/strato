@@ -183,8 +183,14 @@ export async function POST(req: Request) {
 
     if (!gameRes.data) {
       console.error("[API Actions] Game query returned no data (unexpected):", gameId);
+      // Query for sample games to show in error message
+      const sampleGames = await supabase
+        .from("games")
+        .select("id")
+        .limit(3);
+      const availableGameIds = sampleGames.data?.map((g: { id: string }) => g.id).join(', ') || 'none';
       return NextResponse.json({ 
-        error: `Game not found. Game ID: ${gameId}` 
+        error: `Game not found. Game ID: ${gameId}. The game may have been deleted or the ID is incorrect. Available games: ${availableGameIds}` 
       }, { status: 404 });
     }
 

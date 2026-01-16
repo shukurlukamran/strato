@@ -197,15 +197,39 @@ export async function GET(req: Request) {
 
   try {
     const supabase = getSupabaseServerClient();
+    
+    console.log("[API Game] Loading game:", {
+      gameId,
+      gameIdLength: gameId.length,
+      isValidUUID: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(gameId),
+    });
+    
     const gameRes = await supabase
       .from("games")
       .select("id, name, current_turn, status, player_country_id")
       .eq("id", gameId)
       .single();
+      
     if (gameRes.error) {
+      console.error("[API Game] Game query error:", {
+        gameId,
+        error: gameRes.error.message,
+        errorCode: gameRes.error.code,
+      });
+      
       // If game not found in Supabase, check in-memory fallback
       const mem = memoryGames.get(gameId);
       if (!mem) {
+        // Log available games for debugging
+        const allGames = await supabase
+          .from("games")
+          .select("id, name")
+          .limit(5)
+          .order("created_at", { ascending: false });
+        console.log("[API Game] Game not found. Sample games in DB:", {
+          requestedGameId: gameId,
+          availableGames: allGames.data?.map(g => ({ id: g.id, name: g.name })) || [],
+        });
         return NextResponse.json({ error: "Game not found." }, { status: 404 });
       }
       return NextResponse.json({
@@ -216,6 +240,13 @@ export async function GET(req: Request) {
         note: "Supabase not configured; using in-memory game store.",
       });
     }
+    
+    console.log("[API Game] Game found:", {
+      requestedGameId: gameId,
+      dbGameId: gameRes.data.id,
+      gameName: gameRes.data.name,
+      idsMatch: gameRes.data.id === gameId,
+    });
 
     const countriesRes = await supabase
       .from("countries")
