@@ -7,7 +7,7 @@ import { ECONOMIC_BALANCE } from "@/lib/game-engine/EconomicBalance";
 interface ActionPanelProps {
   country: Country | null;
   stats: CountryStats | null;
-  gameId?: string;
+  gameId: string;
   currentTurn: number;
   playerCountryId?: string;
   onEndTurn: () => void;
@@ -30,11 +30,20 @@ export function ActionPanel({
   // Only show actions for player's own country
   const isPlayerCountry = country?.id === playerCountryId;
 
-  if (!country || !stats || !gameId) {
+  if (!country || !stats) {
     return (
       <div className="rounded-lg border border-white/10 bg-gradient-to-br from-slate-800/90 to-slate-900/90 p-4 shadow-lg">
         <div className="mb-3 text-sm font-semibold text-white">Actions</div>
         <div className="text-xs text-white/60">Select a country to perform actions</div>
+      </div>
+    );
+  }
+
+  if (!gameId) {
+    return (
+      <div className="rounded-lg border border-red-500/50 bg-red-900/20 p-4 shadow-lg">
+        <div className="mb-3 text-sm font-semibold text-red-400">Actions</div>
+        <div className="text-xs text-red-300">Error: Game ID is missing. Please reload the page.</div>
       </div>
     );
   }
@@ -49,7 +58,20 @@ export function ActionPanel({
   }
 
   const handleAction = async (actionType: "research" | "economic" | "military", actionData: Record<string, unknown>) => {
-    if (!gameId || !country.id) return;
+    if (!gameId || !country.id) {
+      console.error("ActionPanel: Missing gameId or country.id", { gameId, countryId: country?.id });
+      setError("Missing game ID or country ID");
+      return;
+    }
+
+    // Log the gameId being sent for debugging
+    console.log("ActionPanel: Creating action", {
+      gameId,
+      countryId: country.id,
+      actionType,
+      actionData,
+      turn: currentTurn,
+    });
 
     setLoading(actionType);
     setError(null);
@@ -76,17 +98,35 @@ export function ActionPanel({
         } catch {
           errorMessage = errorText || errorMessage;
         }
-        console.error("Action creation failed:", errorMessage);
-        throw new Error(errorMessage);
+        console.error("ActionPanel: Action creation failed", {
+          gameId,
+          countryId: country.id,
+          actionType,
+          error: errorMessage,
+          status: res.status,
+        });
+        throw new Error(`Action failed (Game ID: ${gameId.slice(0, 8)}...): ${errorMessage}`);
       }
 
       const data = await res.json();
-      console.log("Action created successfully:", data);
+      console.log("ActionPanel: Action created successfully", {
+        gameId,
+        countryId: country.id,
+        actionType,
+        actionId: data.action?.id,
+      });
       if (onActionCreated) {
         onActionCreated();
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create action");
+      const errorMessage = e instanceof Error ? e.message : "Failed to create action";
+      console.error("ActionPanel: Error creating action", {
+        gameId,
+        countryId: country.id,
+        actionType,
+        error: errorMessage,
+      });
+      setError(errorMessage);
     } finally {
       setLoading(null);
     }

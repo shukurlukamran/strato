@@ -27,10 +27,22 @@ export async function POST(req: Request) {
   
   // Validate UUID format
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  
+  console.log("[API Actions] Received action request:", {
+    gameId,
+    countryId,
+    actionType,
+    turn,
+    gameIdValid: uuidRegex.test(gameId),
+    countryIdValid: uuidRegex.test(countryId),
+  });
+  
   if (!uuidRegex.test(gameId)) {
+    console.error("[API Actions] Invalid game ID format:", gameId);
     return NextResponse.json({ error: "Invalid game ID format" }, { status: 400 });
   }
   if (!uuidRegex.test(countryId)) {
+    console.error("[API Actions] Invalid country ID format:", countryId);
     return NextResponse.json({ error: "Invalid country ID format" }, { status: 400 });
   }
 
@@ -38,7 +50,13 @@ export async function POST(req: Request) {
     const supabase = getSupabaseServerClient();
 
     // Get the game's current turn - first verify game exists
-    console.log("Looking for game:", gameId);
+    console.log("[API Actions] Looking for game:", {
+      gameId,
+      gameIdLength: gameId.length,
+      gameIdType: typeof gameId,
+      isValidUUID: uuidRegex.test(gameId),
+    });
+    
     const gameRes = await supabase
       .from("games")
       .select("id, current_turn, status")
@@ -46,24 +64,50 @@ export async function POST(req: Request) {
       .maybeSingle(); // Use maybeSingle instead of single to avoid errors
 
     if (gameRes.error) {
-      console.error("Game query error:", gameRes.error);
+      console.error("[API Actions] Game query error:", {
+        gameId,
+        error: gameRes.error,
+        errorMessage: gameRes.error.message,
+        errorCode: gameRes.error.code,
+      });
       return NextResponse.json({ 
         error: `Database error: ${gameRes.error.message || 'Failed to query game'}` 
       }, { status: 500 });
     }
 
     if (!gameRes.data) {
-      console.error("Game not found for ID:", gameId);
+      console.error("[API Actions] Game not found for ID:", gameId);
+      
       // Double-check by trying to find any game with similar ID
       const allGames = await supabase
         .from("games")
-        .select("id")
-        .limit(5);
-      console.log("Sample game IDs in database:", allGames.data?.map(g => g.id));
+        .select("id, name, created_at")
+        .limit(10)
+        .order("created_at", { ascending: false });
+      
+      console.log("[API Actions] Sample game IDs in database:", {
+        totalFound: allGames.data?.length || 0,
+        gameIds: allGames.data?.map(g => ({ id: g.id, name: g.name })) || [],
+        requestedGameId: gameId,
+      });
+      
+      // Also check if there are any games at all
+      const gameCount = await supabase
+        .from("games")
+        .select("id", { count: "exact", head: true });
+      
+      console.log("[API Actions] Total games in database:", gameCount.count);
+      
       return NextResponse.json({ 
         error: `Game not found. Game ID: ${gameId}` 
       }, { status: 404 });
     }
+
+    console.log("[API Actions] Game found:", {
+      gameId: gameRes.data.id,
+      currentTurn: gameRes.data.current_turn,
+      status: gameRes.data.status,
+    });
 
     const gameTurn = gameRes.data.current_turn as number;
 
@@ -154,9 +198,25 @@ export async function POST(req: Request) {
       .single();
 
     if (inserted.error) {
-      console.error("Failed to create action:", inserted.error);
+      console.error("[API Actions] Failed to create action:", {
+        gameId,
+        countryId,
+        actionType,
+        error: inserted.error,
+        errorMessage: inserted.error.message,
+        errorCode: inserted.error.code,
+      });
       return NextResponse.json({ error: inserted.error.message }, { status: 500 });
     }
+
+    console.log("[API Actions] Action created successfully:", {
+      actionId: inserted.data.id,
+      gameId: inserted.data.game_id,
+      countryId: inserted.data.country_id,
+      actionType: inserted.data.action_type,
+      turn: inserted.data.turn,
+      cost,
+    });
 
     return NextResponse.json({
       action: {
@@ -172,7 +232,13 @@ export async function POST(req: Request) {
       cost,
     });
   } catch (error) {
-    console.error("Error creating action:", error);
+    console.error("[API Actions] Error creating action:", {
+      gameId,
+      countryId,
+      actionType,
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to create action" },
       { status: 500 }

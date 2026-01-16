@@ -49,6 +49,7 @@ export default function GamePage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [gameExists, setGameExists] = useState<boolean | null>(null);
   const [turn, setTurn] = useState(1);
   const [playerCountryId, setPlayerCountryId] = useState<string>("");
   const [countries, setCountries] = useState<Country[]>([]);
@@ -63,9 +64,42 @@ export default function GamePage() {
   async function load() {
     setLoading(true);
     setError(null);
+    setGameExists(null);
+    
+    // Validate gameId format first
+    if (!gameId || typeof gameId !== 'string' || gameId.trim() === '') {
+      setError("Invalid game ID");
+      setGameExists(false);
+      setLoading(false);
+      return;
+    }
+
     try {
+      console.log("GamePage: Loading game", { gameId });
       const res = await fetch(`/api/game?id=${encodeURIComponent(gameId)}`);
-      if (!res.ok) throw new Error(await res.text());
+      
+      if (!res.ok) {
+        const errorText = await res.text();
+        let errorMessage = "Failed to load game";
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+        
+        // Check if it's a 404 (game not found)
+        if (res.status === 404) {
+          setGameExists(false);
+          setError(`Game not found. Game ID: ${gameId}`);
+        } else {
+          setGameExists(false);
+          setError(errorMessage);
+        }
+        console.error("GamePage: Failed to load game", { gameId, status: res.status, error: errorMessage });
+        return;
+      }
+
       const data = (await res.json()) as {
         game: ApiGame;
         countries: ApiCountry[];
@@ -73,6 +107,16 @@ export default function GamePage() {
         chats: ApiChat[];
       };
 
+      // Verify we got valid game data
+      if (!data.game || !data.game.id) {
+        setGameExists(false);
+        setError(`Invalid game data received. Game ID: ${gameId}`);
+        console.error("GamePage: Invalid game data", { gameId, data });
+        return;
+      }
+
+      console.log("GamePage: Game loaded successfully", { gameId, gameName: data.game.name, turn: data.game.current_turn });
+      setGameExists(true);
       setTurn(data.game.current_turn);
       setPlayerCountryId(data.game.player_country_id);
       setCountries(
@@ -116,7 +160,10 @@ export default function GamePage() {
       // #endregion
       setChatByCounterpartCountryId(chatMap);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load game.");
+      const errorMessage = e instanceof Error ? e.message : "Failed to load game.";
+      setGameExists(false);
+      setError(errorMessage);
+      console.error("GamePage: Error loading game", { gameId, error: errorMessage });
     } finally {
       setLoading(false);
     }
@@ -141,20 +188,44 @@ export default function GamePage() {
     );
   }
 
-  if (error) {
+  // Show error if game doesn't exist or failed to load
+  if (error || gameExists === false) {
     return (
       <div className="flex h-screen items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
-        <div className="rounded-lg border border-red-500 bg-red-900/50 p-6 text-white">
-          <div className="mb-4 font-semibold">Error</div>
-          <div className="mb-4">{error}</div>
-          <button
-            type="button"
-            className="rounded bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-gray-100"
-            onClick={() => void load()}
-          >
-            Retry
-          </button>
+        <div className="rounded-lg border border-red-500 bg-red-900/50 p-6 text-white max-w-md">
+          <div className="mb-4 text-xl font-semibold">Game Not Found</div>
+          <div className="mb-4 text-sm text-red-200">{error || "The game you're looking for doesn't exist."}</div>
+          {gameId && (
+            <div className="mb-4 text-xs text-red-300 font-mono">
+              Game ID: {gameId}
+            </div>
+          )}
+          <div className="flex gap-3">
+            <button
+              type="button"
+              className="rounded bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-gray-100"
+              onClick={() => void load()}
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              className="rounded bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-600"
+              onClick={() => window.location.href = '/new-game'}
+            >
+              Create New Game
+            </button>
+          </div>
         </div>
+      </div>
+    );
+  }
+
+  // Don't render game interface until we've confirmed game exists
+  if (gameExists === null) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
+        <div className="text-lg text-white">Verifying game…</div>
       </div>
     );
   }
@@ -280,36 +351,38 @@ export default function GamePage() {
               />
             </div>
 
-            {/* Actions */}
-            <div className="mt-4">
-              <ActionPanel
-                country={selectedCountry}
-                stats={selectedStats}
-                gameId={gameId}
-                currentTurn={turn}
-                playerCountryId={playerCountryId}
-                onEndTurn={async () => {
-                  try {
-                    const res = await fetch("/api/turn", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ gameId }),
-                    });
-                    if (res.ok) {
-                      const data = await res.json();
-                      setTurn(data.nextTurn);
-                      await load(); // Reload game state
+            {/* Actions - Only render if game exists and gameId is valid */}
+            {gameExists && gameId && (
+              <div className="mt-4">
+                <ActionPanel
+                  country={selectedCountry}
+                  stats={selectedStats}
+                  gameId={gameId}
+                  currentTurn={turn}
+                  playerCountryId={playerCountryId}
+                  onEndTurn={async () => {
+                    try {
+                      const res = await fetch("/api/turn", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ gameId }),
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        setTurn(data.nextTurn);
+                        await load(); // Reload game state
+                      }
+                    } catch (e) {
+                      console.error("Failed to end turn:", e);
                     }
-                  } catch (e) {
-                    console.error("Failed to end turn:", e);
-                  }
-                }}
-                onActionCreated={async () => {
-                  // Reload stats after action is created
-                  await load();
-                }}
-              />
-            </div>
+                  }}
+                  onActionCreated={async () => {
+                    // Reload stats after action is created
+                    await load();
+                  }}
+                />
+              </div>
+            )}
 
             {/* Active Deals */}
             <div className="mt-4">
