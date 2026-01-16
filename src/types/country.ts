@@ -15,6 +15,7 @@ export interface CountryStats {
   population: number;
   budget: number;
   technologyLevel: number;
+  infrastructureLevel?: number; // Infrastructure level (0-based)
   militaryStrength: number;
   militaryEquipment: Record<string, unknown>;
   resources: Record<string, number>;

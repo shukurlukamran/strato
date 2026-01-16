@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { GameState } from "@/lib/game-engine/GameState";
 import { TurnProcessor } from "@/lib/game-engine/TurnProcessor";
+import { EconomicEngine } from "@/lib/game-engine/EconomicEngine";
 
 const BodySchema = z.object({
   gameId: z.string().min(1),
@@ -47,7 +48,7 @@ export async function POST(req: Request) {
   const statsRes = await supabase
     .from("country_stats")
     .select(
-      "id, country_id, turn, population, budget, technology_level, military_strength, military_equipment, resources, diplomatic_relations, created_at",
+      "id, country_id, turn, population, budget, technology_level, infrastructure_level, military_strength, military_equipment, resources, diplomatic_relations, created_at",
     )
     .eq("turn", turn)
     .in(
@@ -95,6 +96,7 @@ export async function POST(req: Request) {
           population: s.population,
           budget: Number(s.budget),
           technologyLevel: Number(s.technology_level),
+          infrastructureLevel: s.infrastructure_level ?? 0,
           militaryStrength: s.military_strength,
           militaryEquipment: s.military_equipment ?? {},
           resources: s.resources ?? {},
@@ -131,8 +133,94 @@ export async function POST(req: Request) {
     })),
   });
 
+  // Process economic phase BEFORE action resolution
+  const economicEvents: Array<{ type: string; message: string; data?: Record<string, unknown> }> = [];
+  
+  for (const country of state.data.countries) {
+    const stats = state.data.countryStatsByCountryId[country.id];
+    if (!stats) continue;
+    
+    // Calculate active deals value for this country
+    const activeDealsValue = state.data.activeDeals
+      .filter(d => d.status === 'active' && 
+        (d.proposingCountryId === country.id || d.receivingCountryId === country.id))
+      .reduce((total, deal) => {
+        // Simple calculation: sum deal terms value (placeholder)
+        // TODO: Implement proper deal value calculation
+        return total + 100; // Placeholder value
+      }, 0);
+    
+    try {
+      const economicResult = await EconomicEngine.processEconomicTurn(
+        supabase,
+        country,
+        stats,
+        activeDealsValue
+      );
+      
+      // Fetch updated stats from database (EconomicEngine already saved them)
+      const countryStatsRes = await supabase
+        .from('country_stats')
+        .select('population, budget, resources, infrastructure_level')
+        .eq('country_id', country.id)
+        .eq('turn', turn)
+        .single();
+      
+      if (countryStatsRes.data) {
+        // Update stats in state with database values
+        state.withUpdatedStats(country.id, {
+          ...stats,
+          budget: Number(countryStatsRes.data.budget),
+          population: countryStatsRes.data.population,
+          infrastructureLevel: countryStatsRes.data.infrastructure_level ?? 0,
+          resources: (countryStatsRes.data.resources as Record<string, number>) ?? stats.resources
+        });
+      } else {
+        // Fallback: update manually if fetch fails
+        state.withUpdatedStats(country.id, {
+          ...stats,
+          budget: stats.budget + economicResult.budgetChange,
+          population: stats.population + economicResult.populationChange
+        });
+      }
+      
+      // Add economic events
+      economicResult.eventMessages.forEach(msg => {
+        economicEvents.push({
+          type: 'economic.update',
+          message: `${country.name}: ${msg}`,
+          data: { countryId: country.id }
+        });
+      });
+      
+      // Log economic event to database
+      await supabase.from('economic_events').insert({
+        game_id: gameId,
+        country_id: country.id,
+        turn_number: turn,
+        event_type: 'economic_turn',
+        event_data: {
+          budgetChange: economicResult.budgetChange,
+          populationChange: economicResult.populationChange,
+          resourcesProduced: economicResult.resourcesProduced,
+          resourcesConsumed: economicResult.resourcesConsumed
+        }
+      });
+    } catch (error) {
+      console.error(`Failed to process economics for country ${country.id}:`, error);
+      economicEvents.push({
+        type: 'economic.error',
+        message: `Economic processing failed for ${country.name}`,
+        data: { countryId: country.id, error: String(error) }
+      });
+    }
+  }
+
   const processor = new TurnProcessor();
   const result = processor.processTurn(state);
+
+  // Combine economic events with turn events
+  const allEvents = [...economicEvents, ...result.events];
 
   // Persist: mark executed actions, store snapshot, advance turn.
   if (result.executedActions.length) {
@@ -148,7 +236,7 @@ export async function POST(req: Request) {
     game_id: gameId,
     turn,
     state_snapshot: state.data,
-    events: result.events,
+    events: allEvents,
     created_at: new Date().toISOString(),
   });
 
@@ -157,7 +245,7 @@ export async function POST(req: Request) {
   const updatedStatsRes = await supabase
     .from("country_stats")
     .select(
-      "id, country_id, turn, population, budget, technology_level, military_strength, military_equipment, resources, diplomatic_relations, created_at",
+      "id, country_id, turn, population, budget, technology_level, infrastructure_level, military_strength, military_equipment, resources, diplomatic_relations, created_at",
     )
     .eq("turn", turn)
     .in(
@@ -183,20 +271,25 @@ export async function POST(req: Request) {
     );
     
     // Create new stats entries for the next turn for countries that don't have them yet
+    // Use updated stats from state (which includes economic changes)
     const nextTurnStats = updatedStatsRes.data
       .filter((s) => !existingCountryIds.has(s.country_id))
-      .map((s) => ({
-        country_id: s.country_id,
-        turn: turn + 1,
-        population: s.population,
-        budget: Number(s.budget),
-        technology_level: Number(s.technology_level),
-        military_strength: s.military_strength,
-        military_equipment: s.military_equipment ?? {},
-        resources: s.resources ?? {},
-        diplomatic_relations: s.diplomatic_relations ?? {},
-        created_at: new Date().toISOString(),
-      }));
+      .map((s) => {
+        const updatedStats = state.data.countryStatsByCountryId[s.country_id];
+        return {
+          country_id: s.country_id,
+          turn: turn + 1,
+          population: updatedStats?.population ?? s.population,
+          budget: updatedStats?.budget ?? Number(s.budget),
+          technology_level: updatedStats?.technologyLevel ?? Number(s.technology_level),
+          infrastructure_level: updatedStats?.infrastructureLevel ?? (s.infrastructure_level ?? 0),
+          military_strength: updatedStats?.militaryStrength ?? s.military_strength,
+          military_equipment: updatedStats?.militaryEquipment ?? (s.military_equipment ?? {}),
+          resources: updatedStats?.resources ?? (s.resources ?? {}),
+          diplomatic_relations: updatedStats?.diplomaticRelations ?? (s.diplomatic_relations ?? {}),
+          created_at: new Date().toISOString(),
+        };
+      });
     
     if (nextTurnStats.length > 0) {
       const insertRes = await supabase.from("country_stats").insert(nextTurnStats);
@@ -210,6 +303,6 @@ export async function POST(req: Request) {
 
   await supabase.from("games").update({ current_turn: turn + 1, updated_at: new Date().toISOString() }).eq("id", gameId);
 
-  return NextResponse.json({ ok: true, nextTurn: turn + 1, events: result.events });
+  return NextResponse.json({ ok: true, nextTurn: turn + 1, events: allEvents });
 }
 

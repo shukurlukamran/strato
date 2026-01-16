@@ -332,6 +332,16 @@ TurnProcessor
 - 🔄 AI decisions change based on their personlaities (oh oh god level technicality haha)
 - 🔄 Turn news history (things that happened in the previous turn)
 
+   ### Economy additions (Post-MVP)
+   - Resource deposits on map tiles 
+   - Trade routes between countries 
+   - Resource market with dynamic pricing 
+   - Infrastructure building actions
+   - Resource conversion (e.g., iron → steel)
+   - Environmental effects on production
+   - Resource-specific storage limits
+   - Import/export tariffs
+
 ***
 
 ## Risk Mitigation
