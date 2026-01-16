@@ -9,6 +9,7 @@ import { Map } from "@/components/game/Map";
 import { CountryCard } from "@/components/game/CountryCard";
 import { TurnIndicator } from "@/components/game/TurnIndicator";
 import { ResourceDisplay } from "@/components/game/ResourceDisplay";
+import { BudgetPanel } from "@/components/game/BudgetPanel";
 import { ActionPanel } from "@/components/game/ActionPanel";
 import { ActiveDeals } from "@/components/game/ActiveDeals";
 import { useGameStore } from "@/lib/store/gameStore";
@@ -30,6 +31,7 @@ type ApiStats = {
   population: number;
   budget: number;
   technology_level: number;
+  infrastructure_level?: number;
   military_strength: number;
   military_equipment: Record<string, unknown>;
   resources: Record<string, number>;
@@ -93,6 +95,7 @@ export default function GamePage() {
           population: s.population,
           budget: Number(s.budget),
           technologyLevel: Number(s.technology_level),
+          infrastructureLevel: s.infrastructure_level ?? 0,
           militaryStrength: s.military_strength,
           militaryEquipment: s.military_equipment ?? {},
           resources: s.resources ?? {},
@@ -233,6 +236,7 @@ export default function GamePage() {
                         population: s.population,
                         budget: Number(s.budget),
                         technologyLevel: Number(s.technology_level),
+                        infrastructureLevel: s.infrastructure_level ?? 0,
                         militaryStrength: s.military_strength,
                         militaryEquipment: s.military_equipment ?? {},
                         resources: s.resources ?? {},
@@ -255,9 +259,25 @@ export default function GamePage() {
               }}
             />
 
+            {/* Budget Panel */}
+            <div className="mt-4">
+              <BudgetPanel 
+                country={selectedCountry} 
+                stats={selectedStats}
+                activeDealsValue={deals
+                  .filter(d => d.status === 'active' && 
+                    (d.proposingCountryId === selectedCountry?.id || d.receivingCountryId === selectedCountry?.id))
+                  .reduce((total) => total + 100, 0)} // Placeholder: calculate actual deal value
+              />
+            </div>
+
             {/* Resources */}
             <div className="mt-4">
-              <ResourceDisplay resources={selectedStats?.resources ?? {}} />
+              <ResourceDisplay 
+                country={selectedCountry}
+                stats={selectedStats}
+                resources={selectedStats?.resources}
+              />
             </div>
 
             {/* Actions */}

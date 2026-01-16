@@ -56,6 +56,12 @@ export function CountryPanel({
           </div>
         </div>
         <div className="rounded border border-white/10 bg-slate-800/50 p-3">
+          <div className="text-xs text-white/60">Infrastructure</div>
+          <div className="mt-1 text-lg font-bold text-purple-400">
+            {stats.infrastructureLevel ?? 0}
+          </div>
+        </div>
+        <div className="rounded border border-white/10 bg-slate-800/50 p-3">
           <div className="text-xs text-white/60">Military</div>
           <div className="mt-1 text-lg font-bold text-red-400">{stats.militaryStrength}</div>
         </div>

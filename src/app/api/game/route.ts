@@ -212,7 +212,7 @@ export async function GET(req: Request) {
     const statsRes = await supabase
       .from("country_stats")
       .select(
-        "id, country_id, turn, population, budget, technology_level, military_strength, military_equipment, resources, diplomatic_relations, created_at",
+        "id, country_id, turn, population, budget, technology_level, infrastructure_level, military_strength, military_equipment, resources, diplomatic_relations, created_at",
       )
       .eq("turn", gameRes.data.current_turn)
       .in(
