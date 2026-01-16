@@ -135,6 +135,7 @@ export async function POST(req: Request) {
       population: 1_000_000,
       budget: 1_000,
       technology_level: 1,
+      infrastructure_level: 0,
       military_strength: 10,
       military_equipment: {},
       resources: { food: 100, oil: 50, minerals: 30 },
@@ -201,7 +202,20 @@ export async function GET(req: Request) {
       .select("id, name, current_turn, status, player_country_id")
       .eq("id", gameId)
       .single();
-    if (gameRes.error) throw gameRes.error;
+    if (gameRes.error) {
+      // If game not found in Supabase, check in-memory fallback
+      const mem = memoryGames.get(gameId);
+      if (!mem) {
+        return NextResponse.json({ error: "Game not found." }, { status: 404 });
+      }
+      return NextResponse.json({
+        game: mem.game,
+        countries: mem.countries,
+        stats: Object.values(mem.stats),
+        chats: Object.values(mem.chats),
+        note: "Supabase not configured; using in-memory game store.",
+      });
+    }
 
     const countriesRes = await supabase
       .from("countries")
@@ -209,6 +223,7 @@ export async function GET(req: Request) {
       .eq("game_id", gameId);
     if (countriesRes.error) throw countriesRes.error;
 
+    // Try to select infrastructure_level, but handle if column doesn't exist yet
     const statsRes = await supabase
       .from("country_stats")
       .select(
@@ -219,6 +234,41 @@ export async function GET(req: Request) {
         "country_id",
         (countriesRes.data ?? []).map((c) => c.id),
       );
+    
+    // If infrastructure_level column doesn't exist, try without it
+    if (statsRes.error && statsRes.error.message?.includes("infrastructure_level")) {
+      const statsResFallback = await supabase
+        .from("country_stats")
+        .select(
+          "id, country_id, turn, population, budget, technology_level, military_strength, military_equipment, resources, diplomatic_relations, created_at",
+        )
+        .eq("turn", gameRes.data.current_turn)
+        .in(
+          "country_id",
+          (countriesRes.data ?? []).map((c) => c.id),
+        );
+      if (statsResFallback.error) throw statsResFallback.error;
+      
+      // Add infrastructure_level as 0 for all stats
+      const statsWithInfra = (statsResFallback.data ?? []).map(s => ({
+        ...s,
+        infrastructure_level: 0
+      }));
+      
+      const chatsRes = await supabase
+        .from("diplomacy_chats")
+        .select("id, game_id, country_a_id, country_b_id")
+        .eq("game_id", gameId);
+      if (chatsRes.error) throw chatsRes.error;
+
+      return NextResponse.json({
+        game: gameRes.data,
+        countries: countriesRes.data ?? [],
+        stats: statsWithInfra,
+        chats: chatsRes.data ?? [],
+      });
+    }
+    
     if (statsRes.error) throw statsRes.error;
 
     const chatsRes = await supabase
@@ -233,16 +283,22 @@ export async function GET(req: Request) {
       stats: statsRes.data ?? [],
       chats: chatsRes.data ?? [],
     });
-  } catch {
+  } catch (error) {
+    console.error("Error loading game:", error);
+    // Only fall back to in-memory if Supabase is not configured
     const mem = memoryGames.get(gameId);
-    if (!mem) return NextResponse.json({ error: "Game not found." }, { status: 404 });
-    return NextResponse.json({
-      game: mem.game,
-      countries: mem.countries,
-      stats: Object.values(mem.stats),
-      chats: Object.values(mem.chats),
-      note: "Supabase not configured; using in-memory game store.",
-    });
+    if (mem) {
+      return NextResponse.json({
+        game: mem.game,
+        countries: mem.countries,
+        stats: Object.values(mem.stats),
+        chats: Object.values(mem.chats),
+        note: "Supabase not configured; using in-memory game store.",
+      });
+    }
+    return NextResponse.json({ 
+      error: error instanceof Error ? error.message : "Game not found." 
+    }, { status: 404 });
   }
 }
 
