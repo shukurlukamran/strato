@@ -1,0 +1,2 @@
+- Make RSS and budget sections collapsible/expandable
+- When hovering over any text on the panel for 3 seconds, show its very short explanation and calculation, if applicable, as short as possible but still understandable

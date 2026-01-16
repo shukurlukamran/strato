@@ -1,16 +1,19 @@
 "use client";
 
+import { useState } from "react";
 import { ResourceCategory, ResourceRegistry, type ResourceAmount } from "@/lib/game-engine/ResourceTypes";
 import { calculateProductionForDisplay, calculateConsumptionForDisplay, resourcesToArray } from "@/lib/game-engine/EconomicClientUtils";
+import { ECONOMIC_BALANCE } from "@/lib/game-engine/EconomicBalance";
 import type { Country, CountryStats } from "@/types/country";
+import { Tooltip } from "./Tooltip";
 
 interface ResourceDisplayProps {
   country: Country | null;
   stats: CountryStats | null;
   resources?: Record<string, number>;
 }
-
-const resourceIcons: Record<string, string> = {
+  
+  const resourceIcons: Record<string, string> = {
   // Basic
   food: "🌾",
   water: "💧",
@@ -18,7 +21,7 @@ const resourceIcons: Record<string, string> = {
   stone: "🪨",
   // Strategic
   iron: "⚙️",
-  oil: "🛢️",
+    oil: "🛢️",
   uranium: "☢️",
   rare_earth: "💎",
   // Economic
@@ -48,6 +51,8 @@ const categoryColors: Record<ResourceCategory, string> = {
 };
 
 export function ResourceDisplay({ country, stats, resources }: ResourceDisplayProps) {
+  const [isExpanded, setIsExpanded] = useState(true);
+
   if (!country || !stats) {
     return (
       <div className="rounded-lg border border-white/10 bg-gradient-to-br from-slate-800/90 to-slate-900/90 p-4 shadow-lg">
@@ -59,6 +64,39 @@ export function ResourceDisplay({ country, stats, resources }: ResourceDisplayPr
   const currentResources = resourcesToArray(resources || stats.resources || {});
   const production = calculateProductionForDisplay(country, stats);
   const consumption = calculateConsumptionForDisplay(stats);
+
+  // Tooltip content generators
+  const getResourceTooltip = (resourceId: string, prod: number, cons: number, amount: number) => {
+    const definition = ResourceRegistry.getResource(resourceId);
+    if (!definition) return "";
+    
+    const popUnits = stats.population / 10000;
+    const techMult = ECONOMIC_BALANCE.TECHNOLOGY[`LEVEL_${Math.min(Math.max(0, Math.floor(stats.technologyLevel)), 5)}_MULTIPLIER` as keyof typeof ECONOMIC_BALANCE.TECHNOLOGY] || 1;
+    const infraMult = 1 + ((stats.infrastructureLevel || 0) * ECONOMIC_BALANCE.PRODUCTION.INFRASTRUCTURE_MULTIPLIER);
+    
+    let calc = "";
+    if (resourceId === 'food') {
+      calc = `Base: ${(popUnits * ECONOMIC_BALANCE.PRODUCTION.BASE_FOOD_PER_POP).toFixed(1)} × Tech(${techMult.toFixed(1)}x) × Infra(${infraMult.toFixed(2)}x) × Eff(0.7) = ${prod}/turn`;
+      if (cons > 0) calc += ` | Consumed: ${popUnits.toFixed(1)} × 5 = ${cons}/turn`;
+    } else {
+      calc = `Production: ${prod}/turn`;
+      if (cons > 0) calc += ` | Consumption: ${cons}/turn`;
+    }
+    
+    return `${definition.description}\n\n${calc}\n\nCurrent: ${amount.toLocaleString()}`;
+  };
+
+  const getTechBonusTooltip = () => {
+    const techLevel = Math.min(Math.max(0, Math.floor(stats.technologyLevel)), 5);
+    const mult = ECONOMIC_BALANCE.TECHNOLOGY[`LEVEL_${techLevel}_MULTIPLIER` as keyof typeof ECONOMIC_BALANCE.TECHNOLOGY] || 1;
+    return `Technology Level ${techLevel}: ${(mult * 100).toFixed(0)}% production multiplier\n\nFormula: Base production × ${mult.toFixed(2)}x`;
+  };
+
+  const getInfraBonusTooltip = () => {
+    const infraLevel = stats.infrastructureLevel || 0;
+    const mult = 1 + (infraLevel * ECONOMIC_BALANCE.PRODUCTION.INFRASTRUCTURE_MULTIPLIER);
+    return `Infrastructure Level ${infraLevel}: ${((mult - 1) * 100).toFixed(0)}% production bonus\n\nFormula: 1 + (${infraLevel} × 0.15) = ${mult.toFixed(2)}x`;
+  };
 
   // Group resources by category
   const resourcesByCategory = new Map<ResourceCategory, Array<{
@@ -116,26 +154,41 @@ export function ResourceDisplay({ country, stats, resources }: ResourceDisplayPr
   return (
     <div className="rounded-lg border border-white/10 bg-gradient-to-br from-slate-800/90 to-slate-900/90 p-4 shadow-lg">
       <div className="mb-4 flex items-center justify-between border-b border-white/10 pb-3">
-        <div className="text-sm font-semibold text-white">Resources</div>
-        <div className="text-xs text-white/60">
-          Tech: +{production.productionSummary.technologyBonus.toFixed(0)}% | 
-          Infra: +{production.productionSummary.infrastructureBonus.toFixed(0)}%
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex items-center gap-2 text-sm font-semibold text-white hover:text-white/80 transition-colors"
+        >
+          <span>{isExpanded ? "▼" : "▶"}</span>
+          <span>Resources</span>
+        </button>
+        <div className="flex items-center gap-3 text-xs text-white/60">
+          <Tooltip content={getTechBonusTooltip()}>
+            <span className="cursor-help">Tech: +{production.productionSummary.technologyBonus.toFixed(0)}%</span>
+          </Tooltip>
+          <span>|</span>
+          <Tooltip content={getInfraBonusTooltip()}>
+            <span className="cursor-help">Infra: +{production.productionSummary.infrastructureBonus.toFixed(0)}%</span>
+          </Tooltip>
         </div>
       </div>
 
-      {currentResources.length === 0 && production.resources.length === 0 ? (
+      {isExpanded && (
+        <>
+          {currentResources.length === 0 && production.resources.length === 0 ? (
         <div className="text-sm text-white/60">No resources tracked</div>
       ) : (
-        <div className="space-y-4">
+            <div className="space-y-4">
           {Object.values(ResourceCategory).map(category => {
             const categoryResources = resourcesByCategory.get(category) || [];
             if (categoryResources.length === 0) return null;
 
             return (
               <div key={category} className="space-y-2">
-                <div className={`text-xs font-semibold ${categoryColors[category]}`}>
-                  {categoryLabels[category]}
-                </div>
+                <Tooltip content={`${categoryLabels[category]}: Resources in this category are used for ${category === ResourceCategory.BASIC ? 'population needs and basic production' : category === ResourceCategory.STRATEGIC ? 'military and advanced technology' : category === ResourceCategory.ECONOMIC ? 'trade and diplomatic influence' : 'industrial production and construction'}.`}>
+                  <div className={`text-xs font-semibold ${categoryColors[category]} cursor-help`}>
+                    {categoryLabels[category]}
+                  </div>
+                </Tooltip>
                 <div className="space-y-1.5">
                   {categoryResources.map(({ resource, production: prod, consumption: cons, netChange }) => {
                     const definition = ResourceRegistry.getResource(resource.resourceId);
@@ -145,32 +198,34 @@ export function ResourceDisplay({ country, stats, resources }: ResourceDisplayPr
                     const trendColor = netChange > 0 ? "text-green-400" : netChange < 0 ? "text-red-400" : "text-white/40";
 
                     return (
-                      <div
+                      <Tooltip
                         key={resource.resourceId}
-                        className="flex items-center justify-between rounded border border-white/10 bg-slate-800/50 px-3 py-2 text-sm"
+                        content={getResourceTooltip(resource.resourceId, prod, cons, resource.amount)}
                       >
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <span className="text-lg flex-shrink-0">{resourceIcons[resource.resourceId] || "📦"}</span>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium text-white/90 truncate">{definition.name}</div>
-                            <div className="text-xs text-white/50">
-                              {prod > 0 && <span className="text-green-400">+{prod}/turn</span>}
-                              {cons > 0 && (
-                                <>
-                                  {prod > 0 && " • "}
-                                  <span className="text-red-400">-{cons}/turn</span>
-                                </>
-                              )}
+                        <div className="flex items-center justify-between rounded border border-white/10 bg-slate-800/50 px-3 py-2 text-sm cursor-help">
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <span className="text-lg flex-shrink-0">{resourceIcons[resource.resourceId] || "📦"}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-white/90 truncate">{definition.name}</div>
+                              <div className="text-xs text-white/50">
+                                {prod > 0 && <span className="text-green-400">+{prod}/turn</span>}
+                                {cons > 0 && (
+                                  <>
+                                    {prod > 0 && " • "}
+                                    <span className="text-red-400">-{cons}/turn</span>
+                                  </>
+                                )}
+                              </div>
                             </div>
                           </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className="font-bold text-white">{resource.amount.toLocaleString()}</span>
+                            <span className={`text-xs ${trendColor}`}>
+                              {trend}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className="font-bold text-white">{resource.amount.toLocaleString()}</span>
-                          <span className={`text-xs ${trendColor}`} title={`Net: ${netChange > 0 ? '+' : ''}${netChange}/turn`}>
-                            {trend}
-                          </span>
-                        </div>
-                      </div>
+                      </Tooltip>
                     );
                   })}
                 </div>
@@ -178,6 +233,8 @@ export function ResourceDisplay({ country, stats, resources }: ResourceDisplayPr
             );
           })}
         </div>
+      )}
+        </>
       )}
     </div>
   );
