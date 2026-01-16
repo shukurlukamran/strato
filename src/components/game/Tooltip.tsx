@@ -11,9 +11,10 @@ interface TooltipProps {
 
 export function Tooltip({ content, children, className = "" }: TooltipProps) {
   const [show, setShow] = useState(false);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [position, setPosition] = useState({ x: 0, y: 0, align: 'center' as 'left' | 'center' | 'right' });
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const elementRef = useRef<HTMLElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -27,9 +28,29 @@ export function Tooltip({ content, children, className = "" }: TooltipProps) {
 
   const updatePosition = (element: HTMLElement) => {
     const rect = element.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const viewportWidth = window.innerWidth;
+    const tooltipMaxWidth = 320; // max-w-xs = 20rem = 320px
+    const padding = 16; // Minimum padding from screen edges
+    
+    let x = centerX;
+    let align: 'left' | 'center' | 'right' = 'center';
+    
+    // Check if tooltip would overflow left
+    if (centerX - tooltipMaxWidth / 2 < padding) {
+      x = rect.left + padding;
+      align = 'left';
+    }
+    // Check if tooltip would overflow right
+    else if (centerX + tooltipMaxWidth / 2 > viewportWidth - padding) {
+      x = rect.right - padding;
+      align = 'right';
+    }
+    
     setPosition({
-      x: rect.left + rect.width / 2,
-      y: rect.top - 5
+      x,
+      y: rect.top - 5,
+      align
     });
   };
 
@@ -83,19 +104,28 @@ export function Tooltip({ content, children, className = "" }: TooltipProps) {
       </div>
       {mounted && typeof window !== 'undefined' && show && createPortal(
         <div
+          ref={tooltipRef}
           className="fixed z-[9999] max-w-xs rounded-lg border border-white/20 bg-slate-900/95 px-3 py-2 text-xs text-white shadow-xl backdrop-blur-sm whitespace-pre-line"
           style={{
-            left: `${position.x}px`,
+            left: position.align === 'left' ? `${position.x}px` : position.align === 'right' ? `${position.x}px` : `${position.x}px`,
             top: `${position.y}px`,
-            transform: 'translate(-50%, -100%)',
+            transform: position.align === 'left' 
+              ? 'translate(0, -100%)' 
+              : position.align === 'right' 
+              ? 'translate(-100%, -100%)' 
+              : 'translate(-50%, -100%)',
             pointerEvents: 'none',
             marginTop: '-8px'
           }}
         >
           {content}
           <div
-            className="absolute left-1/2 top-full h-0 w-0 -translate-x-1/2 border-4 border-transparent border-t-slate-900/95"
-            style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))' }}
+            className="absolute top-full h-0 w-0 border-4 border-transparent border-t-slate-900/95"
+            style={{
+              left: position.align === 'left' ? '16px' : position.align === 'right' ? 'calc(100% - 16px)' : '50%',
+              transform: position.align === 'left' || position.align === 'right' ? 'none' : 'translateX(-50%)',
+              filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))'
+            }}
           />
         </div>,
         document.body
