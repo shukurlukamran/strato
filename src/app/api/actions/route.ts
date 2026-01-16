@@ -7,7 +7,7 @@ const CreateActionSchema = z.object({
   gameId: z.string().min(1),
   countryId: z.string().min(1),
   actionType: z.enum(["diplomacy", "military", "economic", "research"]),
-  actionData: z.record(z.unknown()),
+  actionData: z.record(z.string(), z.unknown()),
   turn: z.number().int().positive(),
 });
 
