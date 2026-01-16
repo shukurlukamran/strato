@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useEffect, useMemo, useState, useRef } from "react";
+import { useParams, useRouter } from "next/navigation";
 import type { Country, CountryStats } from "@/types/country";
 import type { Deal } from "@/types/deals";
 import type { ChatMessage } from "@/types/chat";
@@ -42,7 +42,9 @@ type ApiChat = { id: string; game_id: string; country_a_id: string; country_b_id
 
 export default function GamePage() {
   const params = useParams<{ id: string }>();
+  const router = useRouter();
   const gameId = params.id;
+  const hasAttemptedRedirect = useRef(false);
 
   const setGameId = useGameStore((s) => s.setGameId);
   const selectedCountryId = useGameStore((s) => s.selectedCountryId);
@@ -50,6 +52,7 @@ export default function GamePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [gameExists, setGameExists] = useState<boolean | null>(null);
+  const [redirecting, setRedirecting] = useState(false);
   const [turn, setTurn] = useState(1);
   const [playerCountryId, setPlayerCountryId] = useState<string>("");
   const [countries, setCountries] = useState<Country[]>([]);
@@ -192,6 +195,46 @@ export default function GamePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId]);
 
+  // Automatically redirect to latest game if current game doesn't exist
+  useEffect(() => {
+    if (gameExists === false && !hasAttemptedRedirect.current) {
+      hasAttemptedRedirect.current = true;
+      console.log("GamePage: Game not found, attempting redirect to latest game");
+      
+      const redirectToLatestGame = async () => {
+        try {
+          setRedirecting(true);
+          const res = await fetch('/api/game/list');
+          if (res.ok) {
+            const data = await res.json() as { games: Array<{ id: string; name: string }> };
+            if (data.games && data.games.length > 0) {
+              const latestGameId = data.games[0].id;
+              // Only redirect if it's a different game
+              if (latestGameId !== gameId) {
+                console.log(`GamePage: Redirecting to latest game: ${latestGameId}`);
+                router.push(`/game/${latestGameId}`);
+                return;
+              }
+            }
+          }
+          // If no games found or redirect failed, stay on error page
+          console.log("GamePage: No valid games found for redirect");
+        } catch (e) {
+          console.error("GamePage: Failed to redirect to latest game:", e);
+        } finally {
+          setRedirecting(false);
+        }
+      };
+
+      // Delay redirect slightly to show the error message briefly
+      const timer = setTimeout(() => {
+        void redirectToLatestGame();
+      }, 1500);
+
+      return () => clearTimeout(timer);
+    }
+  }, [gameExists, gameId, router]);
+
   const selectedCountry = useMemo(
     () => countries.find((c) => c.id === selectedCountryId) ?? null,
     [countries, selectedCountryId],
@@ -208,32 +251,67 @@ export default function GamePage() {
 
   // Show error if game doesn't exist or failed to load
   if (error || gameExists === false) {
+    const handleFindLatestGame = async () => {
+      setRedirecting(true);
+      try {
+        // Try to fetch a list of recent games
+        const res = await fetch('/api/game/list');
+        if (res.ok) {
+          const data = await res.json() as { games: Array<{ id: string; name: string }> };
+          if (data.games && data.games.length > 0) {
+            // Redirect to the most recent game
+            window.location.href = `/game/${data.games[0].id}`;
+            return;
+          }
+        }
+      } catch (e) {
+        console.error("Failed to fetch games:", e);
+      }
+      // If no games found, redirect to new game page
+      window.location.href = '/new-game';
+    };
+
     return (
       <div className="flex h-screen items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
         <div className="rounded-lg border border-red-500 bg-red-900/50 p-6 text-white max-w-md">
           <div className="mb-4 text-xl font-semibold">Game Not Found</div>
-          <div className="mb-4 text-sm text-red-200">{error || "The game you're looking for doesn't exist."}</div>
+          <div className="mb-4 text-sm text-red-200">
+            {error || "This game no longer exists in the database. It may have been deleted or the URL is incorrect."}
+          </div>
           {gameId && (
             <div className="mb-4 text-xs text-red-300 font-mono">
               Game ID: {gameId}
             </div>
           )}
-          <div className="flex gap-3">
-            <button
-              type="button"
-              className="rounded bg-white px-4 py-2 text-sm font-medium text-slate-900 hover:bg-gray-100"
-              onClick={() => void load()}
-            >
-              Retry
-            </button>
-            <button
-              type="button"
-              className="rounded bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-600"
-              onClick={() => window.location.href = '/new-game'}
-            >
-              Create New Game
-            </button>
-          </div>
+          {redirecting ? (
+            <div className="mb-4 text-sm text-blue-300 flex items-center gap-2">
+              <span className="animate-pulse">●</span>
+              Redirecting to latest game...
+            </div>
+          ) : (
+            <>
+              <div className="mb-4 text-xs text-red-200">
+                You can create a new game or try to load the most recent game.
+              </div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                  onClick={() => void handleFindLatestGame()}
+                  disabled={redirecting}
+                >
+                  Go to Latest Game
+                </button>
+                <button
+                  type="button"
+                  className="rounded bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-500"
+                  onClick={() => window.location.href = '/new-game'}
+                >
+                  Create New Game
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );

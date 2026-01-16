@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { ECONOMIC_BALANCE } from "@/lib/game-engine/EconomicBalance";
+import { memoryGames } from "@/app/api/game/route";
 
 const CreateActionSchema = z.object({
   gameId: z.string().min(1),
@@ -147,6 +148,125 @@ export async function POST(req: Request) {
       }
       
       if (isNotFoundError) {
+        // Check in-memory fallback (same as /api/game does)
+        const mem = memoryGames.get(gameId);
+        if (mem) {
+          console.log("[API Actions] Game found in memory fallback:", {
+            gameId,
+            currentTurn: mem.game.current_turn,
+          });
+          // Use memory game data - continue with action processing
+          // We'll use mem.game.current_turn instead of gameRes.data.current_turn
+          const gameTurn = mem.game.current_turn as number;
+          
+          // Get stats from memory
+          const countryStats = mem.stats[countryId];
+          if (!countryStats) {
+            return NextResponse.json({ error: "Country stats not found in memory game" }, { status: 404 });
+          }
+          
+          // Continue with action processing using memory data
+          // We'll need to handle the rest of the action creation with memory data
+          // For now, let's proceed with the normal flow but using memory stats
+          let cost = 0;
+          let validationError: string | null = null;
+          
+          // Calculate cost and validate based on action type
+          if (actionType === "research") {
+            const currentLevel = Math.floor(Number(countryStats.technology_level));
+            cost = Math.floor(500 * Math.pow(1.5, currentLevel));
+            
+            if (Number(countryStats.budget) < cost) {
+              validationError = `Insufficient budget. Need $${cost.toLocaleString()}, have $${Number(countryStats.budget).toLocaleString()}`;
+            }
+          } else if (actionType === "economic") {
+            const actionSubType = (actionData as any).subType;
+            
+            if (actionSubType === "infrastructure") {
+              const currentLevel = (countryStats as any).infrastructure_level || 0;
+              cost = Math.floor(ECONOMIC_BALANCE.INFRASTRUCTURE.BUILD_COST_BASE * Math.pow(ECONOMIC_BALANCE.INFRASTRUCTURE.BUILD_COST_MULTIPLIER, currentLevel));
+              
+              if (Number(countryStats.budget) < cost) {
+                validationError = `Insufficient budget. Need $${cost.toLocaleString()}, have $${Number(countryStats.budget).toLocaleString()}`;
+              }
+            }
+          } else if (actionType === "military") {
+            const actionSubType = (actionData as any).subType;
+            
+            if (actionSubType === "recruit") {
+              const amount = (actionData as any).amount || 1;
+              cost = amount * 100;
+              
+              if (Number(countryStats.budget) < cost) {
+                validationError = `Insufficient budget. Need $${cost.toLocaleString()}, have $${Number(countryStats.budget).toLocaleString()}`;
+              }
+            }
+          }
+          
+          if (validationError) {
+            return NextResponse.json({ error: validationError }, { status: 400 });
+          }
+          
+          // Try to insert action into Supabase even for in-memory games
+          // (in case Supabase is working now but game was created in memory earlier)
+          const now = new Date().toISOString();
+          const inserted = await supabase
+            .from("actions")
+            .insert({
+              game_id: gameId,
+              country_id: countryId,
+              turn: gameTurn,
+              action_type: actionType,
+              action_data: { ...actionData, cost },
+              status: "pending",
+              created_at: now,
+            })
+            .select("id, game_id, country_id, turn, action_type, action_data, status, created_at")
+            .single();
+          
+          if (inserted.error) {
+            console.warn("[API Actions] Failed to insert action to Supabase for in-memory game:", inserted.error);
+            // For in-memory games, return success but note that action isn't persisted
+            return NextResponse.json({
+              action: {
+                id: crypto.randomUUID(),
+                gameId: gameId,
+                countryId: countryId,
+                turn: gameTurn,
+                actionType: actionType,
+                actionData: { ...actionData, cost },
+                status: "pending",
+                createdAt: now,
+              },
+              cost,
+              note: "In-memory game: action created but not persisted to database",
+            });
+          }
+          
+          console.log("[API Actions] Action created successfully for in-memory game:", {
+            actionId: inserted.data.id,
+            gameId: inserted.data.game_id,
+            countryId: inserted.data.country_id,
+            actionType: inserted.data.action_type,
+            turn: inserted.data.turn,
+            cost,
+          });
+          
+          return NextResponse.json({
+            action: {
+              id: inserted.data.id,
+              gameId: inserted.data.game_id,
+              countryId: inserted.data.country_id,
+              turn: inserted.data.turn,
+              actionType: inserted.data.action_type,
+              actionData: inserted.data.action_data,
+              status: inserted.data.status,
+              createdAt: inserted.data.created_at,
+            },
+            cost,
+          });
+        }
+        
         // Double-check by trying to find any game with similar ID
         const allGames = await supabase
           .from("games")

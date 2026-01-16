@@ -35,7 +35,7 @@ type DbCountryStats = {
   created_at: string;
 };
 
-const memoryGames = new Map<
+export const memoryGames = new Map<
   string,
   {
     game: DbGame;
