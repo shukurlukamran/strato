@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { createClient } from "@supabase/supabase-js";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { ECONOMIC_BALANCE } from "@/lib/game-engine/EconomicBalance";
 
@@ -47,7 +48,35 @@ export async function POST(req: Request) {
   }
 
   try {
-    const supabase = getSupabaseServerClient();
+    // Create Supabase client with service role key to bypass RLS
+    // This ensures we have the same permissions as /api/game route
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    
+    // Debug: Log Supabase client configuration
+    console.log("[API Actions] Supabase client config:", {
+      url: supabaseUrl,
+      keyType: supabaseServiceRoleKey ? 'SERVICE_ROLE' : 'ANON',
+      keyLength: supabaseServiceRoleKey?.length || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.length,
+      hasServiceRoleKey: !!supabaseServiceRoleKey,
+      hasAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    });
+
+    // Use service role key directly to ensure RLS bypass (same as getSupabaseServerClient but explicit)
+    let supabase;
+    if (supabaseUrl && supabaseServiceRoleKey) {
+      supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        },
+      });
+      console.log("[API Actions] Using SERVICE_ROLE key (bypasses RLS)");
+    } else {
+      // Fallback to shared function if env vars not available
+      console.warn("[API Actions] Service role key not found, using getSupabaseServerClient()");
+      supabase = getSupabaseServerClient();
+    }
 
     // Get the game's current turn - first verify game exists
     console.log("[API Actions] Looking for game:", {
@@ -57,47 +86,103 @@ export async function POST(req: Request) {
       isValidUUID: uuidRegex.test(gameId),
     });
     
+    // Test: Try to query games table to verify access
+    const testQuery = await supabase
+      .from("games")
+      .select("id")
+      .limit(1);
+    console.log("[API Actions] Test query to games table:", {
+      success: !testQuery.error,
+      error: testQuery.error?.message,
+      canAccessTable: !testQuery.error,
+    });
+    
+    // Use .single() to match the game route exactly
     const gameRes = await supabase
       .from("games")
       .select("id, current_turn, status")
       .eq("id", gameId)
-      .maybeSingle(); // Use maybeSingle instead of single to avoid errors
+      .single();
 
     if (gameRes.error) {
+      // Check if it's a "not found" error (PGRST116) vs RLS/policy error vs other error
+      const isNotFoundError = gameRes.error.code === 'PGRST116' || 
+                              gameRes.error.message?.includes('No rows') ||
+                              gameRes.error.message?.includes('not found');
+      const isRLSError = gameRes.error.code === 'PGRST301' || 
+                         gameRes.error.message?.includes('policy') ||
+                         gameRes.error.message?.includes('permission') ||
+                         gameRes.error.message?.includes('RLS') ||
+                         gameRes.error.message?.includes('row-level security');
+      
       console.error("[API Actions] Game query error:", {
         gameId,
         error: gameRes.error,
         errorMessage: gameRes.error.message,
         errorCode: gameRes.error.code,
+        errorDetails: gameRes.error.details,
+        errorHint: gameRes.error.hint,
+        isNotFoundError,
+        isRLSError,
       });
+      
+      if (isRLSError) {
+        // Double-check by trying to find any game to verify table access
+        const allGames = await supabase
+          .from("games")
+          .select("id, name, created_at")
+          .limit(10)
+          .order("created_at", { ascending: false });
+        
+        console.log("[API Actions] RLS Error - Test query results:", {
+          totalFound: allGames.data?.length || 0,
+          gameIds: allGames.data?.map(g => ({ id: g.id, name: g.name })) || [],
+          queryError: allGames.error?.message,
+          canAccessTable: !allGames.error,
+        });
+        
+        return NextResponse.json({ 
+          error: `Row Level Security (RLS) policy blocked access. Game ID: ${gameId}. Please check RLS policies on games table or ensure SUPABASE_SERVICE_ROLE_KEY is set.` 
+        }, { status: 403 });
+      }
+      
+      if (isNotFoundError) {
+        // Double-check by trying to find any game with similar ID
+        const allGames = await supabase
+          .from("games")
+          .select("id, name, created_at")
+          .limit(10)
+          .order("created_at", { ascending: false });
+        
+        console.log("[API Actions] Game not found - Sample game IDs in database:", {
+          totalFound: allGames.data?.length || 0,
+          gameIds: allGames.data?.map(g => ({ id: g.id, name: g.name })) || [],
+          requestedGameId: gameId,
+          queryError: allGames.error?.message,
+        });
+        
+        // Also check if there are any games at all
+        const gameCount = await supabase
+          .from("games")
+          .select("id", { count: "exact", head: true });
+        
+        console.log("[API Actions] Total games in database:", {
+          count: gameCount.count,
+          countError: gameCount.error?.message,
+        });
+        
+        return NextResponse.json({ 
+          error: `Game not found. Game ID: ${gameId}` 
+        }, { status: 404 });
+      }
+      
       return NextResponse.json({ 
         error: `Database error: ${gameRes.error.message || 'Failed to query game'}` 
       }, { status: 500 });
     }
 
     if (!gameRes.data) {
-      console.error("[API Actions] Game not found for ID:", gameId);
-      
-      // Double-check by trying to find any game with similar ID
-      const allGames = await supabase
-        .from("games")
-        .select("id, name, created_at")
-        .limit(10)
-        .order("created_at", { ascending: false });
-      
-      console.log("[API Actions] Sample game IDs in database:", {
-        totalFound: allGames.data?.length || 0,
-        gameIds: allGames.data?.map(g => ({ id: g.id, name: g.name })) || [],
-        requestedGameId: gameId,
-      });
-      
-      // Also check if there are any games at all
-      const gameCount = await supabase
-        .from("games")
-        .select("id", { count: "exact", head: true });
-      
-      console.log("[API Actions] Total games in database:", gameCount.count);
-      
+      console.error("[API Actions] Game query returned no data (unexpected):", gameId);
       return NextResponse.json({ 
         error: `Game not found. Game ID: ${gameId}` 
       }, { status: 404 });
