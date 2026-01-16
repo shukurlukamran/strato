@@ -287,6 +287,7 @@ export default function GamePage() {
                 stats={selectedStats}
                 gameId={gameId}
                 currentTurn={turn}
+                playerCountryId={playerCountryId}
                 onEndTurn={async () => {
                   try {
                     const res = await fetch("/api/turn", {

@@ -23,19 +23,48 @@ export async function POST(req: Request) {
   try {
     const supabase = getSupabaseServerClient();
 
-    // Get current stats to validate action
+    // Get the game's current turn
+    const gameRes = await supabase
+      .from("games")
+      .select("current_turn")
+      .eq("id", gameId)
+      .single();
+
+    if (gameRes.error || !gameRes.data) {
+      return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    }
+
+    const gameTurn = gameRes.data.current_turn as number;
+
+    // Get current stats to validate action - use the game's current turn
     const statsRes = await supabase
       .from("country_stats")
       .select("budget, technology_level, infrastructure_level, military_strength")
       .eq("country_id", countryId)
-      .eq("turn", turn)
+      .eq("turn", gameTurn)
       .single();
 
+    let stats;
     if (statsRes.error || !statsRes.data) {
-      return NextResponse.json({ error: "Country stats not found" }, { status: 404 });
+      // Try to get the latest stats if exact turn match fails
+      const latestStatsRes = await supabase
+        .from("country_stats")
+        .select("budget, technology_level, infrastructure_level, military_strength")
+        .eq("country_id", countryId)
+        .order("turn", { ascending: false })
+        .limit(1)
+        .single();
+
+      if (latestStatsRes.error || !latestStatsRes.data) {
+        return NextResponse.json({ error: "Country stats not found" }, { status: 404 });
+      }
+      
+      // Use latest stats but create action for current turn
+      stats = latestStatsRes.data;
+    } else {
+      stats = statsRes.data;
     }
 
-    const stats = statsRes.data;
     let cost = 0;
     let validationError: string | null = null;
 
@@ -77,14 +106,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: validationError }, { status: 400 });
     }
 
-    // Create the action
+    // Create the action - use game's current turn, not the passed turn
     const now = new Date().toISOString();
     const inserted = await supabase
       .from("actions")
       .insert({
         game_id: gameId,
         country_id: countryId,
-        turn,
+        turn: gameTurn,
         action_type: actionType,
         action_data: { ...actionData, cost },
         status: "pending",

@@ -9,6 +9,7 @@ interface ActionPanelProps {
   stats: CountryStats | null;
   gameId?: string;
   currentTurn: number;
+  playerCountryId?: string;
   onEndTurn: () => void;
   onActionCreated?: () => void;
 }
@@ -18,17 +19,31 @@ export function ActionPanel({
   stats, 
   gameId, 
   currentTurn,
+  playerCountryId,
   onEndTurn,
   onActionCreated 
 }: ActionPanelProps) {
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isExpanded, setIsExpanded] = useState(true);
+
+  // Only show actions for player's own country
+  const isPlayerCountry = country?.id === playerCountryId;
 
   if (!country || !stats || !gameId) {
     return (
       <div className="rounded-lg border border-white/10 bg-gradient-to-br from-slate-800/90 to-slate-900/90 p-4 shadow-lg">
         <div className="mb-3 text-sm font-semibold text-white">Actions</div>
         <div className="text-xs text-white/60">Select a country to perform actions</div>
+      </div>
+    );
+  }
+
+  if (!isPlayerCountry) {
+    return (
+      <div className="rounded-lg border border-white/10 bg-gradient-to-br from-slate-800/90 to-slate-900/90 p-4 shadow-lg">
+        <div className="mb-3 text-sm font-semibold text-white">Actions</div>
+        <div className="text-xs text-white/60">Actions are only available for your own country</div>
       </div>
     );
   }
@@ -81,15 +96,23 @@ export function ActionPanel({
 
   return (
     <div className="rounded-lg border border-white/10 bg-gradient-to-br from-slate-800/90 to-slate-900/90 p-4 shadow-lg">
-      <div className="mb-3 text-sm font-semibold text-white">Actions</div>
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="mb-3 flex items-center gap-2 text-sm font-semibold text-white hover:text-white/80 transition-colors"
+      >
+        <span>{isExpanded ? "▼" : "▶"}</span>
+        <span>Actions</span>
+      </button>
       
-      {error && (
-        <div className="mb-3 rounded border border-red-500/50 bg-red-900/20 px-3 py-2 text-xs text-red-400">
-          {error}
-        </div>
-      )}
+      {isExpanded && (
+        <>
+          {error && (
+            <div className="mb-3 rounded border border-red-500/50 bg-red-900/20 px-3 py-2 text-xs text-red-400">
+              {error}
+            </div>
+          )}
 
-      <div className="space-y-2">
+          <div className="space-y-2">
         {/* Research Action */}
         <button
           type="button"
@@ -167,7 +190,8 @@ export function ActionPanel({
             End Turn
           </button>
         </div>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
