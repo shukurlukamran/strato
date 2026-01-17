@@ -321,12 +321,7 @@ export function CountryCard({
   };
 
   // Map existing data to display format
-  const flag = "🏳️"; // Default flag emoji
   const government = country.isPlayerControlled ? "Your Country" : "AI Controlled";
-  const gdp = Number(stats.budget);
-  const population = stats.population;
-  const militaryStrength = stats.militaryStrength;
-  const techLevel = Number(stats.technologyLevel);
 
   return (
     <>
@@ -343,33 +338,6 @@ export function CountryCard({
           {country.isPlayerControlled && (
             <span className="text-xl text-yellow-400">⚜</span>
           )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div className="rounded border border-white/10 bg-slate-800/50 p-3">
-            <div className="text-xs text-white/60">Budget (GDP)</div>
-            <div className="mt-1 text-lg font-bold text-green-400">
-              {gdp.toLocaleString()}
-            </div>
-          </div>
-          <div className="rounded border border-white/10 bg-slate-800/50 p-3">
-            <div className="text-xs text-white/60">Population</div>
-            <div className="mt-1 text-lg font-bold text-white">
-              {population.toLocaleString()}
-            </div>
-          </div>
-          <div className="rounded border border-white/10 bg-slate-800/50 p-3">
-            <div className="text-xs text-white/60">Military</div>
-            <div className="mt-1 text-lg font-bold text-red-400">
-              {militaryStrength}
-            </div>
-          </div>
-          <div className="rounded border border-white/10 bg-slate-800/50 p-3">
-            <div className="text-xs text-white/60">Technology</div>
-            <div className="mt-1 text-lg font-bold text-blue-400">
-              {techLevel.toFixed(1)}
-            </div>
-          </div>
         </div>
 
         <button

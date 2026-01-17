@@ -28,27 +28,30 @@ export async function POST(req: Request) {
       .from("games")
       .select("current_turn, status")
       .eq("id", gameId)
-      .single();
+      .maybeSingle();
 
     if (gameRes.error || !gameRes.data) {
+      console.error("[Actions API] Game not found:", { gameId, error: gameRes.error });
       return NextResponse.json({ error: "Game not found" }, { status: 404 });
     }
 
     const currentTurn = gameRes.data.current_turn as number;
 
-    // Get current country stats
+    // Get current country stats for the current turn
     const statsRes = await supabase
       .from("country_stats")
-      .select("budget, technology_level, infrastructure_level, military_strength")
+      .select("id, turn, budget, technology_level, infrastructure_level, military_strength")
       .eq("country_id", countryId)
       .eq("turn", currentTurn)
-      .single();
+      .maybeSingle();
 
     if (statsRes.error || !statsRes.data) {
+      console.error("[Actions API] Country stats not found:", { countryId, currentTurn, error: statsRes.error });
       return NextResponse.json({ error: "Country stats not found" }, { status: 404 });
     }
 
     const stats = statsRes.data;
+    const statsId = stats.id;
     const currentBudget = Number(stats.budget);
 
     // Define action costs and effects
@@ -107,16 +110,15 @@ export async function POST(req: Request) {
       }
     }
 
-    // Update stats in database
+    // Update stats in database using the specific stats ID
     const updateRes = await supabase
       .from("country_stats")
       .update(newStats)
-      .eq("country_id", countryId)
-      .eq("turn", currentTurn)
+      .eq("id", statsId)
       .select()
-      .single();
+      .maybeSingle();
 
-    if (updateRes.error) {
+    if (updateRes.error || !updateRes.data) {
       console.error("Failed to update stats:", updateRes.error);
       return NextResponse.json({ error: "Failed to update stats" }, { status: 500 });
     }
