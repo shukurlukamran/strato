@@ -294,22 +294,22 @@ export async function POST(req: Request) {
     );
     
     // Create new stats entries for the next turn for countries that don't have them yet
-    // Use updated stats from state (which includes economic changes)
+    // Use the freshly fetched stats from database (which includes all economic and action changes)
     const nextTurnStats = updatedStatsRes.data
       .filter((s) => !existingCountryIds.has(s.country_id))
       .map((s) => {
-        const updatedStats = state.data.countryStatsByCountryId[s.country_id];
+        // Use database values directly - they already have economic updates applied
         return {
           country_id: s.country_id,
           turn: turn + 1,
-          population: updatedStats?.population ?? s.population,
-          budget: updatedStats?.budget ?? Number(s.budget),
-          technology_level: updatedStats?.technologyLevel ?? Number(s.technology_level),
-          infrastructure_level: updatedStats?.infrastructureLevel ?? (s.infrastructure_level ?? 0),
-          military_strength: updatedStats?.militaryStrength ?? s.military_strength,
-          military_equipment: updatedStats?.militaryEquipment ?? (s.military_equipment ?? {}),
-          resources: updatedStats?.resources ?? (s.resources ?? {}),
-          diplomatic_relations: updatedStats?.diplomaticRelations ?? (s.diplomatic_relations ?? {}),
+          population: s.population,
+          budget: Number(s.budget),
+          technology_level: Number(s.technology_level),
+          infrastructure_level: s.infrastructure_level ?? 0,
+          military_strength: s.military_strength,
+          military_equipment: s.military_equipment ?? {},
+          resources: s.resources ?? {},
+          diplomatic_relations: s.diplomatic_relations ?? {},
           created_at: new Date().toISOString(),
         };
       });
@@ -319,8 +319,19 @@ export async function POST(req: Request) {
       if (insertRes.error) {
         console.error("Failed to create stats for next turn:", insertRes.error);
       } else {
-        console.log(`Created stats for turn ${turn + 1} for ${nextTurnStats.length} countries`);
+        console.log(`✓ Created stats for turn ${turn + 1} for ${nextTurnStats.length} countries`);
+        // Log a sample of the updated stats for debugging
+        if (nextTurnStats.length > 0) {
+          console.log(`Sample stats for turn ${turn + 1}:`, {
+            countryId: nextTurnStats[0].country_id,
+            budget: nextTurnStats[0].budget,
+            population: nextTurnStats[0].population,
+            resources: nextTurnStats[0].resources
+          });
+        }
       }
+    } else {
+      console.log(`No new stats to create for turn ${turn + 1} (all countries already have stats)`);
     }
   }
 

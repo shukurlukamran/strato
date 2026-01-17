@@ -62,6 +62,7 @@ export default function GamePage() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [showSidebar, setShowSidebar] = useState(true);
   const [endingTurn, setEndingTurn] = useState(false);
+  const [turnProcessing, setTurnProcessing] = useState(false);
 
   useEffect(() => setGameId(gameId), [gameId, setGameId]);
 
@@ -331,6 +332,19 @@ export default function GamePage() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
+      {/* Turn Processing Overlay */}
+      {turnProcessing && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm">
+          <div className="rounded-lg border border-blue-500/50 bg-slate-800/90 px-8 py-6 shadow-2xl">
+            <div className="flex items-center gap-4">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent"></div>
+              <div className="text-xl font-semibold text-white">Ending Turn...</div>
+            </div>
+            <div className="mt-2 text-sm text-white/60">Processing actions and updating game state</div>
+          </div>
+        </div>
+      )}
+      
       {/* Top HUD Bar */}
       <div className="absolute left-0 right-0 top-0 z-20 flex items-center justify-between border-b border-white/10 bg-slate-900/80 backdrop-blur-sm px-4 py-2">
         <div className="flex items-center gap-4">
@@ -470,9 +484,11 @@ export default function GamePage() {
                     }
                   }}
                   onEndTurn={async () => {
-                    if (endingTurn) return;
+                    if (endingTurn || turnProcessing) return;
                     
                     setEndingTurn(true);
+                    setTurnProcessing(true);
+                    
                     try {
                       const res = await fetch("/api/turn", {
                         method: "POST",
@@ -489,17 +505,26 @@ export default function GamePage() {
                         } catch {
                           errorMessage = errorText || errorMessage;
                         }
-                        alert(`Failed to end turn: ${errorMessage}`);
+                        console.error("Failed to end turn:", errorMessage);
+                        setTurnProcessing(false);
+                        setEndingTurn(false);
                         return;
                       }
                       
                       const data = await res.json();
+                      
+                      // Update turn number immediately
                       setTurn(data.nextTurn);
-                      await load(); // Reload game state
-                      alert(`✓ Turn ${data.nextTurn - 1} complete! Now on Turn ${data.nextTurn}`);
+                      
+                      // Reload game state to get updated stats for the new turn
+                      await load();
+                      
+                      // Turn processing complete
+                      setTurnProcessing(false);
+                      setEndingTurn(false);
                     } catch (e) {
-                      alert(`Error ending turn: ${e instanceof Error ? e.message : "Unknown error"}`);
-                    } finally {
+                      console.error("Error ending turn:", e instanceof Error ? e.message : "Unknown error");
+                      setTurnProcessing(false);
                       setEndingTurn(false);
                     }
                   }}
