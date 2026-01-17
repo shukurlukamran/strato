@@ -88,7 +88,7 @@ export async function POST(req: Request) {
     switch (actionType) {
       case "research": {
         const techLevel = Math.floor(Number(stats.technology_level));
-        cost = Math.floor(1000 * Math.pow(1.3, techLevel));
+        cost = Math.floor(500 * Math.pow(1.4, techLevel)); // Lower base, steeper curve
         
         if (currentBudget < cost) {
           return NextResponse.json({ 
@@ -105,7 +105,7 @@ export async function POST(req: Request) {
 
       case "infrastructure": {
         const infraLevel = stats.infrastructure_level || 0;
-        cost = Math.floor(800 * Math.pow(1.25, infraLevel));
+        cost = Math.floor(600 * Math.pow(1.3, infraLevel)); // Slightly cheaper
         
         if (currentBudget < cost) {
           return NextResponse.json({ 

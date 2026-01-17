@@ -4,6 +4,20 @@ import { GameState } from "@/lib/game-engine/GameState";
 import { ECONOMIC_BALANCE } from "./EconomicBalance";
 
 export class ActionResolver {
+  /**
+   * Calculate research cost based on current technology level
+   */
+  static calculateResearchCost(currentLevel: number): number {
+    return Math.floor(500 * Math.pow(1.4, currentLevel)); // Lower base, steeper curve
+  }
+
+  /**
+   * Calculate infrastructure cost based on current infrastructure level
+   */
+  static calculateInfrastructureCost(currentLevel: number): number {
+    return Math.floor(600 * Math.pow(1.3, currentLevel)); // Slightly cheaper
+  }
+
   resolve(state: GameState, action: GameAction): GameAction {
     if (!state.data.countryStatsByCountryId[action.countryId]) {
       return { ...action, status: "failed" };

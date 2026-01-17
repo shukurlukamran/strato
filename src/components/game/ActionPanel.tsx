@@ -95,10 +95,10 @@ export function ActionPanel({
 
   // Calculate costs
   const techLevel = Math.floor(stats.technologyLevel);
-  const techCost = Math.floor(1000 * Math.pow(1.3, techLevel));
+  const techCost = Math.floor(500 * Math.pow(1.4, techLevel)); // Lower base, steeper curve
   
   const infraLevel = stats.infrastructureLevel || 0;
-  const infraCost = Math.floor(800 * Math.pow(1.25, infraLevel));
+  const infraCost = Math.floor(600 * Math.pow(1.3, infraLevel)); // Slightly cheaper
   
   const militaryCost = 500;
   

@@ -7,28 +7,28 @@
 export const ECONOMIC_BALANCE = {
   // Budget Generation
   BUDGET: {
-    BASE_TAX_PER_CITIZEN: 5,           // Base tax income per population unit (10k pop)
-    TECHNOLOGY_TAX_MULTIPLIER: 0.15,    // +15% per tech level
-    MAX_TAX_MULTIPLIER: 3.0,           // Cap at 300% of base
-    INFRASTRUCTURE_BONUS: 0.1,         // +10% per infrastructure level
-    TRADE_INCOME_MULTIPLIER: 0.05,     // 5% of total trade value
+    BASE_TAX_PER_CITIZEN: 15,          // Base tax income per population unit (10k pop)
+    TECHNOLOGY_TAX_MULTIPLIER: 0.25,   // +25% per tech level
+    MAX_TAX_MULTIPLIER: 4.0,           // Cap at 400% of base
+    INFRASTRUCTURE_BONUS: 0.15,        // +15% per infrastructure level
+    TRADE_INCOME_MULTIPLIER: 0.10,     // 10% of total trade value
   },
   
   // Resource Production
   PRODUCTION: {
-    BASE_FOOD_PER_POP: 0.8,            // Each 10k pop produces 8 food
+    BASE_FOOD_PER_POP: 6.5,            // Each 10k pop produces 65 food
     BASE_INDUSTRIAL_OUTPUT: 5,          // Base industrial production
     TECH_PRODUCTION_MULTIPLIER: 0.2,   // +20% per tech level
     INFRASTRUCTURE_MULTIPLIER: 0.15,   // +15% per infrastructure level
-    POPULATION_EFFICIENCY: 0.7,        // Population work efficiency (0-1)
+    POPULATION_EFFICIENCY: 1.0,        // Population work efficiency (0-1)
     RESOURCE_EXTRACTION_RATE: 10,      // Base extraction per turn
   },
   
   // Resource Consumption
   CONSUMPTION: {
     FOOD_PER_10K_POPULATION: 5,        // Food consumed per 10k pop
-    MAINTENANCE_COST_MULTIPLIER: 0.05, // 5% of budget for maintenance
-    MILITARY_UPKEEP_PER_STRENGTH: 2,   // Budget cost per military strength point
+    MAINTENANCE_COST_MULTIPLIER: 0.01, // 1% of budget for maintenance
+    MILITARY_UPKEEP_PER_STRENGTH: 0.8, // Budget cost per military strength point
   },
   
   // Technology Effects
@@ -53,6 +53,6 @@ export const ECONOMIC_BALANCE = {
   INFRASTRUCTURE: {
     BUILD_COST_BASE: 1000,             // Base cost to increase infrastructure
     BUILD_COST_MULTIPLIER: 1.5,        // Cost increases 1.5x per level
-    MAINTENANCE_COST_PER_LEVEL: 50,    // Budget cost per infrastructure level
+    MAINTENANCE_COST_PER_LEVEL: 20,    // Budget cost per infrastructure level
   }
 } as const;

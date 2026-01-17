@@ -71,8 +71,7 @@ export class ResourceProduction {
         amount: Math.floor(
           populationUnits * 
           ECONOMIC_BALANCE.PRODUCTION.BASE_FOOD_PER_POP * 
-          multiplier * 
-          ECONOMIC_BALANCE.PRODUCTION.POPULATION_EFFICIENCY
+          multiplier
         )
       },
       {
