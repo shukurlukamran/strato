@@ -220,14 +220,13 @@ export class EconomicEngine {
         budget: newBudget,
         population: newPopulation,
         infrastructure_level: infraLevel,
-        resources: resourcesRecord,
-        updated_at: new Date().toISOString()
+        resources: resourcesRecord
       })
       .eq('country_id', countryId)
       .eq('turn', turn);
     
     if (error) {
-      console.error('Failed to save economic updates:', error);
+      console.error('[EconomicEngine] Failed to save economic updates:', error);
       throw error;
     }
     

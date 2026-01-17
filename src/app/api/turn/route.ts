@@ -247,8 +247,7 @@ export async function POST(req: Request) {
           budget: stats.budget,
           technology_level: stats.technologyLevel,
           infrastructure_level: stats.infrastructureLevel || 0,
-          military_strength: stats.militaryStrength,
-          updated_at: new Date().toISOString()
+          military_strength: stats.militaryStrength
         })
         .eq("country_id", stats.countryId)
         .eq("turn", turn);
@@ -306,10 +305,12 @@ export async function POST(req: Request) {
       (nextTurnStatsRes.data ?? []).map((s) => s.country_id)
     );
     
-    // Create new stats entries for the next turn for countries that don't have them yet
-    // Use the freshly fetched stats from database (which includes all economic and action changes)
+    if (existingCountryIds.size > 0) {
+      console.log(`[Turn API] Stats for turn ${turn + 1} already exist for ${existingCountryIds.size} countries. Updating them instead of creating new ones.`);
+    }
+    
+    // Prepare stats for the next turn using the freshly fetched stats from database
     const nextTurnStats = updatedStatsRes.data
-      .filter((s) => !existingCountryIds.has(s.country_id))
       .map((s) => {
         // Use database values directly - they already have economic updates applied
         return {
@@ -328,7 +329,13 @@ export async function POST(req: Request) {
       });
     
     if (nextTurnStats.length > 0) {
-      const insertRes = await supabase.from("country_stats").insert(nextTurnStats);
+      // Use upsert to either create or update stats for next turn
+      const insertRes = await supabase
+        .from("country_stats")
+        .upsert(nextTurnStats, { 
+          onConflict: 'country_id,turn',
+          ignoreDuplicates: false 
+        });
       if (insertRes.error) {
         console.error("Failed to create stats for next turn:", insertRes.error);
       } else {
