@@ -451,33 +451,29 @@ export default function GamePage() {
             {/* Actions - Only render if game exists and gameId is valid */}
             {gameExists && gameId && (
               <div className="mt-4">
-                {(() => {
-                  // Log the gameId being passed to ActionPanel for debugging
-                  console.log("GamePage: Rendering ActionPanel with gameId", {
-                    gameId,
-                    gameExists,
-                    urlParams: params.id,
-                    gameIdFromUrl: params.id,
-                    gameIdsMatch: gameId === params.id,
-                  });
-                  return null;
-                })()}
                 <ActionPanel
                   country={selectedCountry}
                   stats={selectedStats}
                   gameId={gameId}
-                  currentTurn={turn}
                   playerCountryId={playerCountryId}
                   endingTurn={endingTurn}
-                  onEndTurn={async () => {
-                    if (endingTurn) {
-                      console.log("End Turn already in progress, ignoring click");
-                      return;
+                  onStatsUpdate={(updatedStats) => {
+                    // Update stats locally without page reload
+                    if (selectedCountry) {
+                      setStatsByCountryId(prev => ({
+                        ...prev,
+                        [selectedCountry.id]: {
+                          ...prev[selectedCountry.id],
+                          ...updatedStats,
+                        }
+                      }));
                     }
+                  }}
+                  onEndTurn={async () => {
+                    if (endingTurn) return;
                     
                     setEndingTurn(true);
                     try {
-                      console.log("End Turn clicked, sending request...", { gameId });
                       const res = await fetch("/api/turn", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -493,26 +489,19 @@ export default function GamePage() {
                         } catch {
                           errorMessage = errorText || errorMessage;
                         }
-                        console.error("Failed to end turn:", { status: res.status, errorMessage });
                         alert(`Failed to end turn: ${errorMessage}`);
                         return;
                       }
                       
                       const data = await res.json();
-                      console.log("Turn ended successfully", { nextTurn: data.nextTurn });
                       setTurn(data.nextTurn);
                       await load(); // Reload game state
                       alert(`✓ Turn ${data.nextTurn - 1} complete! Now on Turn ${data.nextTurn}`);
                     } catch (e) {
-                      console.error("Failed to end turn:", e);
                       alert(`Error ending turn: ${e instanceof Error ? e.message : "Unknown error"}`);
                     } finally {
                       setEndingTurn(false);
                     }
-                  }}
-                  onActionCreated={async () => {
-                    // Reload stats after action is created
-                    await load();
                   }}
                 />
               </div>
