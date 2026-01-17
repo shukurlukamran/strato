@@ -202,6 +202,18 @@ export class EconomicEngine {
     // Update the stats for the current turn
     // Preserve infrastructure_level if it exists
     const infraLevel = updates.stats.infrastructureLevel ?? 0;
+    
+    console.log(`[EconomicEngine] Updating stats for country ${countryId}, turn ${turn}:`, {
+      oldBudget: updates.stats.budget,
+      newBudget,
+      budgetChange: updates.budgetChange,
+      oldPopulation: updates.stats.population,
+      newPopulation,
+      populationChange: updates.populationChange,
+      oldResources: updates.stats.resources,
+      newResources: resourcesRecord
+    });
+    
     const { error } = await supabase
       .from('country_stats')
       .update({
@@ -218,6 +230,8 @@ export class EconomicEngine {
       console.error('Failed to save economic updates:', error);
       throw error;
     }
+    
+    console.log(`[EconomicEngine] ✓ Stats updated successfully for country ${countryId}, turn ${turn}`);
   }
   
   private static parseResources(resources: Record<string, number>): ResourceAmount[] {

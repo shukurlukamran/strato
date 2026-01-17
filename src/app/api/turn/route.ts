@@ -265,6 +265,7 @@ export async function POST(req: Request) {
 
   // Create stats for the next turn based on current turn's stats
   // First, fetch the current stats again in case they were modified by deals/actions
+  console.log(`[Turn API] Fetching updated stats for turn ${turn} before creating next turn stats...`);
   const updatedStatsRes = await supabase
     .from("country_stats")
     .select(
@@ -279,6 +280,18 @@ export async function POST(req: Request) {
   if (updatedStatsRes.error) {
     console.error("Failed to fetch updated stats for next turn creation:", updatedStatsRes.error);
   } else if (updatedStatsRes.data && updatedStatsRes.data.length > 0) {
+    console.log(`[Turn API] Fetched ${updatedStatsRes.data.length} updated stats for turn ${turn}`);
+    
+    // Log sample of updated stats
+    if (updatedStatsRes.data.length > 0) {
+      console.log(`[Turn API] Sample updated stats for turn ${turn}:`, {
+        countryId: updatedStatsRes.data[0].country_id,
+        budget: updatedStatsRes.data[0].budget,
+        population: updatedStatsRes.data[0].population,
+        resources: updatedStatsRes.data[0].resources
+      });
+    }
+    
     // Check if stats for next turn already exist
     const nextTurnStatsRes = await supabase
       .from("country_stats")

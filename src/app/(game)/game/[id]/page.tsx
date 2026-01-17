@@ -66,16 +66,20 @@ export default function GamePage() {
 
   useEffect(() => setGameId(gameId), [gameId, setGameId]);
 
-  async function load() {
-    setLoading(true);
-    setError(null);
-    setGameExists(null);
+  async function loadGameData(showLoadingScreen = true) {
+    if (showLoadingScreen) {
+      setLoading(true);
+      setError(null);
+      setGameExists(null);
+    }
     
     // Validate gameId format first
     if (!gameId || typeof gameId !== 'string' || gameId.trim() === '') {
       setError("Invalid game ID");
       setGameExists(false);
-      setLoading(false);
+      if (showLoadingScreen) {
+        setLoading(false);
+      }
       return;
     }
 
@@ -138,6 +142,7 @@ export default function GamePage() {
         gameName: data.game.name, 
         turn: data.game.current_turn,
         gameIdsMatch: data.game.id === gameId,
+        statsCount: data.stats.length,
       });
       setGameExists(true);
       setTurn(data.game.current_turn);
@@ -171,6 +176,15 @@ export default function GamePage() {
         };
       }
       setStatsByCountryId(statsMap);
+      
+      console.log("GamePage: Stats loaded for turn", data.game.current_turn, ":", 
+        Object.entries(statsMap).map(([countryId, stats]) => ({
+          countryId,
+          budget: stats.budget,
+          population: stats.population,
+          resources: stats.resources
+        }))
+      );
 
       const chatMap: Record<string, string> = {};
       for (const ch of data.chats) {
@@ -188,8 +202,18 @@ export default function GamePage() {
       setError(errorMessage);
       console.error("GamePage: Error loading game", { gameId, error: errorMessage });
     } finally {
-      setLoading(false);
+      if (showLoadingScreen) {
+        setLoading(false);
+      }
     }
+  }
+
+  async function load() {
+    await loadGameData(true);
+  }
+
+  async function refreshGameData() {
+    await loadGameData(false);
   }
 
   useEffect(() => {
@@ -490,6 +514,7 @@ export default function GamePage() {
                     setTurnProcessing(true);
                     
                     try {
+                      console.log("Starting turn end process...");
                       const res = await fetch("/api/turn", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
@@ -512,12 +537,15 @@ export default function GamePage() {
                       }
                       
                       const data = await res.json();
+                      console.log("Turn ended successfully. New turn:", data.nextTurn);
                       
                       // Update turn number immediately
                       setTurn(data.nextTurn);
                       
-                      // Reload game state to get updated stats for the new turn
-                      await load();
+                      // Refresh game state WITHOUT showing loading screen
+                      await refreshGameData();
+                      
+                      console.log("Game data refreshed for turn", data.nextTurn);
                       
                       // Turn processing complete
                       setTurnProcessing(false);
