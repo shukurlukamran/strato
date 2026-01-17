@@ -28,14 +28,28 @@ export async function POST(req: Request) {
       .from("games")
       .select("current_turn, status")
       .eq("id", gameId)
-      .maybeSingle();
+      .limit(1);
 
-    if (gameRes.error || !gameRes.data) {
-      console.error("[Actions API] Game not found:", { gameId, error: gameRes.error });
+    if (gameRes.error) {
+      console.error("[Actions API] Game query error:", { gameId, error: gameRes.error });
       return NextResponse.json({ error: "Game not found" }, { status: 404 });
     }
 
-    const currentTurn = gameRes.data.current_turn as number;
+    if (!gameRes.data || gameRes.data.length === 0) {
+      console.error("[Actions API] Game not found (no data):", { gameId });
+      return NextResponse.json({ error: "Game not found" }, { status: 404 });
+    }
+
+    // Take the first result if multiple exist (shouldn't happen with primary key, but handle it)
+    const game = gameRes.data[0];
+    if (gameRes.data.length > 1) {
+      console.warn("[Actions API] Multiple games found with same ID (taking first):", {
+        gameId,
+        count: gameRes.data.length,
+      });
+    }
+
+    const currentTurn = game.current_turn as number;
 
     // Get current country stats for the current turn
     const statsRes = await supabase
@@ -43,14 +57,27 @@ export async function POST(req: Request) {
       .select("id, turn, budget, technology_level, infrastructure_level, military_strength")
       .eq("country_id", countryId)
       .eq("turn", currentTurn)
-      .maybeSingle();
+      .limit(1);
 
-    if (statsRes.error || !statsRes.data) {
-      console.error("[Actions API] Country stats not found:", { countryId, currentTurn, error: statsRes.error });
+    if (statsRes.error) {
+      console.error("[Actions API] Country stats query error:", { countryId, currentTurn, error: statsRes.error });
       return NextResponse.json({ error: "Country stats not found" }, { status: 404 });
     }
 
-    const stats = statsRes.data;
+    if (!statsRes.data || statsRes.data.length === 0) {
+      console.error("[Actions API] Country stats not found (no data):", { countryId, currentTurn });
+      return NextResponse.json({ error: "Country stats not found" }, { status: 404 });
+    }
+
+    // Take the first result if multiple exist
+    const stats = statsRes.data[0];
+    if (statsRes.data.length > 1) {
+      console.warn("[Actions API] Multiple stats found for same country/turn (taking first):", {
+        countryId,
+        currentTurn,
+        count: statsRes.data.length,
+      });
+    }
     const statsId = stats.id;
     const currentBudget = Number(stats.budget);
 
@@ -116,10 +143,15 @@ export async function POST(req: Request) {
       .update(newStats)
       .eq("id", statsId)
       .select()
-      .maybeSingle();
+      .limit(1);
 
-    if (updateRes.error || !updateRes.data) {
+    if (updateRes.error) {
       console.error("Failed to update stats:", updateRes.error);
+      return NextResponse.json({ error: "Failed to update stats" }, { status: 500 });
+    }
+
+    if (!updateRes.data || updateRes.data.length === 0) {
+      console.error("Failed to update stats: no data returned", { statsId });
       return NextResponse.json({ error: "Failed to update stats" }, { status: 500 });
     }
 

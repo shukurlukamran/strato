@@ -208,7 +208,7 @@ export async function GET(req: Request) {
       .from("games")
       .select("id, name, current_turn, status, player_country_id")
       .eq("id", gameId)
-      .single();
+      .limit(1);
       
     if (gameRes.error) {
       console.error("[API Game] Game query error:", {
@@ -241,11 +241,36 @@ export async function GET(req: Request) {
       });
     }
     
+    // Handle case where query returns no results or multiple results
+    if (!gameRes.data || gameRes.data.length === 0) {
+      console.error("[API Game] Game not found (no data returned):", { gameId });
+      const mem = memoryGames.get(gameId);
+      if (mem) {
+        return NextResponse.json({
+          game: mem.game,
+          countries: mem.countries,
+          stats: Object.values(mem.stats),
+          chats: Object.values(mem.chats),
+          note: "Supabase not configured; using in-memory game store.",
+        });
+      }
+      return NextResponse.json({ error: "Game not found." }, { status: 404 });
+    }
+    
+    // Take the first result if multiple exist (shouldn't happen with primary key, but handle it)
+    const game = gameRes.data[0];
+    if (gameRes.data.length > 1) {
+      console.warn("[API Game] Multiple games found with same ID (taking first):", {
+        gameId,
+        count: gameRes.data.length,
+      });
+    }
+    
     console.log("[API Game] Game found:", {
       requestedGameId: gameId,
-      dbGameId: gameRes.data.id,
-      gameName: gameRes.data.name,
-      idsMatch: gameRes.data.id === gameId,
+      dbGameId: game.id,
+      gameName: game.name,
+      idsMatch: game.id === gameId,
     });
 
     const countriesRes = await supabase
@@ -260,7 +285,7 @@ export async function GET(req: Request) {
       .select(
         "id, country_id, turn, population, budget, technology_level, infrastructure_level, military_strength, military_equipment, resources, diplomatic_relations, created_at",
       )
-      .eq("turn", gameRes.data.current_turn)
+      .eq("turn", game.current_turn)
       .in(
         "country_id",
         (countriesRes.data ?? []).map((c) => c.id),
@@ -273,7 +298,7 @@ export async function GET(req: Request) {
         .select(
           "id, country_id, turn, population, budget, technology_level, military_strength, military_equipment, resources, diplomatic_relations, created_at",
         )
-        .eq("turn", gameRes.data.current_turn)
+        .eq("turn", game.current_turn)
         .in(
           "country_id",
           (countriesRes.data ?? []).map((c) => c.id),
@@ -293,7 +318,7 @@ export async function GET(req: Request) {
       if (chatsRes.error) throw chatsRes.error;
 
       return NextResponse.json({
-        game: gameRes.data,
+        game: game,
         countries: countriesRes.data ?? [],
         stats: statsWithInfra,
         chats: chatsRes.data ?? [],
@@ -309,7 +334,7 @@ export async function GET(req: Request) {
     if (chatsRes.error) throw chatsRes.error;
 
     return NextResponse.json({
-      game: gameRes.data,
+      game: game,
       countries: countriesRes.data ?? [],
       stats: statsRes.data ?? [],
       chats: chatsRes.data ?? [],
