@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { CountryInitializer } from "@/lib/game-engine/CountryInitializer";
 
 const CreateGameSchema = z.object({
   name: z.string().min(1).default("New Game"),
@@ -54,17 +55,20 @@ const defaultCountries = [
   { name: "Falken", color: "#64748B", x: 75, y: 45 },
 ];
 
-function makeInitialStats(countryId: string, turn: number): DbCountryStats {
+function makeInitialStats(countryId: string, turn: number, gameSeed: string, countryIndex: number): DbCountryStats {
+  // Generate randomized starting profile using CountryInitializer
+  const profile = CountryInitializer.generateRandomStart(`${gameSeed}-country-${countryIndex}`);
+  
   return {
     id: crypto.randomUUID(),
     country_id: countryId,
     turn,
-    population: 1_000_000,
-    budget: 1_000,
-    technology_level: 1,
-    military_strength: 10,
+    population: profile.population,
+    budget: profile.budget,
+    technology_level: profile.technologyLevel,
+    military_strength: profile.militaryStrength,
     military_equipment: {},
-    resources: { food: 100, oil: 50, minerals: 30 },
+    resources: profile.resources,
     diplomatic_relations: {},
     created_at: new Date().toISOString(),
   };
@@ -132,19 +136,23 @@ export async function POST(req: Request) {
 
     await supabase.from("games").update({ player_country_id: player.id, updated_at: now }).eq("id", gameId);
 
-    const statsRows = countries.map((c) => ({
-      country_id: c.id,
-      turn: 1,
-      population: 1_000_000,
-      budget: 1_000,
-      technology_level: 1,
-      infrastructure_level: 0,
-      military_strength: 10,
-      military_equipment: {},
-      resources: { food: 100, oil: 50, minerals: 30 },
-      diplomatic_relations: {},
-      created_at: now,
-    }));
+    // Generate randomized starting stats for each country
+    const statsRows = countries.map((c, idx) => {
+      const profile = CountryInitializer.generateRandomStart(`${gameId}-country-${idx}`);
+      return {
+        country_id: c.id,
+        turn: 1,
+        population: profile.population,
+        budget: profile.budget,
+        technology_level: profile.technologyLevel,
+        infrastructure_level: profile.infrastructureLevel,
+        military_strength: profile.militaryStrength,
+        military_equipment: {},
+        resources: profile.resources,
+        diplomatic_relations: {},
+        created_at: now,
+      };
+    });
 
     const insertedStats = await supabase.from("country_stats").insert(statsRows);
     if (insertedStats.error) throw insertedStats.error;
@@ -181,7 +189,10 @@ export async function POST(req: Request) {
     const player = countries.find((c) => c.is_player_controlled)!;
     game.player_country_id = player.id;
     const stats: Record<string, DbCountryStats> = {};
-    for (const c of countries) stats[c.id] = makeInitialStats(c.id, 1);
+    for (let i = 0; i < countries.length; i++) {
+      const c = countries[i];
+      stats[c.id] = makeInitialStats(c.id, 1, gameId, i);
+    }
 
     const chatsArr = await ensureChats(gameId, countries);
     const chats: Record<string, { id: string; country_a_id: string; country_b_id: string }> = {};
