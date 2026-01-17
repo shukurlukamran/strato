@@ -101,11 +101,14 @@ export async function POST(req: Request) {
     const createdGame = await supabase
       .from("games")
       .insert({ name, current_turn: 1, status: "active", created_at: now, updated_at: now })
-      .select("id, name, current_turn, status, player_country_id")
-      .single();
+      .select("id, name, current_turn, status, player_country_id");
+    
     if (createdGame.error) throw createdGame.error;
+    if (!createdGame.data || createdGame.data.length === 0) {
+      throw new Error("Failed to create game - no data returned");
+    }
 
-    const gameId = createdGame.data.id as string;
+    const gameId = createdGame.data[0].id as string;
 
     const countryRows = defaultCountries.map((c, idx) => ({
       game_id: gameId,

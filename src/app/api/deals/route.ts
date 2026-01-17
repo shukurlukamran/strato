@@ -71,14 +71,13 @@ export async function POST(req: Request) {
       })
       .select(
         "id, game_id, proposing_country_id, receiving_country_id, deal_type, deal_terms, status, proposed_at, accepted_at, expires_at, turn_created, turn_expires, created_at, updated_at",
-      )
-      .single();
+      );
 
-    if (inserted.error) {
+    if (inserted.error || !inserted.data || inserted.data.length === 0) {
       console.error("Supabase insert error:", inserted.error);
-      throw new Error(`Database error: ${inserted.error.message || "Failed to create deal"}`);
+      throw new Error(`Database error: ${inserted.error?.message || "Failed to create deal"}`);
     }
-    const d = inserted.data;
+    const d = inserted.data[0];
 
     return NextResponse.json({
       deal: {

@@ -34,10 +34,14 @@ export async function POST(req: Request) {
     .from("games")
     .select("id, current_turn, status")
     .eq("id", gameId)
-    .single();
+    .limit(1);
+  
   if (gameRes.error) return NextResponse.json({ error: gameRes.error.message }, { status: 400 });
+  if (!gameRes.data || gameRes.data.length === 0) {
+    return NextResponse.json({ error: "Game not found" }, { status: 404 });
+  }
 
-  const turn = gameRes.data.current_turn as number;
+  const turn = gameRes.data[0].current_turn as number;
 
   const countriesRes = await supabase
     .from("countries")
@@ -164,16 +168,16 @@ export async function POST(req: Request) {
         .select('population, budget, resources, infrastructure_level')
         .eq('country_id', country.id)
         .eq('turn', turn)
-        .single();
+        .limit(1);
       
-      if (countryStatsRes.data) {
+      if (countryStatsRes.data && countryStatsRes.data.length > 0) {
         // Update stats in state with database values
         state.withUpdatedStats(country.id, {
           ...stats,
-          budget: Number(countryStatsRes.data.budget),
-          population: countryStatsRes.data.population,
-          infrastructureLevel: countryStatsRes.data.infrastructure_level ?? 0,
-          resources: (countryStatsRes.data.resources as Record<string, number>) ?? stats.resources
+          budget: Number(countryStatsRes.data[0].budget),
+          population: countryStatsRes.data[0].population,
+          infrastructureLevel: countryStatsRes.data[0].infrastructure_level ?? 0,
+          resources: (countryStatsRes.data[0].resources as Record<string, number>) ?? stats.resources
         });
       } else {
         // Fallback: update manually if fetch fails

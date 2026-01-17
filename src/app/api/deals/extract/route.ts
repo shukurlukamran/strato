@@ -52,9 +52,9 @@ export async function POST(req: Request) {
       .from("games")
       .select("current_turn")
       .eq("id", gameId)
-      .single();
+      .limit(1);
     
-    if (gameRes.error) {
+    if (gameRes.error || !gameRes.data || gameRes.data.length === 0) {
       console.error("Failed to fetch game turn:", gameRes.error);
       return NextResponse.json({
         deal: result,
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
       });
     }
 
-    const currentTurn = gameRes.data.current_turn as number;
+    const currentTurn = gameRes.data[0].current_turn as number;
     const now = new Date().toISOString();
 
     // Calculate expiration turn (default: 5 turns for alliances, 1 turn for trades)
@@ -93,10 +93,9 @@ export async function POST(req: Request) {
         created_at: now,
         updated_at: now,
       })
-      .select("id, game_id, proposing_country_id, receiving_country_id, deal_type, deal_terms, status, proposed_at, accepted_at, expires_at, turn_created, turn_expires, created_at, updated_at")
-      .single();
+      .select("id, game_id, proposing_country_id, receiving_country_id, deal_type, deal_terms, status, proposed_at, accepted_at, expires_at, turn_created, turn_expires, created_at, updated_at");
 
-    if (dealInsert.error) {
+    if (dealInsert.error || !dealInsert.data || dealInsert.data.length === 0) {
       console.error("Failed to create deal:", dealInsert.error);
       return NextResponse.json({
         deal: result,
@@ -119,7 +118,7 @@ export async function POST(req: Request) {
       // Still return the deal, but with a warning
       return NextResponse.json({
         deal: result,
-        createdDeal: dealInsert.data,
+        createdDeal: dealInsert.data[0],
         message: "Deal created but some terms failed to execute",
         executionErrors: executionResult.errors,
         warning: true,
@@ -133,27 +132,27 @@ export async function POST(req: Request) {
         status: "active",
         updated_at: new Date().toISOString()
       })
-      .eq("id", dealInsert.data.id);
+      .eq("id", dealInsert.data[0].id);
 
-    console.log(`Deal ${dealInsert.data.id} automatically created, accepted, and executed`);
+    console.log(`Deal ${dealInsert.data[0].id} automatically created, accepted, and executed`);
 
     return NextResponse.json({
       deal: result,
       createdDeal: {
-        id: dealInsert.data.id,
-        gameId: dealInsert.data.game_id,
-        proposingCountryId: dealInsert.data.proposing_country_id,
-        receivingCountryId: dealInsert.data.receiving_country_id,
-        dealType: dealInsert.data.deal_type,
-        dealTerms: dealInsert.data.deal_terms,
+        id: dealInsert.data[0].id,
+        gameId: dealInsert.data[0].game_id,
+        proposingCountryId: dealInsert.data[0].proposing_country_id,
+        receivingCountryId: dealInsert.data[0].receiving_country_id,
+        dealType: dealInsert.data[0].deal_type,
+        dealTerms: dealInsert.data[0].deal_terms,
         status: "active", // Updated status
-        proposedAt: dealInsert.data.proposed_at,
-        acceptedAt: dealInsert.data.accepted_at,
-        expiresAt: dealInsert.data.expires_at,
-        turnCreated: dealInsert.data.turn_created,
-        turnExpires: dealInsert.data.turn_expires,
-        createdAt: dealInsert.data.created_at,
-        updatedAt: dealInsert.data.updated_at,
+        proposedAt: dealInsert.data[0].proposed_at,
+        acceptedAt: dealInsert.data[0].accepted_at,
+        expiresAt: dealInsert.data[0].expires_at,
+        turnCreated: dealInsert.data[0].turn_created,
+        turnExpires: dealInsert.data[0].turn_expires,
+        createdAt: dealInsert.data[0].created_at,
+        updatedAt: dealInsert.data[0].updated_at,
       },
       message: "Deal extracted, automatically confirmed, and implemented successfully",
       executed: true,
