@@ -12,6 +12,7 @@ interface ActionPanelProps {
   playerCountryId?: string;
   onEndTurn: () => void;
   onActionCreated?: () => void;
+  endingTurn?: boolean;
 }
 
 export function ActionPanel({ 
@@ -21,7 +22,8 @@ export function ActionPanel({
   currentTurn,
   playerCountryId,
   onEndTurn,
-  onActionCreated 
+  onActionCreated,
+  endingTurn = false
 }: ActionPanelProps) {
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +70,9 @@ export function ActionPanel({
   const handleAction = async (actionType: "research" | "economic" | "military", actionData: Record<string, unknown>) => {
     if (!gameId || !country.id) {
       console.error("ActionPanel: Missing gameId or country.id", { gameId, countryId: country?.id });
-      setError("Missing game ID or country ID");
+      const errorMsg = "Missing game ID or country ID";
+      setError(errorMsg);
+      alert(errorMsg); // Show immediate feedback
       return;
     }
 
@@ -113,7 +117,7 @@ export function ActionPanel({
           error: errorMessage,
           status: res.status,
         });
-        throw new Error(`Action failed (Game ID: ${gameId.slice(0, 8)}...): ${errorMessage}`);
+        throw new Error(errorMessage);
       }
 
       const data = await res.json();
@@ -123,6 +127,11 @@ export function ActionPanel({
         actionType,
         actionId: data.action?.id,
       });
+      
+      // Show success feedback
+      setError(null);
+      alert(`✓ Action created successfully! Cost: $${data.cost?.toLocaleString() || 0}`);
+      
       if (onActionCreated) {
         onActionCreated();
       }
@@ -135,6 +144,7 @@ export function ActionPanel({
         error: errorMessage,
       });
       setError(errorMessage);
+      alert(`Error: ${errorMessage}`); // Show immediate feedback
     } finally {
       setLoading(null);
     }
@@ -240,11 +250,11 @@ export function ActionPanel({
         <div className="pt-2 border-t border-white/10">
           <button
             type="button"
-            disabled={loading !== null}
-            className="w-full rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:from-blue-500 hover:to-blue-600 hover:shadow-xl active:scale-95 disabled:opacity-50"
+            disabled={loading !== null || endingTurn}
+            className="w-full rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:from-blue-500 hover:to-blue-600 hover:shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={onEndTurn}
           >
-            End Turn
+            {endingTurn ? "Ending Turn..." : "End Turn"}
           </button>
         </div>
           </div>

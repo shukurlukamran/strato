@@ -61,6 +61,7 @@ export default function GamePage() {
   const [messagesByChatId, setMessagesByChatId] = useState<Record<string, ChatMessage[]>>({});
   const [deals, setDeals] = useState<Deal[]>([]);
   const [showSidebar, setShowSidebar] = useState(true);
+  const [endingTurn, setEndingTurn] = useState(false);
 
   useEffect(() => setGameId(gameId), [gameId, setGameId]);
 
@@ -467,20 +468,46 @@ export default function GamePage() {
                   gameId={gameId}
                   currentTurn={turn}
                   playerCountryId={playerCountryId}
+                  endingTurn={endingTurn}
                   onEndTurn={async () => {
+                    if (endingTurn) {
+                      console.log("End Turn already in progress, ignoring click");
+                      return;
+                    }
+                    
+                    setEndingTurn(true);
                     try {
+                      console.log("End Turn clicked, sending request...", { gameId });
                       const res = await fetch("/api/turn", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ gameId }),
                       });
-                      if (res.ok) {
-                        const data = await res.json();
-                        setTurn(data.nextTurn);
-                        await load(); // Reload game state
+                      
+                      if (!res.ok) {
+                        const errorText = await res.text();
+                        let errorMessage = "Failed to end turn";
+                        try {
+                          const errorData = JSON.parse(errorText);
+                          errorMessage = errorData.error || errorMessage;
+                        } catch {
+                          errorMessage = errorText || errorMessage;
+                        }
+                        console.error("Failed to end turn:", { status: res.status, errorMessage });
+                        alert(`Failed to end turn: ${errorMessage}`);
+                        return;
                       }
+                      
+                      const data = await res.json();
+                      console.log("Turn ended successfully", { nextTurn: data.nextTurn });
+                      setTurn(data.nextTurn);
+                      await load(); // Reload game state
+                      alert(`✓ Turn ${data.nextTurn - 1} complete! Now on Turn ${data.nextTurn}`);
                     } catch (e) {
                       console.error("Failed to end turn:", e);
+                      alert(`Error ending turn: ${e instanceof Error ? e.message : "Unknown error"}`);
+                    } finally {
+                      setEndingTurn(false);
                     }
                   }}
                   onActionCreated={async () => {
