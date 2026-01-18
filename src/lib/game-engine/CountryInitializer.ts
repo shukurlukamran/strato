@@ -223,16 +223,24 @@ export class CountryInitializer {
       return Math.random;
     }
     
-    // Simple seeded RNG (mulberry32 algorithm)
+    // Improved seeded RNG (xorshift32 + better hash)
+    // Hash the seed string to a 32-bit integer
     let seedValue = 0;
     for (let i = 0; i < seed.length; i++) {
       seedValue = ((seedValue << 5) - seedValue) + seed.charCodeAt(i);
-      seedValue = seedValue & seedValue;
+      seedValue |= 0; // Convert to 32-bit integer
     }
     
+    // Ensure seed is non-zero for xorshift
+    if (seedValue === 0) seedValue = 123456789;
+    
+    // XorShift32 algorithm - produces better distribution than mulberry32
     return function() {
-      seedValue = (seedValue * 9301 + 49297) % 233280;
-      return seedValue / 233280;
+      seedValue ^= seedValue << 13;
+      seedValue ^= seedValue >>> 17;
+      seedValue ^= seedValue << 5;
+      // Convert to positive and normalize to [0, 1)
+      return ((seedValue >>> 0) / 4294967296);
     };
   }
   

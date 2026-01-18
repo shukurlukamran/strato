@@ -52,7 +52,7 @@ export async function POST(req: Request) {
   const statsRes = await supabase
     .from("country_stats")
     .select(
-      "id, country_id, turn, population, budget, technology_level, infrastructure_level, military_strength, military_equipment, resources, diplomatic_relations, created_at",
+      "id, country_id, turn, population, budget, technology_level, infrastructure_level, military_strength, military_equipment, resources, diplomatic_relations, resource_profile, created_at",
     )
     .eq("turn", turn)
     .in(
@@ -105,6 +105,7 @@ export async function POST(req: Request) {
           militaryEquipment: s.military_equipment ?? {},
           resources: s.resources ?? {},
           diplomaticRelations: s.diplomatic_relations ?? {},
+          resourceProfile: s.resource_profile,
           createdAt: s.created_at,
         },
       ]),
@@ -268,7 +269,7 @@ export async function POST(req: Request) {
   const updatedStatsRes = await supabase
     .from("country_stats")
     .select(
-      "id, country_id, turn, population, budget, technology_level, infrastructure_level, military_strength, military_equipment, resources, diplomatic_relations, created_at",
+      "id, country_id, turn, population, budget, technology_level, infrastructure_level, military_strength, military_equipment, resources, diplomatic_relations, resource_profile, created_at",
     )
     .eq("turn", turn)
     .in(
@@ -324,6 +325,7 @@ export async function POST(req: Request) {
           military_equipment: s.military_equipment ?? {},
           resources: s.resources ?? {},
           diplomatic_relations: s.diplomatic_relations ?? {},
+          resource_profile: s.resource_profile, // Preserve resource profile across turns
           created_at: new Date().toISOString(),
         };
       });

@@ -106,7 +106,7 @@ export function BudgetPanel({ country, stats, activeDealsValue = 0 }: BudgetPane
 
           {/* Infrastructure */}
           <Tooltip content={`Infrastructure Level: Your nation's development and public works. Higher levels boost economy and reduce costs.\n\nCurrent: Level ${stats.infrastructureLevel || 0}\nEconomy Bonus: +${((stats.infrastructureLevel || 0) * 10).toFixed(0)}%\nMaintenance: $${(stats.infrastructureLevel || 0) * 50}/turn`}>
-            <div className="rounded border border-white/10 bg-slate-800/50 px-3 py-2 cursor-help col-span-2">
+            <div className="rounded border border-white/10 bg-slate-800/50 px-4 py-2 cursor-help col-span-2">
               <div className="text-xs text-white/60 mb-1">🏗️ Infrastructure</div>
               <div className="text-lg font-bold text-green-400">
                 Level {stats.infrastructureLevel || 0}
