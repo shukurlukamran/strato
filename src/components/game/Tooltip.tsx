@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
 interface TooltipProps {
-  content: string;
+  content: string | React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }
@@ -86,7 +86,7 @@ export function Tooltip({ content, children, className = "" }: TooltipProps) {
     }
   };
 
-  if (!content || content.trim() === '') {
+  if (!content || (typeof content === 'string' && content.trim() === '')) {
     return <>{children}</>;
   }
 
@@ -105,7 +105,7 @@ export function Tooltip({ content, children, className = "" }: TooltipProps) {
       {mounted && typeof window !== 'undefined' && show && createPortal(
         <div
           ref={tooltipRef}
-          className="fixed z-[9999] max-w-xs rounded-lg border border-white/20 bg-slate-900/95 px-3 py-2 text-xs text-white shadow-xl backdrop-blur-sm whitespace-pre-line"
+          className={`fixed z-[9999] max-w-xs rounded-lg border border-white/20 bg-slate-900/95 px-3 py-2 text-xs text-white shadow-xl backdrop-blur-sm ${typeof content === 'string' ? 'whitespace-pre-line' : ''}`}
           style={{
             left: position.align === 'left' ? `${position.x}px` : position.align === 'right' ? `${position.x}px` : `${position.x}px`,
             top: `${position.y}px`,
