@@ -63,7 +63,7 @@ export function BudgetPanel({ country, stats, activeDealsValue = 0 }: BudgetPane
     <div className="rounded-lg border border-white/10 bg-gradient-to-br from-slate-800/90 to-slate-900/90 p-4 shadow-lg">
       {/* Stats Overview - Always Visible */}
       <div className="mb-4 border-b border-white/10 pb-3">
-        <div className="grid grid-cols-2 gap-3 mb-3">
+        <div className="grid grid-cols-2 gap-2 mb-3">
           {/* Budget */}
           <Tooltip content={`Current Treasury: Your available budget. Changes by ${breakdown.netBudget > 0 ? '+' : ''}${breakdown.netBudget.toLocaleString()} each turn based on revenue and expenses.`}>
             <div className="rounded border border-white/10 bg-slate-800/50 px-3 py-2 cursor-help">

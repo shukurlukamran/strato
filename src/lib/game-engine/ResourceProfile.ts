@@ -29,7 +29,7 @@ export const RESOURCE_PROFILES: ResourceProfile[] = [
   },
   
   {
-    name: "Agricultural Powerhouse",
+    name: "Agriculture",
     description: "Fertile lands, abundant food and timber",
     modifiers: [
       { resourceId: 'food', multiplier: 1.8, startingBonus: 300 },          // 180% food

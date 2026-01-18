@@ -11,7 +11,6 @@ import { TurnIndicator } from "@/components/game/TurnIndicator";
 import { ResourceDisplay } from "@/components/game/ResourceDisplay";
 import { BudgetPanel } from "@/components/game/BudgetPanel";
 import { ActionPanel } from "@/components/game/ActionPanel";
-import { ActiveDeals } from "@/components/game/ActiveDeals";
 import { AllProfilesInfo } from "@/components/game/AllProfilesInfo";
 import { useGameStore } from "@/lib/store/gameStore";
 
@@ -387,6 +386,14 @@ export default function GamePage() {
           )}
         </div>
         <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => router.push('/new-game')}
+            className="inline-flex items-center gap-1 rounded-full bg-blue-600/80 px-3 py-1 text-xs font-medium text-white hover:bg-blue-600 transition-colors"
+          >
+            <span>+</span>
+            <span>New Game</span>
+          </button>
           <AllProfilesInfo />
           <TurnIndicator turn={turn} />
         </div>
@@ -566,10 +573,6 @@ export default function GamePage() {
               </div>
             )}
 
-            {/* Active Deals */}
-            <div className="mt-4">
-              <ActiveDeals deals={deals} />
-            </div>
           </div>
         </div>
 

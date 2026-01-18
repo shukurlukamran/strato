@@ -68,6 +68,13 @@ export function ResourceDisplay({ country, stats, resources }: ResourceDisplayPr
   const production = calculateProductionForDisplay(country, stats);
   const consumption = calculateConsumptionForDisplay(stats);
 
+  // Check if resource is affected by profile
+  const getProfileEffect = (resourceId: string) => {
+    if (!stats.resourceProfile) return null;
+    const modifier = stats.resourceProfile.modifiers.find(m => m.resourceId === resourceId);
+    return modifier;
+  };
+
   // Tooltip content generators
   const getResourceTooltip = (resourceId: string, prod: number, cons: number, amount: number) => {
     const definition = ResourceRegistry.getResource(resourceId);
@@ -79,11 +86,22 @@ export function ResourceDisplay({ country, stats, resources }: ResourceDisplayPr
     
     let calc = "";
     if (resourceId === 'food') {
-      calc = `Base: ${(popUnits * ECONOMIC_BALANCE.PRODUCTION.BASE_FOOD_PER_POP).toFixed(1)} × Tech(${techMult.toFixed(1)}x) × Infra(${infraMult.toFixed(2)}x) × Eff(0.7) = ${prod}/turn`;
+      calc = `Base: ${(popUnits * ECONOMIC_BALANCE.PRODUCTION.BASE_FOOD_PER_POP).toFixed(1)} × Tech(${techMult.toFixed(1)}x) × Infra(${infraMult.toFixed(2)}x) = ${prod}/turn`;
       if (cons > 0) calc += ` | Consumed: ${popUnits.toFixed(1)} × 5 = ${cons}/turn`;
     } else {
       calc = `Production: ${prod}/turn`;
       if (cons > 0) calc += ` | Consumption: ${cons}/turn`;
+    }
+    
+    // Add profile effect if exists
+    const profileEffect = getProfileEffect(resourceId);
+    if (profileEffect) {
+      const effectType = profileEffect.multiplier > 1.0 ? 'BONUS' : 'PENALTY';
+      const effectPercent = Math.round(profileEffect.multiplier * 100);
+      calc += `\n\n🏛️ Profile Effect (${stats.resourceProfile?.name}):\n${effectType}: ${effectPercent}% production`;
+      if (profileEffect.startingBonus !== 0) {
+        calc += `\nStarting: ${profileEffect.startingBonus > 0 ? '+' : ''}${profileEffect.startingBonus}`;
+      }
     }
     
     return `${definition.description}\n\n${calc}\n\nCurrent: ${amount.toLocaleString()}`;
@@ -217,6 +235,14 @@ export function ResourceDisplay({ country, stats, resources }: ResourceDisplayPr
                     const trend = netChange > 0 ? "↑" : netChange < 0 ? "↓" : "→";
                     const trendColor = netChange > 0 ? "text-green-400" : netChange < 0 ? "text-red-400" : "text-white/40";
 
+                    const profileEffect = getProfileEffect(resource.resourceId);
+                    const profileIcon = profileEffect 
+                      ? (profileEffect.multiplier > 1.0 ? "⬆" : "⬇")
+                      : null;
+                    const profileIconColor = profileEffect
+                      ? (profileEffect.multiplier > 1.0 ? "text-green-400" : "text-red-400")
+                      : "";
+
                     return (
                       <div
                         key={resource.resourceId}
@@ -226,7 +252,10 @@ export function ResourceDisplay({ country, stats, resources }: ResourceDisplayPr
                             <span className="text-lg flex-shrink-0">{resourceIcons[resource.resourceId] || "📦"}</span>
                             <div className="flex-1 min-w-0">
                               <Tooltip content={getResourceTooltip(resource.resourceId, prod, cons, resource.amount)}>
-                                <div className="font-medium text-white/90 truncate cursor-help">{definition.name}</div>
+                                <div className="font-medium text-white/90 truncate cursor-help flex items-center gap-1">
+                                  {profileIcon && <span className={`text-xs ${profileIconColor}`}>{profileIcon}</span>}
+                                  {definition.name}
+                                </div>
                               </Tooltip>
                               <div className="text-xs text-white/50">
                                 {prod > 0 && (
