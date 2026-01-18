@@ -1,6 +1,7 @@
 "use client";
 
 import type { Country, CountryStats } from "@/types/country";
+import { ResourceProfileBadge } from "./ResourceProfileBadge";
 
 export function CountryPanel({
   country,
@@ -29,8 +30,11 @@ export function CountryPanel({
         />
         <div className="flex-1">
           <div className="text-lg font-bold text-white">{country.name}</div>
-          <div className="text-xs text-white/60">
-            {country.isPlayerControlled ? "Your Country" : "AI Controlled"}
+          <div className="flex items-center gap-2 mt-1">
+            <div className="text-xs text-white/60">
+              {country.isPlayerControlled ? "Your Country" : "AI Controlled"}
+            </div>
+            <ResourceProfileBadge profile={stats.resourceProfile} />
           </div>
         </div>
         {country.isPlayerControlled && (

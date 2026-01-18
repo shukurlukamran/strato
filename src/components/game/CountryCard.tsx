@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import type { Country, CountryStats } from "@/types/country";
 import type { DealExtractionResult } from "@/lib/deals/DealExtractor";
+import { ResourceProfileBadge } from "./ResourceProfileBadge";
 
 interface ChatMessage {
   id: string;
@@ -333,7 +334,10 @@ export function CountryCard({
           />
           <div className="flex-1">
             <div className="text-lg font-bold text-white">{country.name}</div>
-            <div className="text-xs text-white/60">{government}</div>
+            <div className="flex items-center gap-2 mt-1">
+              <div className="text-xs text-white/60">{government}</div>
+              <ResourceProfileBadge profile={stats.resourceProfile} />
+            </div>
           </div>
           {country.isPlayerControlled && (
             <span className="text-xl text-yellow-400">⚜</span>

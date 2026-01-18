@@ -12,6 +12,7 @@ import { ResourceDisplay } from "@/components/game/ResourceDisplay";
 import { BudgetPanel } from "@/components/game/BudgetPanel";
 import { ActionPanel } from "@/components/game/ActionPanel";
 import { ActiveDeals } from "@/components/game/ActiveDeals";
+import { AllProfilesInfo } from "@/components/game/AllProfilesInfo";
 import { useGameStore } from "@/lib/store/gameStore";
 
 type ApiGame = { id: string; name: string; current_turn: number; status: string; player_country_id: string };
@@ -171,6 +172,7 @@ export default function GamePage() {
           militaryStrength: s.military_strength,
           militaryEquipment: s.military_equipment ?? {},
           resources: s.resources ?? {},
+          resourceProfile: (s as any).resource_profile, // Include resource profile
           diplomaticRelations: s.diplomatic_relations ?? {},
           createdAt: s.created_at,
         };
@@ -384,7 +386,10 @@ export default function GamePage() {
             </div>
           )}
         </div>
-        <TurnIndicator turn={turn} />
+        <div className="flex items-center gap-3">
+          <AllProfilesInfo />
+          <TurnIndicator turn={turn} />
+        </div>
       </div>
 
       {/* Main Game Area */}
@@ -446,6 +451,7 @@ export default function GamePage() {
                         militaryStrength: s.military_strength,
                         militaryEquipment: s.military_equipment ?? {},
                         resources: s.resources ?? {},
+                        resourceProfile: (s as any).resource_profile, // Include resource profile
                         diplomaticRelations: s.diplomatic_relations ?? {},
                         createdAt: s.created_at,
                       };

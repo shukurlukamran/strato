@@ -42,11 +42,11 @@ export class CountryInitializer {
    * Generate fair random starting stats WITH resource specialization
    * All countries have equal total value but different distributions
    */
-  static generateRandomStart(seed?: string): StartingProfile {
+  static generateRandomStart(seed?: string, preassignedProfile?: ResourceProfile): StartingProfile {
     const rng = this.createSeededRNG(seed);
     
-    // Assign resource profile first
-    const resourceProfile = ResourceProfileManager.assignRandomProfile(seed);
+    // Use preassigned profile or assign one
+    const resourceProfile = preassignedProfile || ResourceProfileManager.assignRandomProfile(seed);
     
     let attempts = 0;
     const maxAttempts = 100;
@@ -296,17 +296,11 @@ export class CountryInitializer {
     const profiles: StartingProfile[] = [];
     
     for (let i = 0; i < count; i++) {
-      const countrySeed = gameSeed ? `${gameSeed}-country-${i}` : undefined;
-      const profile = this.generateRandomStart(countrySeed);
+      // Use different seed for each country to ensure variety
+      const countrySeed = gameSeed ? `${gameSeed}-country-${i}-${Date.now()}` : `country-${i}-${Math.random()}`;
       
-      // Use pre-assigned resource profile for diversity
-      profile.resourceProfile = resourceProfiles[i];
-      
-      // Re-apply profile to ensure consistency
-      profile.resources = ResourceProfileManager.applyProfileToStartingResources(
-        profile.resources,
-        resourceProfiles[i]
-      );
+      // Generate profile with preassigned resource profile
+      const profile = this.generateRandomStart(countrySeed, resourceProfiles[i]);
       
       const validation = this.validateProfile(profile);
       if (!validation.isValid) {
@@ -314,6 +308,11 @@ export class CountryInitializer {
         // Use balanced default instead
         const defaultProfile = this.getBalancedDefault();
         defaultProfile.resourceProfile = resourceProfiles[i]; // Keep assigned profile
+        // Re-apply profile to default
+        defaultProfile.resources = ResourceProfileManager.applyProfileToStartingResources(
+          defaultProfile.resources,
+          resourceProfiles[i]
+        );
         profiles.push(defaultProfile);
       } else {
         profiles.push(profile);
