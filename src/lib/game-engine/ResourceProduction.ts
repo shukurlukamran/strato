@@ -1,11 +1,13 @@
 /**
  * Resource Production System
  * Handles all resource generation logic based on population, technology, and infrastructure.
+ * Includes resource profile specialization modifiers.
  */
 
 import type { Country, CountryStats } from '@/types/country';
 import { ECONOMIC_BALANCE } from './EconomicBalance';
 import { ResourceRegistry, ResourceAmount } from './ResourceTypes';
+import { ResourceProfileManager } from './ResourceProfile';
 
 export interface ProductionOutput {
   resources: ResourceAmount[];
@@ -20,30 +22,53 @@ export interface ProductionOutput {
 export class ResourceProduction {
   /**
    * Calculate all resource production for a country this turn
+   * Includes resource profile specialization modifiers
    */
   static calculateProduction(
     country: Country,
     stats: CountryStats
   ): ProductionOutput {
-    const production: ResourceAmount[] = [];
-    
-    // Calculate multipliers
+    // Calculate base multipliers (tech + infra)
     const techMultiplier = this.getTechnologyMultiplier(stats.technologyLevel);
     const infraLevel = stats.infrastructureLevel || 0;
     const infraMultiplier = this.getInfrastructureMultiplier(infraLevel);
     const totalMultiplier = techMultiplier * infraMultiplier;
     
+    // Calculate BASE production (without profile modifiers)
+    const baseProductionMap: Record<string, number> = {};
+    
     // BASIC RESOURCES
-    production.push(...this.produceBasicResources(stats, totalMultiplier));
+    const basicResources = this.produceBasicResources(stats, totalMultiplier);
+    basicResources.forEach(r => baseProductionMap[r.resourceId] = r.amount);
     
     // STRATEGIC RESOURCES (from deposits/mines)
-    production.push(...this.produceStrategicResources(stats, totalMultiplier));
+    const strategicResources = this.produceStrategicResources(stats, totalMultiplier);
+    strategicResources.forEach(r => baseProductionMap[r.resourceId] = r.amount);
     
     // INDUSTRIAL RESOURCES
-    production.push(...this.produceIndustrialResources(stats, totalMultiplier));
+    const industrialResources = this.produceIndustrialResources(stats, totalMultiplier);
+    industrialResources.forEach(r => baseProductionMap[r.resourceId] = r.amount);
     
     // ECONOMIC RESOURCES (trade-focused)
-    production.push(...this.produceEconomicResources(stats, totalMultiplier));
+    const economicResources = this.produceEconomicResources(stats, totalMultiplier);
+    economicResources.forEach(r => baseProductionMap[r.resourceId] = r.amount);
+    
+    // Apply resource profile modifiers if profile exists
+    const resourceProfile = stats.resourceProfile;
+    let finalProductionMap = baseProductionMap;
+    
+    if (resourceProfile) {
+      finalProductionMap = ResourceProfileManager.applyProfileToProduction(
+        baseProductionMap,
+        resourceProfile
+      );
+    }
+    
+    // Convert back to ResourceAmount array
+    const production: ResourceAmount[] = [];
+    for (const [resourceId, amount] of Object.entries(finalProductionMap)) {
+      production.push({ resourceId, amount });
+    }
     
     return {
       resources: production,

@@ -4,11 +4,32 @@
  */
 
 import { describe, it, expect } from '@jest/globals';
-import { CountryInitializer, STARTING_RANGES, STAT_VALUES } from '@/lib/game-engine/CountryInitializer';
+import { CountryInitializer, STARTING_RANGES, STAT_VALUES, StartingProfile } from '@/lib/game-engine/CountryInitializer';
 import { BudgetCalculator } from '@/lib/game-engine/BudgetCalculator';
 import { ResourceProduction } from '@/lib/game-engine/ResourceProduction';
 import { ECONOMIC_BALANCE } from '@/lib/game-engine/EconomicBalance';
 import type { CountryStats } from '@/types/country';
+
+/**
+ * Helper to create CountryStats from StartingProfile
+ */
+function createCountryStats(profile: StartingProfile | Partial<StartingProfile>): CountryStats {
+  return {
+    id: 'test-stats-id',
+    countryId: 'test-country-id',
+    turn: 1,
+    population: profile.population || 100000,
+    budget: profile.budget || 5000,
+    technologyLevel: profile.technologyLevel || 1,
+    infrastructureLevel: profile.infrastructureLevel || 1,
+    militaryStrength: profile.militaryStrength || 40,
+    resources: profile.resources || {},
+    resourceProfile: profile.resourceProfile,
+    diplomaticRelations: {},
+    militaryEquipment: {},
+    createdAt: new Date().toISOString(),
+  };
+}
 
 /**
  * Simulate N turns and return final stats
@@ -19,16 +40,20 @@ function simulateTurns(initialProfile: any, turns: number): {
   starvationTurn: number | null;
 } {
   let stats: CountryStats = {
+    id: 'test-stats-id',
+    countryId: 'test-country-id',
+    turn: 1,
     population: initialProfile.population,
     budget: initialProfile.budget,
     technologyLevel: initialProfile.technologyLevel,
     infrastructureLevel: initialProfile.infrastructureLevel,
     militaryStrength: initialProfile.militaryStrength,
     resources: { ...initialProfile.resources },
+    resourceProfile: initialProfile.resourceProfile, // Include resource profile
     // Default empty fields
     diplomaticRelations: {},
-    activeDeals: [],
     militaryEquipment: {},
+    createdAt: new Date().toISOString(),
   };
 
   let bankruptTurn: number | null = null;
@@ -96,18 +121,7 @@ describe('Economic Balance Validation', () => {
   describe('Budget Sustainability', () => {
     it('should have positive net budget for default starting stats', () => {
       const profile = CountryInitializer['getBalancedDefault']();
-      
-      const stats: CountryStats = {
-        population: profile.population,
-        budget: profile.budget,
-        technologyLevel: profile.technologyLevel,
-        infrastructureLevel: profile.infrastructureLevel,
-        militaryStrength: profile.militaryStrength,
-        resources: profile.resources,
-        diplomaticRelations: {},
-        activeDeals: [],
-        militaryEquipment: {},
-      };
+      const stats = createCountryStats(profile);
 
       const budgetBreakdown = BudgetCalculator.calculateBudget(
         { id: 'test', name: 'Test' } as any,
@@ -145,18 +159,7 @@ describe('Economic Balance Validation', () => {
   describe('Food Balance', () => {
     it('should produce more food than consumed at starting stats', () => {
       const profile = CountryInitializer['getBalancedDefault']();
-      
-      const stats: CountryStats = {
-        population: profile.population,
-        budget: profile.budget,
-        technologyLevel: profile.technologyLevel,
-        infrastructureLevel: profile.infrastructureLevel,
-        militaryStrength: profile.militaryStrength,
-        resources: profile.resources,
-        diplomaticRelations: {},
-        activeDeals: [],
-        militaryEquipment: {},
-      };
+      const stats = createCountryStats(profile);
 
       const production = ResourceProduction.calculateProduction(
         { id: 'test', name: 'Test' } as any,
@@ -198,17 +201,7 @@ describe('Economic Balance Validation', () => {
       
       // Calculate revenue increase from tech
       const profile = CountryInitializer['getBalancedDefault']();
-      const baseStats: CountryStats = {
-        population: profile.population,
-        budget: profile.budget,
-        technologyLevel: 0,
-        infrastructureLevel: profile.infrastructureLevel,
-        militaryStrength: profile.militaryStrength,
-        resources: profile.resources,
-        diplomaticRelations: {},
-        activeDeals: [],
-        militaryEquipment: {},
-      };
+      const baseStats = createCountryStats({ ...profile, technologyLevel: 0 });
 
       const baseBudget = BudgetCalculator.calculateBudget(
         { id: 'test', name: 'Test' } as any,
@@ -216,7 +209,7 @@ describe('Economic Balance Validation', () => {
         0
       );
 
-      const upgradedStats = { ...baseStats, technologyLevel: 1 };
+      const upgradedStats = createCountryStats({ ...profile, technologyLevel: 1 });
       const upgradedBudget = BudgetCalculator.calculateBudget(
         { id: 'test', name: 'Test' } as any,
         upgradedStats,
@@ -233,17 +226,7 @@ describe('Economic Balance Validation', () => {
       const techCost = Math.floor(500 * Math.pow(1.4, 1)); // 700 for level 1→2
       
       const profile = CountryInitializer['getBalancedDefault']();
-      const baseStats: CountryStats = {
-        population: profile.population,
-        budget: profile.budget,
-        technologyLevel: 1,
-        infrastructureLevel: profile.infrastructureLevel,
-        militaryStrength: profile.militaryStrength,
-        resources: profile.resources,
-        diplomaticRelations: {},
-        activeDeals: [],
-        militaryEquipment: {},
-      };
+      const baseStats = createCountryStats({ ...profile, technologyLevel: 1 });
 
       const baseBudget = BudgetCalculator.calculateBudget(
         { id: 'test', name: 'Test' } as any,
@@ -251,7 +234,7 @@ describe('Economic Balance Validation', () => {
         0
       );
 
-      const upgradedStats = { ...baseStats, technologyLevel: 2 };
+      const upgradedStats = createCountryStats({ ...profile, technologyLevel: 2 });
       const upgradedBudget = BudgetCalculator.calculateBudget(
         { id: 'test', name: 'Test' } as any,
         upgradedStats,
@@ -270,17 +253,7 @@ describe('Economic Balance Validation', () => {
       const infraCost = Math.floor(600 * Math.pow(1.3, 0)); // 600 for level 0→1
       
       const profile = CountryInitializer['getBalancedDefault']();
-      const baseStats: CountryStats = {
-        population: profile.population,
-        budget: profile.budget,
-        technologyLevel: profile.technologyLevel,
-        infrastructureLevel: 0,
-        militaryStrength: profile.militaryStrength,
-        resources: profile.resources,
-        diplomaticRelations: {},
-        activeDeals: [],
-        militaryEquipment: {},
-      };
+      const baseStats = createCountryStats({ ...profile, infrastructureLevel: 0 });
 
       const baseBudget = BudgetCalculator.calculateBudget(
         { id: 'test', name: 'Test' } as any,
@@ -288,7 +261,7 @@ describe('Economic Balance Validation', () => {
         0
       );
 
-      const upgradedStats = { ...baseStats, infrastructureLevel: 1 };
+      const upgradedStats = createCountryStats({ ...profile, infrastructureLevel: 1 });
       const upgradedBudget = BudgetCalculator.calculateBudget(
         { id: 'test', name: 'Test' } as any,
         upgradedStats,
@@ -303,17 +276,7 @@ describe('Economic Balance Validation', () => {
     
     it('Infrastructure should remain profitable at level 5', () => {
       const profile = CountryInitializer['getBalancedDefault']();
-      const stats: CountryStats = {
-        population: profile.population,
-        budget: profile.budget,
-        technologyLevel: profile.technologyLevel,
-        infrastructureLevel: 5,
-        militaryStrength: profile.militaryStrength,
-        resources: profile.resources,
-        diplomaticRelations: {},
-        activeDeals: [],
-        militaryEquipment: {},
-      };
+      const stats = createCountryStats({ ...profile, infrastructureLevel: 5 });
 
       const budgetBreakdown = BudgetCalculator.calculateBudget(
         { id: 'test', name: 'Test' } as any,
@@ -329,13 +292,7 @@ describe('Economic Balance Validation', () => {
   describe('Military Affordability', () => {
     it('should afford 50 military strength with starting budget', () => {
       const profile = CountryInitializer['getBalancedDefault']();
-      const stats: CountryStats = {
-        ...profile,
-        militaryStrength: 50,
-        diplomaticRelations: {},
-        activeDeals: [],
-        militaryEquipment: {},
-      };
+      const stats = createCountryStats({ ...profile, militaryStrength: 50 });
 
       const budgetBreakdown = BudgetCalculator.calculateBudget(
         { id: 'test', name: 'Test' } as any,
@@ -348,12 +305,7 @@ describe('Economic Balance Validation', () => {
     
     it('military upkeep should not exceed 50% of tax revenue', () => {
       const profile = CountryInitializer['getBalancedDefault']();
-      const stats: CountryStats = {
-        ...profile,
-        diplomaticRelations: {},
-        activeDeals: [],
-        militaryEquipment: {},
-      };
+      const stats = createCountryStats(profile);
 
       const budgetBreakdown = BudgetCalculator.calculateBudget(
         { id: 'test', name: 'Test' } as any,
@@ -367,15 +319,12 @@ describe('Economic Balance Validation', () => {
 
     it('should support military strength of 100 with advanced economy', () => {
       const profile = CountryInitializer['getBalancedDefault']();
-      const stats: CountryStats = {
+      const stats = createCountryStats({
         ...profile,
         technologyLevel: 3,
         infrastructureLevel: 3,
         militaryStrength: 100,
-        diplomaticRelations: {},
-        activeDeals: [],
-        militaryEquipment: {},
-      };
+      });
 
       const budgetBreakdown = BudgetCalculator.calculateBudget(
         { id: 'test', name: 'Test' } as any,

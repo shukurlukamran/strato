@@ -32,6 +32,7 @@ type DbCountryStats = {
   military_strength: number;
   military_equipment: Record<string, unknown>;
   resources: Record<string, number>;
+  resource_profile?: Record<string, unknown>; // Resource specialization profile
   diplomatic_relations: Record<string, number>;
   created_at: string;
 };
@@ -55,10 +56,7 @@ const defaultCountries = [
   { name: "Falken", color: "#64748B", x: 75, y: 45 },
 ];
 
-function makeInitialStats(countryId: string, turn: number, gameSeed: string, countryIndex: number): DbCountryStats {
-  // Generate randomized starting profile using CountryInitializer
-  const profile = CountryInitializer.generateRandomStart(`${gameSeed}-country-${countryIndex}`);
-  
+function makeInitialStats(countryId: string, turn: number, gameSeed: string, countryIndex: number, profile: any): DbCountryStats {
   return {
     id: crypto.randomUUID(),
     country_id: countryId,
@@ -69,6 +67,7 @@ function makeInitialStats(countryId: string, turn: number, gameSeed: string, cou
     military_strength: profile.militaryStrength,
     military_equipment: {},
     resources: profile.resources,
+    resource_profile: profile.resourceProfile, // Include resource profile
     diplomatic_relations: {},
     created_at: new Date().toISOString(),
   };
@@ -136,9 +135,10 @@ export async function POST(req: Request) {
 
     await supabase.from("games").update({ player_country_id: player.id, updated_at: now }).eq("id", gameId);
 
-    // Generate randomized starting stats for each country
+    // Generate randomized starting stats for each country with resource profiles
+    const countryProfiles = CountryInitializer.generateMultipleProfiles(countries.length, gameId);
     const statsRows = countries.map((c, idx) => {
-      const profile = CountryInitializer.generateRandomStart(`${gameId}-country-${idx}`);
+      const profile = countryProfiles[idx];
       return {
         country_id: c.id,
         turn: 1,
@@ -149,6 +149,7 @@ export async function POST(req: Request) {
         military_strength: profile.militaryStrength,
         military_equipment: {},
         resources: profile.resources,
+        resource_profile: profile.resourceProfile, // Include resource profile
         diplomatic_relations: {},
         created_at: now,
       };
@@ -188,10 +189,13 @@ export async function POST(req: Request) {
     }));
     const player = countries.find((c) => c.is_player_controlled)!;
     game.player_country_id = player.id;
+    
+    // Generate profiles for all countries
+    const countryProfiles = CountryInitializer.generateMultipleProfiles(countries.length, gameId);
     const stats: Record<string, DbCountryStats> = {};
     for (let i = 0; i < countries.length; i++) {
       const c = countries[i];
-      stats[c.id] = makeInitialStats(c.id, 1, gameId, i);
+      stats[c.id] = makeInitialStats(c.id, 1, gameId, i, countryProfiles[i]);
     }
 
     const chatsArr = await ensureChats(gameId, countries);
@@ -293,11 +297,11 @@ export async function GET(req: Request) {
       .eq("game_id", gameId);
     if (countriesRes.error) throw countriesRes.error;
 
-    // Try to select infrastructure_level, but handle if column doesn't exist yet
+    // Try to select infrastructure_level and resource_profile, but handle if columns don't exist yet
     const statsRes = await supabase
       .from("country_stats")
       .select(
-        "id, country_id, turn, population, budget, technology_level, infrastructure_level, military_strength, military_equipment, resources, diplomatic_relations, created_at",
+        "id, country_id, turn, population, budget, technology_level, infrastructure_level, military_strength, military_equipment, resources, resource_profile, diplomatic_relations, created_at",
       )
       .eq("turn", game.current_turn)
       .in(

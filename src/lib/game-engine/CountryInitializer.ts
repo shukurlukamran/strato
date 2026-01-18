@@ -4,6 +4,8 @@
  * Ensures all countries start with equal total value but different stat distributions
  */
 
+import { ResourceProfileManager, ResourceProfile } from './ResourceProfile';
+
 export interface StartingProfile {
   population: number;
   budget: number;
@@ -11,6 +13,7 @@ export interface StartingProfile {
   infrastructureLevel: number;
   militaryStrength: number;
   resources: Record<string, number>;
+  resourceProfile: ResourceProfile;
 }
 
 export const STAT_VALUES = {
@@ -36,11 +39,14 @@ export const STARTING_RANGES = {
 
 export class CountryInitializer {
   /**
-   * Generate fair random starting stats
+   * Generate fair random starting stats WITH resource specialization
    * All countries have equal total value but different distributions
    */
   static generateRandomStart(seed?: string): StartingProfile {
     const rng = this.createSeededRNG(seed);
+    
+    // Assign resource profile first
+    const resourceProfile = ResourceProfileManager.assignRandomProfile(seed);
     
     let attempts = 0;
     const maxAttempts = 100;
@@ -97,8 +103,14 @@ export class CountryInitializer {
         const budget = Math.min(remainingValue * 0.7, maxBudget);
         const resourceValue = remainingValue - budget;
         
-        // Distribute remaining value to resources
-        const resources = this.distributeResourceValue(rng, resourceValue, food);
+        // Distribute remaining value to base resources
+        const baseResources = this.distributeResourceValue(rng, resourceValue, food);
+        
+        // Apply resource profile to starting resources
+        const profiledResources = ResourceProfileManager.applyProfileToStartingResources(
+          baseResources,
+          resourceProfile
+        );
         
         return {
           population,
@@ -106,7 +118,8 @@ export class CountryInitializer {
           technologyLevel,
           infrastructureLevel,
           militaryStrength,
-          resources
+          resources: profiledResources,
+          resourceProfile,
         };
       }
     }
@@ -175,6 +188,9 @@ export class CountryInitializer {
    * Get balanced default starting profile
    */
   private static getBalancedDefault(): StartingProfile {
+    // Use "Balanced Nation" profile as default
+    const balancedProfile = ResourceProfileManager.assignProfilesForGame(1, 'balanced')[0];
+    
     return {
       population: 100000,
       budget: 5000,
@@ -194,7 +210,8 @@ export class CountryInitializer {
         coal: 40,
         steel: 25,
         aluminum: 20,
-      }
+      },
+      resourceProfile: balancedProfile,
     };
   }
   
@@ -270,19 +287,34 @@ export class CountryInitializer {
   
   /**
    * Generate multiple country profiles ensuring variety
+   * Ensures diverse resource profiles across countries
    */
   static generateMultipleProfiles(count: number, gameSeed?: string): StartingProfile[] {
+    // Assign diverse resource profiles first (no duplicates in small games)
+    const resourceProfiles = ResourceProfileManager.assignProfilesForGame(count, gameSeed);
+    
     const profiles: StartingProfile[] = [];
     
     for (let i = 0; i < count; i++) {
       const countrySeed = gameSeed ? `${gameSeed}-country-${i}` : undefined;
       const profile = this.generateRandomStart(countrySeed);
       
+      // Use pre-assigned resource profile for diversity
+      profile.resourceProfile = resourceProfiles[i];
+      
+      // Re-apply profile to ensure consistency
+      profile.resources = ResourceProfileManager.applyProfileToStartingResources(
+        profile.resources,
+        resourceProfiles[i]
+      );
+      
       const validation = this.validateProfile(profile);
       if (!validation.isValid) {
         console.warn(`Country ${i} failed validation:`, validation.issues);
         // Use balanced default instead
-        profiles.push(this.getBalancedDefault());
+        const defaultProfile = this.getBalancedDefault();
+        defaultProfile.resourceProfile = resourceProfiles[i]; // Keep assigned profile
+        profiles.push(defaultProfile);
       } else {
         profiles.push(profile);
       }

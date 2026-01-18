@@ -8,6 +8,8 @@ export interface Country {
   positionY: number;
 }
 
+import type { ResourceProfile } from '@/lib/game-engine/ResourceProfile';
+
 export interface CountryStats {
   id: string;
   countryId: string;
@@ -20,6 +22,7 @@ export interface CountryStats {
   militaryEquipment: Record<string, unknown>;
   resources: Record<string, number>;
   diplomaticRelations: Record<string, number>;
+  resourceProfile?: ResourceProfile; // Resource specialization profile
   createdAt: string;
 }
 
