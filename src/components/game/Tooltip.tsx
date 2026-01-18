@@ -11,7 +11,7 @@ interface TooltipProps {
 
 export function Tooltip({ content, children, className = "" }: TooltipProps) {
   const [show, setShow] = useState(false);
-  const [position, setPosition] = useState({ x: 0, y: 0, align: 'center' as 'left' | 'center' | 'right' });
+  const [position, setPosition] = useState({ x: 0, y: 0, align: 'center' as 'left' | 'center' | 'right', placement: 'top' as 'top' | 'bottom' });
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const elementRef = useRef<HTMLElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
@@ -30,11 +30,14 @@ export function Tooltip({ content, children, className = "" }: TooltipProps) {
     const rect = element.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
     const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
     const tooltipMaxWidth = 320; // max-w-xs = 20rem = 320px
+    const tooltipEstimatedHeight = 200; // Estimated max height
     const padding = 16; // Minimum padding from screen edges
     
     let x = centerX;
     let align: 'left' | 'center' | 'right' = 'center';
+    let placement: 'top' | 'bottom' = 'top';
     
     // Check if tooltip would overflow left
     if (centerX - tooltipMaxWidth / 2 < padding) {
@@ -47,10 +50,18 @@ export function Tooltip({ content, children, className = "" }: TooltipProps) {
       align = 'right';
     }
     
+    // Determine vertical placement - if element is in top 40% of screen, place below
+    if (rect.top < viewportHeight * 0.4) {
+      placement = 'bottom';
+    } else {
+      placement = 'top';
+    }
+    
     setPosition({
       x,
-      y: rect.top - 5,
-      align
+      y: placement === 'top' ? rect.top - 5 : rect.bottom + 5,
+      align,
+      placement
     });
   };
 
@@ -105,22 +116,28 @@ export function Tooltip({ content, children, className = "" }: TooltipProps) {
       {mounted && typeof window !== 'undefined' && show && createPortal(
         <div
           ref={tooltipRef}
-          className={`fixed z-[9999] max-w-xs rounded-lg border border-white/20 bg-slate-900/95 px-3 py-2 text-xs text-white shadow-xl backdrop-blur-sm ${typeof content === 'string' ? 'whitespace-pre-line' : ''}`}
+          className={`fixed z-[9999] rounded-lg border border-white/20 bg-slate-900/95 px-3 py-2 text-xs text-white shadow-xl backdrop-blur-sm ${typeof content === 'string' ? 'whitespace-pre-line max-w-xs' : ''}`}
           style={{
             left: position.align === 'left' ? `${position.x}px` : position.align === 'right' ? `${position.x}px` : `${position.x}px`,
             top: `${position.y}px`,
-            transform: position.align === 'left' 
-              ? 'translate(0, -100%)' 
-              : position.align === 'right' 
-              ? 'translate(-100%, -100%)' 
-              : 'translate(-50%, -100%)',
+            transform: position.placement === 'top'
+              ? position.align === 'left' 
+                ? 'translate(0, -100%)' 
+                : position.align === 'right' 
+                ? 'translate(-100%, -100%)' 
+                : 'translate(-50%, -100%)'
+              : position.align === 'left'
+                ? 'translate(0, 0)'
+                : position.align === 'right'
+                ? 'translate(-100%, 0)'
+                : 'translate(-50%, 0)',
             pointerEvents: 'none',
-            marginTop: '-8px'
+            marginTop: position.placement === 'top' ? '-8px' : '8px'
           }}
         >
           {content}
           <div
-            className="absolute top-full h-0 w-0 border-4 border-transparent border-t-slate-900/95"
+            className={`absolute h-0 w-0 border-4 border-transparent ${position.placement === 'top' ? 'top-full border-t-slate-900/95' : 'bottom-full border-b-slate-900/95'}`}
             style={{
               left: position.align === 'left' ? '16px' : position.align === 'right' ? 'calc(100% - 16px)' : '50%',
               transform: position.align === 'left' || position.align === 'right' ? 'none' : 'translateX(-50%)',

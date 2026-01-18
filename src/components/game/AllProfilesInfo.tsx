@@ -5,7 +5,7 @@ import { Tooltip } from "./Tooltip";
 
 export function AllProfilesInfo() {
   const tooltipContent = (
-    <div className="max-w-2xl max-h-96 overflow-y-auto">
+    <div className="w-[500px] max-h-[400px] overflow-y-auto">
       <div className="font-semibold text-white mb-2">All Resource Profiles</div>
       <div className="text-xs text-white/70 mb-3">
         Each country has a unique resource specialization that affects production rates
