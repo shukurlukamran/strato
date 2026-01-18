@@ -268,6 +268,54 @@ export default function GamePage() {
   );
   const selectedStats = selectedCountry ? statsByCountryId[selectedCountry.id] ?? null : null;
 
+  const handleEndTurn = async () => {
+    if (endingTurn || turnProcessing) return;
+    
+    setEndingTurn(true);
+    setTurnProcessing(true);
+    
+    try {
+      console.log("Starting turn end process...");
+      const res = await fetch("/api/turn", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId }),
+      });
+      
+      if (!res.ok) {
+        const errorText = await res.text();
+        let errorMessage = "Failed to end turn";
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+        console.error("Failed to end turn:", errorMessage);
+        setTurnProcessing(false);
+        setEndingTurn(false);
+        return;
+      }
+      
+      const data = await res.json();
+      console.log("Turn ended successfully. New turn:", data.nextTurn);
+      
+      // Update turn number immediately
+      setTurn(data.nextTurn);
+      
+      // Refresh game state WITHOUT showing loading screen
+      await refreshGameData();
+      
+      console.log("Game data refreshed for turn", data.nextTurn);
+      
+    } catch (error) {
+      console.error("Error ending turn:", error);
+    } finally {
+      setEndingTurn(false);
+      setTurnProcessing(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
@@ -394,6 +442,14 @@ export default function GamePage() {
             <span>+</span>
             <span>New Game</span>
           </button>
+          <button
+            type="button"
+            disabled={endingTurn || turnProcessing}
+            onClick={handleEndTurn}
+            className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-green-600 to-green-700 px-3 py-1 text-xs font-medium text-white hover:from-green-500 hover:to-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {endingTurn ? "Ending..." : "End Turn"}
+          </button>
           <AllProfilesInfo />
           <TurnIndicator turn={turn} />
         </div>
@@ -507,7 +563,6 @@ export default function GamePage() {
                   stats={selectedStats}
                   gameId={gameId}
                   playerCountryId={playerCountryId}
-                  endingTurn={endingTurn}
                   onStatsUpdate={(updatedStats) => {
                     // Update stats locally without page reload
                     if (selectedCountry) {
@@ -518,55 +573,6 @@ export default function GamePage() {
                           ...updatedStats,
                         }
                       }));
-                    }
-                  }}
-                  onEndTurn={async () => {
-                    if (endingTurn || turnProcessing) return;
-                    
-                    setEndingTurn(true);
-                    setTurnProcessing(true);
-                    
-                    try {
-                      console.log("Starting turn end process...");
-                      const res = await fetch("/api/turn", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ gameId }),
-                      });
-                      
-                      if (!res.ok) {
-                        const errorText = await res.text();
-                        let errorMessage = "Failed to end turn";
-                        try {
-                          const errorData = JSON.parse(errorText);
-                          errorMessage = errorData.error || errorMessage;
-                        } catch {
-                          errorMessage = errorText || errorMessage;
-                        }
-                        console.error("Failed to end turn:", errorMessage);
-                        setTurnProcessing(false);
-                        setEndingTurn(false);
-                        return;
-                      }
-                      
-                      const data = await res.json();
-                      console.log("Turn ended successfully. New turn:", data.nextTurn);
-                      
-                      // Update turn number immediately
-                      setTurn(data.nextTurn);
-                      
-                      // Refresh game state WITHOUT showing loading screen
-                      await refreshGameData();
-                      
-                      console.log("Game data refreshed for turn", data.nextTurn);
-                      
-                      // Turn processing complete
-                      setTurnProcessing(false);
-                      setEndingTurn(false);
-                    } catch (e) {
-                      console.error("Error ending turn:", e instanceof Error ? e.message : "Unknown error");
-                      setTurnProcessing(false);
-                      setEndingTurn(false);
                     }
                   }}
                 />

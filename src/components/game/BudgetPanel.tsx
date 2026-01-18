@@ -63,10 +63,10 @@ export function BudgetPanel({ country, stats, activeDealsValue = 0 }: BudgetPane
     <div className="rounded-lg border border-white/10 bg-gradient-to-br from-slate-800/90 to-slate-900/90 p-4 shadow-lg">
       {/* Stats Overview - Always Visible */}
       <div className="mb-4 border-b border-white/10 pb-3">
-        <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="grid grid-cols-2 gap-1.5 mb-3">
           {/* Budget */}
           <Tooltip content={`Current Treasury: Your available budget. Changes by ${breakdown.netBudget > 0 ? '+' : ''}${breakdown.netBudget.toLocaleString()} each turn based on revenue and expenses.`}>
-            <div className="rounded border border-white/10 bg-slate-800/50 px-3 py-2 cursor-help">
+            <div className="rounded border border-white/10 bg-slate-800/50 px-4 py-2 cursor-help">
               <div className="text-xs text-white/60 mb-1">💰 Budget</div>
               <div className="text-lg font-bold text-white">
                 ${Number(stats.budget).toLocaleString()}
@@ -76,7 +76,7 @@ export function BudgetPanel({ country, stats, activeDealsValue = 0 }: BudgetPane
 
           {/* Population */}
           <Tooltip content={`Population: The number of citizens in your country. Higher population generates more tax revenue.\n\nCurrent: ${stats.population.toLocaleString()} citizens`}>
-            <div className="rounded border border-white/10 bg-slate-800/50 px-3 py-2 cursor-help">
+            <div className="rounded border border-white/10 bg-slate-800/50 px-4 py-2 cursor-help">
               <div className="text-xs text-white/60 mb-1">👥 Population</div>
               <div className="text-lg font-bold text-white">
                 {stats.population.toLocaleString()}
@@ -86,7 +86,7 @@ export function BudgetPanel({ country, stats, activeDealsValue = 0 }: BudgetPane
 
           {/* Military */}
           <Tooltip content={`Military Strength: Your nation's combat power. Higher strength allows you to defend territory and project power.\n\nCurrent: ${stats.militaryStrength} strength\nUpkeep: $${stats.militaryStrength * 5}/turn`}>
-            <div className="rounded border border-white/10 bg-slate-800/50 px-3 py-2 cursor-help">
+            <div className="rounded border border-white/10 bg-slate-800/50 px-4 py-2 cursor-help">
               <div className="text-xs text-white/60 mb-1">⚔️ Military</div>
               <div className="text-lg font-bold text-red-400">
                 {stats.militaryStrength}
@@ -96,7 +96,7 @@ export function BudgetPanel({ country, stats, activeDealsValue = 0 }: BudgetPane
 
           {/* Technology */}
           <Tooltip content={`Technology Level: Your nation's technological advancement. Higher levels boost economy, military effectiveness, and unlock new capabilities.\n\nCurrent: Level ${stats.technologyLevel.toFixed(1)}\nTax Bonus: +${(stats.technologyLevel * 5).toFixed(0)}%`}>
-            <div className="rounded border border-white/10 bg-slate-800/50 px-3 py-2 cursor-help">
+            <div className="rounded border border-white/10 bg-slate-800/50 px-4 py-2 cursor-help">
               <div className="text-xs text-white/60 mb-1">🔬 Technology</div>
               <div className="text-lg font-bold text-purple-400">
                 {stats.technologyLevel.toFixed(1)}

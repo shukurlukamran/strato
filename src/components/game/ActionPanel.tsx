@@ -10,8 +10,6 @@ interface ActionPanelProps {
   gameId: string;
   playerCountryId?: string;
   onStatsUpdate: (newStats: Partial<CountryStats>) => void;
-  onEndTurn?: () => void;
-  endingTurn?: boolean;
 }
 
 export function ActionPanel({ 
@@ -20,8 +18,6 @@ export function ActionPanel({
   gameId, 
   playerCountryId,
   onStatsUpdate,
-  onEndTurn,
-  endingTurn = false,
 }: ActionPanelProps) {
   const [loading, setLoading] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -200,22 +196,6 @@ export function ActionPanel({
               </button>
             </Tooltip>
           </div>
-
-          {/* End Turn Button */}
-          {onEndTurn && (
-            <div className="pt-3 mt-3 border-t border-white/10">
-              <Tooltip content="End your turn and process all actions. AI countries will take their turns, and the game will advance to the next turn.">
-                <button
-                  type="button"
-                  disabled={loading !== null || endingTurn}
-                  className="w-full rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:from-blue-500 hover:to-blue-600 hover:shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                  onClick={onEndTurn}
-                >
-                  {endingTurn ? "Ending Turn..." : "End Turn"}
-                </button>
-              </Tooltip>
-            </div>
-          )}
         </>
       )}
     </div>

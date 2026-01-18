@@ -295,22 +295,24 @@ export class CountryInitializer {
     
     const profiles: StartingProfile[] = [];
     
-    // Create a unique random component per country that won't collide
+    // Create a seeded RNG for generating unique country seeds
+    // This ensures deterministic but varied results
+    const baseSeed = gameSeed || `game-${Date.now()}-${Math.random()}`;
+    const gameRng = this.createSeededRNG(baseSeed);
+    
     // Use prime number multiplication to ensure different sequences
     const primes = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37];
     
     for (let i = 0; i < count; i++) {
-      // Create truly unique seed per country using multiple factors:
+      // Create truly unique seed per country using:
       // 1. Base game seed
       // 2. Country index with prime multiplication for sequence variation
-      // 3. Random component that's different per index
-      const randomComponent = Math.floor(Math.random() * 1000000);
+      // 3. Random component from seeded RNG (not Math.random!)
+      const randomComponent = Math.floor(gameRng() * 1000000);
       const primeMultiplier = primes[i % primes.length];
       const uniqueValue = (i * primeMultiplier * 1000) + randomComponent;
       
-      const countrySeed = gameSeed 
-        ? `${gameSeed}-c${i}-p${primeMultiplier}-r${uniqueValue}` 
-        : `country-${i}-rand-${randomComponent}`;
+      const countrySeed = `${baseSeed}-c${i}-p${primeMultiplier}-r${uniqueValue}`;
       
       // Generate profile with preassigned resource profile
       const profile = this.generateRandomStart(countrySeed, resourceProfiles[i]);
