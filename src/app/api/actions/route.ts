@@ -6,6 +6,7 @@ const ActionRequestSchema = z.object({
   gameId: z.string().uuid(),
   countryId: z.string().uuid(),
   actionType: z.enum(["research", "infrastructure", "military"]),
+  amount: z.number().min(5).max(50).optional(), // Optional military amount (5-50, multiples of 5)
 });
 
 export async function POST(req: Request) {
@@ -20,7 +21,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
     }
 
-    const { gameId, countryId, actionType } = parsed.data;
+    const { gameId, countryId, actionType, amount } = parsed.data;
     const supabase = getSupabaseServerClient();
 
     // Get the game's current turn
@@ -121,7 +122,10 @@ export async function POST(req: Request) {
       }
 
       case "military": {
-        cost = 500; // Cost per military unit
+        // Use amount from request or default to 10
+        const militaryAmount = amount && amount >= 5 && amount <= 50 && amount % 5 === 0 ? amount : 10;
+        const costPerUnit = 50; // Standardized cost per strength point
+        cost = militaryAmount * costPerUnit;
         
         if (currentBudget < cost) {
           return NextResponse.json({ 
@@ -131,7 +135,7 @@ export async function POST(req: Request) {
         
         newStats = {
           budget: currentBudget - cost,
-          military_strength: stats.military_strength + 10, // Add 10 strength
+          military_strength: stats.military_strength + militaryAmount,
         };
         break;
       }
@@ -191,7 +195,7 @@ export async function POST(req: Request) {
         action_data: {
           subType: subType,
           cost,
-          amount: actionType === "military" ? 10 : undefined,
+          amount: actionType === "military" ? (amount || 10) : undefined,
           timestamp: new Date().toISOString(),
           immediate: true, // Flag to indicate this was an immediate action, not turn-based
         },

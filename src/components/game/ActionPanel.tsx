@@ -22,6 +22,7 @@ export function ActionPanel({
   const [loading, setLoading] = useState<string | null>(null);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isExpanded, setIsExpanded] = useState(true);
+  const [militaryAmount, setMilitaryAmount] = useState(10); // Default 10 units
 
   // Only show actions for player's own country
   const isPlayerCountry = country?.id === playerCountryId;
@@ -59,6 +60,7 @@ export function ActionPanel({
           gameId,
           countryId: country.id,
           actionType,
+          amount: actionType === "military" ? militaryAmount : undefined, // Pass military amount
         }),
       });
 
@@ -96,7 +98,8 @@ export function ActionPanel({
   const infraLevel = stats.infrastructureLevel || 0;
   const infraCost = Math.floor(600 * Math.pow(1.3, infraLevel)); // Slightly cheaper
   
-  const militaryCost = 500;
+  const militaryCostPerUnit = 50; // Standardized cost per strength point
+  const militaryCost = militaryAmount * militaryCostPerUnit;
   
   const currentBudget = Number(stats.budget);
 
@@ -173,27 +176,62 @@ export function ActionPanel({
             </Tooltip>
 
             {/* Recruit Military */}
-            <Tooltip content={`Recruit military units to defend your nation and project power. Increases your military strength by 10 points.\n\nCurrent Strength: ${stats.militaryStrength}\nNew Strength: ${stats.militaryStrength + 10}\nCost: $${militaryCost.toLocaleString()}`}>
-              <button
-                type="button"
-                disabled={loading !== null || currentBudget < militaryCost}
-                onClick={() => handleAction("military")}
-                className={`w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-all ${
-                  currentBudget < militaryCost
-                    ? "cursor-not-allowed bg-slate-700/50 opacity-50"
-                    : loading === "military"
-                    ? "bg-red-600/50"
-                    : "bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 hover:shadow-xl active:scale-95"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span>⚔️ Recruit Military</span>
-                  <span className="text-xs opacity-90">${militaryCost.toLocaleString()}</span>
+            <Tooltip content={`Recruit military units to defend your nation and project power. Choose how many units to recruit (multiples of 5).\n\nCurrent Strength: ${stats.militaryStrength}\nNew Strength: ${stats.militaryStrength + militaryAmount}\nCost per unit: $${militaryCostPerUnit}\nTotal Cost: $${militaryCost.toLocaleString()}`}>
+              <div className={`w-full rounded-lg px-4 py-3 shadow-lg ${
+                currentBudget < militaryCost
+                  ? "bg-slate-700/50 opacity-50"
+                  : "bg-gradient-to-r from-red-600 to-red-700"
+              }`}>
+                {/* Slider Section */}
+                <div className="mb-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <label htmlFor="military-slider" className="text-sm font-semibold text-white">
+                      ⚔️ Recruit Military
+                    </label>
+                    <span className="text-xs text-white/90">${militaryCost.toLocaleString()}</span>
+                  </div>
+                  
+                  <div className="flex items-center gap-3">
+                    <input
+                      id="military-slider"
+                      type="range"
+                      min="5"
+                      max="50"
+                      step="5"
+                      value={militaryAmount}
+                      onChange={(e) => setMilitaryAmount(Number(e.target.value))}
+                      disabled={loading !== null}
+                      className="flex-1 h-2 rounded-lg appearance-none cursor-pointer bg-white/20 accent-red-500"
+                      style={{
+                        background: `linear-gradient(to right, rgb(239 68 68) 0%, rgb(239 68 68) ${((militaryAmount - 5) / 45) * 100}%, rgba(255,255,255,0.2) ${((militaryAmount - 5) / 45) * 100}%, rgba(255,255,255,0.2) 100%)`
+                      }}
+                    />
+                    <span className="text-sm font-bold text-white min-w-[3ch] text-right">
+                      {militaryAmount}
+                    </span>
+                  </div>
+                  
+                  <div className="mt-1.5 text-xs text-white/75">
+                    Strength {stats.militaryStrength} → {stats.militaryStrength + militaryAmount} (+{militaryAmount})
+                  </div>
                 </div>
-                <div className="mt-1 text-xs opacity-75">
-                  Strength {stats.militaryStrength} → {stats.militaryStrength + 10}
-                </div>
-              </button>
+
+                {/* Action Button */}
+                <button
+                  type="button"
+                  disabled={loading !== null || currentBudget < militaryCost}
+                  onClick={() => handleAction("military")}
+                  className={`w-full rounded px-3 py-2 text-sm font-semibold text-white transition-all ${
+                    currentBudget < militaryCost
+                      ? "cursor-not-allowed bg-slate-600/50"
+                      : loading === "military"
+                      ? "bg-red-800/50"
+                      : "bg-red-800/80 hover:bg-red-700/80 active:scale-95"
+                  }`}
+                >
+                  {loading === "military" ? "Recruiting..." : `Recruit ${militaryAmount} Units`}
+                </button>
+              </div>
             </Tooltip>
           </div>
         </>

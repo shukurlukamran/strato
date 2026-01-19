@@ -71,7 +71,7 @@ export class RuleBasedAI {
     // Calculate investment costs
     const researchCost = ActionResolver.calculateResearchCost(stats.technologyLevel);
     const infraCost = ActionResolver.calculateInfrastructureCost(stats.infrastructureLevel || 0);
-    const militaryRecruitCost = 100; // Base recruit cost
+    const militaryRecruitCost = ECONOMIC_BALANCE.MILITARY.COST_PER_STRENGTH_POINT; // 50 per strength point (standardized)
     
     // Calculate affordability (with safety buffer)
     const safetyBuffer = Math.max(500, budgetBreakdown.totalExpenses * 2);
@@ -300,6 +300,7 @@ export class RuleBasedAI {
 
   /**
    * Decide how much military to recruit this turn
+   * Uses standardized cost: 50 budget per strength point (same as player)
    */
   static decideMilitaryRecruitment(
     stats: CountryStats,
@@ -311,25 +312,25 @@ export class RuleBasedAI {
     if (analysis.turnsUntilBankrupt !== null && analysis.turnsUntilBankrupt < 5) return 0;
     if (analysis.foodTurnsRemaining !== null && analysis.foodTurnsRemaining < 5) return 0;
     
-    // Calculate affordable recruitment
-    const recruitCost = 100; // Base cost per unit
+    // Calculate affordable recruitment using STANDARDIZED cost
+    const costPerStrength = ECONOMIC_BALANCE.MILITARY.COST_PER_STRENGTH_POINT; // 50
     const availableBudget = analysis.currentBudget - weights.economicSafetyBuffer;
-    const maxAffordable = Math.floor(availableBudget / recruitCost);
+    const maxAffordable = Math.floor(availableBudget / costPerStrength);
     
     // Calculate desired recruitment based on deficit
     let desiredRecruitment = 0;
     
     // CRISIS: Urgent military need
     if (analysis.militaryDeficit > 50) {
-      desiredRecruitment = Math.min(20, analysis.militaryDeficit / 3);
+      desiredRecruitment = Math.min(30, analysis.militaryDeficit / 2);
     }
     // HIGH PRIORITY: Significant deficit
     else if (analysis.militaryDeficit > 20) {
-      desiredRecruitment = Math.min(10, analysis.militaryDeficit / 2);
+      desiredRecruitment = Math.min(20, analysis.militaryDeficit / 2);
     }
-    // NORMAL: Small deficit
+    // NORMAL: Small deficit  
     else if (analysis.militaryDeficit > 5) {
-      desiredRecruitment = Math.min(5, analysis.militaryDeficit);
+      desiredRecruitment = Math.min(10, analysis.militaryDeficit);
     }
     
     // Scale by priority weight
@@ -338,7 +339,10 @@ export class RuleBasedAI {
     // Clamp to affordable amount
     const finalRecruitment = Math.min(desiredRecruitment, maxAffordable);
     
-    return Math.max(0, Math.floor(finalRecruitment));
+    // Round to multiples of 5 for cleaner numbers (optional, but nice)
+    const rounded = Math.floor(finalRecruitment / 5) * 5;
+    
+    return Math.max(0, rounded);
   }
 
   /**

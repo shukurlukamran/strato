@@ -54,5 +54,12 @@ export const ECONOMIC_BALANCE = {
     BUILD_COST_BASE: 1000,             // Base cost to increase infrastructure
     BUILD_COST_MULTIPLIER: 1.5,        // Cost increases 1.5x per level
     MAINTENANCE_COST_PER_LEVEL: 20,    // Budget cost per infrastructure level
+  },
+  
+  // Military (NEW - standardized costs)
+  MILITARY: {
+    COST_PER_STRENGTH_POINT: 50,       // Standard cost per military strength point
+    RECRUIT_AMOUNT_STANDARD: 10,       // Standard recruitment amount per action
+    RECRUIT_COST_STANDARD: 500,        // Standard cost (50 * 10 = 500)
   }
 } as const;
