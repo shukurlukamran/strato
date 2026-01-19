@@ -4,6 +4,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { GameState } from "@/lib/game-engine/GameState";
 import { TurnProcessor } from "@/lib/game-engine/TurnProcessor";
 import { EconomicEngine } from "@/lib/game-engine/EconomicEngine";
+import { AIController } from "@/lib/ai/AIController";
 
 const BodySchema = z.object({
   gameId: z.string().min(1),
@@ -137,6 +138,51 @@ export async function POST(req: Request) {
       updatedAt: d.updated_at,
     })),
   });
+
+  // GENERATE AI ACTIONS for non-player countries
+  console.log(`[Turn API] Generating AI actions for turn ${turn}...`);
+  const aiActions = [];
+  
+  for (const country of state.data.countries) {
+    if (!country.isPlayerControlled) {
+      // Create AI controller with random personality (seeded by country ID for consistency)
+      const aiController = AIController.withRandomPersonality(country.id);
+      
+      try {
+        const actions = aiController.decideTurnActions(state.data, country.id);
+        aiActions.push(...actions);
+        
+        console.log(`[AI] ${country.name}: Generated ${actions.length} actions`);
+      } catch (error) {
+        console.error(`[AI] Failed to generate actions for ${country.name}:`, error);
+      }
+    }
+  }
+  
+  // Save AI actions to database
+  if (aiActions.length > 0) {
+    const { error: aiActionsError } = await supabase
+      .from("actions")
+      .insert(aiActions.map(a => ({
+        id: a.id,
+        game_id: a.gameId,
+        country_id: a.countryId,
+        turn: a.turn,
+        action_type: a.actionType,
+        action_data: a.actionData,
+        status: a.status,
+        created_at: a.createdAt
+      })));
+    
+    if (aiActionsError) {
+      console.error('[AI] Failed to save AI actions:', aiActionsError);
+    } else {
+      console.log(`[AI] ✓ Saved ${aiActions.length} AI actions to database`);
+      
+      // Add AI actions to pending actions in state
+      state.setPendingActions([...state.data.pendingActions, ...aiActions]);
+    }
+  }
 
   // Process economic phase BEFORE action resolution
   const economicEvents: Array<{ type: string; message: string; data?: Record<string, unknown> }> = [];
