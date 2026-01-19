@@ -270,8 +270,47 @@ export async function POST(req: Request) {
   const processor = new TurnProcessor();
   const result = processor.processTurn(state);
 
-  // Combine economic events with turn events
-  const allEvents = [...economicEvents, ...result.events];
+  // Generate action summary events for history log
+  const actionSummaryEvents: Array<{ type: string; message: string; data?: Record<string, unknown> }> = [];
+  
+  for (const action of result.executedActions) {
+    const country = state.data.countries.find(c => c.id === action.countryId);
+    if (!country) continue;
+    
+    let actionMessage = "";
+    
+    if (action.actionType === "research") {
+      actionMessage = `${country.name} researched technology`;
+    } else if (action.actionType === "economic") {
+      const subType = (action.actionData as any)?.subType;
+      if (subType === "infrastructure") {
+        actionMessage = `${country.name} built infrastructure`;
+      } else {
+        actionMessage = `${country.name} improved economy`;
+      }
+    } else if (action.actionType === "military") {
+      const subType = (action.actionData as any)?.subType;
+      const amount = (action.actionData as any)?.amount || 10;
+      if (subType === "recruit") {
+        actionMessage = `${country.name} recruited ${amount} military units`;
+      } else {
+        actionMessage = `${country.name} took military action`;
+      }
+    } else if (action.actionType === "diplomacy") {
+      actionMessage = `${country.name} engaged in diplomacy`;
+    }
+    
+    if (actionMessage) {
+      actionSummaryEvents.push({
+        type: `action.${action.actionType}`,
+        message: actionMessage,
+        data: { countryId: action.countryId, actionType: action.actionType }
+      });
+    }
+  }
+
+  // Combine economic events with action summary events and turn events
+  const allEvents = [...economicEvents, ...actionSummaryEvents, ...result.events];
 
   // Persist: mark executed actions, update stats, store snapshot, advance turn.
   if (result.executedActions.length) {

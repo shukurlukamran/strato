@@ -12,6 +12,7 @@ import { ResourceDisplay } from "@/components/game/ResourceDisplay";
 import { BudgetPanel } from "@/components/game/BudgetPanel";
 import { ActionPanel } from "@/components/game/ActionPanel";
 import { AllProfilesInfo } from "@/components/game/AllProfilesInfo";
+import { HistoryLog } from "@/components/game/HistoryLog";
 import { useGameStore } from "@/lib/store/gameStore";
 
 type ApiGame = { id: string; name: string; current_turn: number; status: string; player_country_id: string };
@@ -61,6 +62,7 @@ export default function GamePage() {
   const [messagesByChatId, setMessagesByChatId] = useState<Record<string, ChatMessage[]>>({});
   const [deals, setDeals] = useState<Deal[]>([]);
   const [showSidebar, setShowSidebar] = useState(true);
+  const [showHistoryLog, setShowHistoryLog] = useState(true);
   const [endingTurn, setEndingTurn] = useState(false);
   const [turnProcessing, setTurnProcessing] = useState(false);
 
@@ -585,6 +587,27 @@ export default function GamePage() {
         {/* Center - Map */}
         <div className="flex-1">
           <Map countries={countries} />
+        </div>
+
+        {/* Right Sidebar - History Log */}
+        <div
+          className={`absolute right-0 top-12 z-10 h-[calc(100vh-3rem)] w-80 transform border-l border-white/10 bg-slate-900/95 backdrop-blur-md transition-transform duration-300 ${
+            showHistoryLog ? "translate-x-0" : "translate-x-full"
+          }`}
+        >
+          <div className="flex h-full flex-col p-4">
+            {/* Toggle button */}
+            <button
+              type="button"
+              onClick={() => setShowHistoryLog(!showHistoryLog)}
+              className="absolute -left-10 top-4 rounded-l bg-slate-800/90 px-2 py-4 text-white hover:bg-slate-700"
+            >
+              {showHistoryLog ? "▶" : "◀"}
+            </button>
+
+            {/* History Log Content */}
+            <HistoryLog gameId={gameId} currentTurn={turn} />
+          </div>
         </div>
 
       </div>

@@ -155,6 +155,39 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Failed to update stats" }, { status: 500 });
     }
 
+    // Log the action to the actions table for history tracking
+    try {
+      // Get country name for better logging
+      const countryRes = await supabase
+        .from("countries")
+        .select("name")
+        .eq("id", countryId)
+        .limit(1);
+      
+      const countryName = countryRes.data?.[0]?.name || "Unknown Country";
+      
+      // Record the action
+      await supabase.from("actions").insert({
+        game_id: gameId,
+        country_id: countryId,
+        turn: currentTurn,
+        action_type: actionType as any,
+        action_data: {
+          subType: actionType === "military" ? "recruit" : actionType,
+          cost,
+          amount: actionType === "military" ? 10 : undefined,
+          timestamp: new Date().toISOString(),
+          immediate: true, // Flag to indicate this was an immediate action, not turn-based
+        },
+        status: "executed",
+      });
+      
+      console.log(`[Actions API] Recorded action: ${countryName} performed ${actionType}`);
+    } catch (error) {
+      // Don't fail the request if logging fails
+      console.warn("[Actions API] Failed to log action:", error);
+    }
+
     return NextResponse.json({
       success: true,
       cost,
