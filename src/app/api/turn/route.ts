@@ -162,18 +162,24 @@ export async function POST(req: Request) {
         aiActions.push(...actions);
         
         console.log(`[AI] ${country.name}: Generated ${actions.length} actions`);
+        if (actions.length > 0) {
+          console.log(`[AI] ${country.name} actions:`, actions.map(a => ({
+            type: a.actionType,
+            data: a.actionData
+          })));
+        }
       } catch (error) {
         console.error(`[AI] Failed to generate actions for ${country.name}:`, error);
       }
     }
   }
   
-  // Save AI actions to database
+  // Save AI actions to database (let database auto-generate UUIDs)
   if (aiActions.length > 0) {
-    const { error: aiActionsError } = await supabase
+    const { data: insertedActions, error: aiActionsError } = await supabase
       .from("actions")
       .insert(aiActions.map(a => ({
-        id: a.id,
+        // Don't include id - let database auto-generate UUID
         game_id: a.gameId,
         country_id: a.countryId,
         turn: a.turn,
@@ -181,16 +187,35 @@ export async function POST(req: Request) {
         action_data: a.actionData,
         status: a.status,
         created_at: a.createdAt
-      })));
+      })))
+      .select(); // Get back the inserted actions with auto-generated IDs
     
     if (aiActionsError) {
       console.error('[AI] Failed to save AI actions:', aiActionsError);
-    } else {
-      console.log(`[AI] ✓ Saved ${aiActions.length} AI actions to database`);
+      console.error('[AI] Error details:', JSON.stringify(aiActionsError, null, 2));
+    } else if (insertedActions && insertedActions.length > 0) {
+      console.log(`[AI] ✓ Saved ${insertedActions.length} AI actions to database`);
       
-      // Add AI actions to pending actions in state
-      state.setPendingActions([...state.data.pendingActions, ...aiActions]);
+      // Add inserted actions (with database-generated IDs) to pending actions in state
+      const actionsWithIds = insertedActions.map((a: any) => ({
+        id: a.id,
+        gameId: a.game_id,
+        countryId: a.country_id,
+        turn: a.turn,
+        actionType: a.action_type,
+        actionData: a.action_data,
+        status: a.status,
+        createdAt: a.created_at,
+      }));
+      
+      state.setPendingActions([...state.data.pendingActions, ...actionsWithIds]);
+      
+      console.log(`[AI] ✓ Added ${actionsWithIds.length} AI actions to state for processing`);
+    } else {
+      console.warn('[AI] No actions were inserted (insertedActions is empty)');
     }
+  } else {
+    console.log(`[AI] No AI actions generated this turn`);
   }
 
   // Process economic phase BEFORE action resolution
