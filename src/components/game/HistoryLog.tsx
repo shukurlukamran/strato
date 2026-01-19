@@ -81,7 +81,7 @@ export function HistoryLog({ gameId, currentTurn }: HistoryLogProps) {
   
   const totalRelevantEvents = actionEvents.length + dealEvents.length + naturalEvents.length;
 
-  if (totalRelevantEvents === 0) {
+  if (!history || totalRelevantEvents === 0) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-sm text-white/40">No actions in previous turn</div>
