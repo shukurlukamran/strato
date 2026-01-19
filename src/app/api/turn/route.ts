@@ -282,10 +282,16 @@ export async function POST(req: Request) {
   // Helper function to generate action summary message
   function generateActionMessage(action: any, countryName: string): { type: string; message: string; data: any } | null {
     let actionMessage = "";
+    let eventType = action.actionType;
     
     if (action.actionType === "research") {
       actionMessage = `${countryName} researched technology`;
+    } else if (action.actionType === "infrastructure") {
+      // Handle direct infrastructure actions (player actions via /api/actions)
+      actionMessage = `${countryName} built infrastructure`;
+      eventType = "economic"; // Group with economic actions for display
     } else if (action.actionType === "economic") {
+      // Handle AI economic actions with subtypes
       const subType = (action.actionData as any)?.subType;
       if (subType === "infrastructure") {
         actionMessage = `${countryName} built infrastructure`;
@@ -306,7 +312,7 @@ export async function POST(req: Request) {
     
     if (actionMessage) {
       return {
-        type: `action.${action.actionType}`,
+        type: `action.${eventType}`,
         message: actionMessage,
         data: { countryId: action.countryId, actionType: action.actionType }
       };
