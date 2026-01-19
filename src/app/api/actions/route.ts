@@ -166,14 +166,30 @@ export async function POST(req: Request) {
       
       const countryName = countryRes.data?.[0]?.name || "Unknown Country";
       
+      // Map action types to database enum values
+      // Database enum: 'diplomacy','military','economic','research'
+      let dbActionType: string;
+      let subType: string | undefined;
+      
+      if (actionType === "infrastructure") {
+        dbActionType = "economic";
+        subType = "infrastructure";
+      } else if (actionType === "military") {
+        dbActionType = "military";
+        subType = "recruit";
+      } else {
+        dbActionType = actionType;
+        subType = actionType;
+      }
+      
       // Record the action
       await supabase.from("actions").insert({
         game_id: gameId,
         country_id: countryId,
         turn: currentTurn,
-        action_type: actionType as any,
+        action_type: dbActionType as any,
         action_data: {
-          subType: actionType === "military" ? "recruit" : actionType,
+          subType: subType,
           cost,
           amount: actionType === "military" ? 10 : undefined,
           timestamp: new Date().toISOString(),
@@ -182,10 +198,10 @@ export async function POST(req: Request) {
         status: "executed",
       });
       
-      console.log(`[Actions API] Recorded action: ${countryName} performed ${actionType}`);
+      console.log(`[Actions API] Recorded action: ${countryName} performed ${actionType} (saved as ${dbActionType})`);
     } catch (error) {
       // Don't fail the request if logging fails
-      console.warn("[Actions API] Failed to log action:", error);
+      console.error("[Actions API] Failed to log action:", error);
     }
 
     return NextResponse.json({
