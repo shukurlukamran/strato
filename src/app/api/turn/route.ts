@@ -70,6 +70,15 @@ export async function POST(req: Request) {
     .eq("status", "pending");
   if (actionsRes.error) return NextResponse.json({ error: actionsRes.error.message }, { status: 400 });
 
+  // Also fetch already-executed actions from this turn (immediate player actions)
+  const executedActionsRes = await supabase
+    .from("actions")
+    .select("id, game_id, country_id, turn, action_type, action_data, status, created_at")
+    .eq("game_id", gameId)
+    .eq("turn", turn)
+    .eq("status", "executed");
+  if (executedActionsRes.error) return NextResponse.json({ error: executedActionsRes.error.message }, { status: 400 });
+
   const dealsRes = await supabase
     .from("deals")
     .select(
@@ -270,47 +279,80 @@ export async function POST(req: Request) {
   const processor = new TurnProcessor();
   const result = processor.processTurn(state);
 
-  // Generate action summary events for history log
-  const actionSummaryEvents: Array<{ type: string; message: string; data?: Record<string, unknown> }> = [];
-  
-  for (const action of result.executedActions) {
-    const country = state.data.countries.find(c => c.id === action.countryId);
-    if (!country) continue;
-    
+  // Helper function to generate action summary message
+  function generateActionMessage(action: any, countryName: string): { type: string; message: string; data: any } | null {
     let actionMessage = "";
     
     if (action.actionType === "research") {
-      actionMessage = `${country.name} researched technology`;
+      actionMessage = `${countryName} researched technology`;
     } else if (action.actionType === "economic") {
       const subType = (action.actionData as any)?.subType;
       if (subType === "infrastructure") {
-        actionMessage = `${country.name} built infrastructure`;
+        actionMessage = `${countryName} built infrastructure`;
       } else {
-        actionMessage = `${country.name} improved economy`;
+        actionMessage = `${countryName} improved economy`;
       }
     } else if (action.actionType === "military") {
       const subType = (action.actionData as any)?.subType;
       const amount = (action.actionData as any)?.amount || 10;
       if (subType === "recruit") {
-        actionMessage = `${country.name} recruited ${amount} military units`;
+        actionMessage = `${countryName} recruited ${amount} military units`;
       } else {
-        actionMessage = `${country.name} took military action`;
+        actionMessage = `${countryName} took military action`;
       }
     } else if (action.actionType === "diplomacy") {
-      actionMessage = `${country.name} engaged in diplomacy`;
+      actionMessage = `${countryName} engaged in diplomacy`;
     }
     
     if (actionMessage) {
-      actionSummaryEvents.push({
+      return {
         type: `action.${action.actionType}`,
         message: actionMessage,
         data: { countryId: action.countryId, actionType: action.actionType }
-      });
+      };
+    }
+    return null;
+  }
+
+  // Generate action summary events for history log
+  const actionSummaryEvents: Array<{ type: string; message: string; data?: Record<string, unknown> }> = [];
+  
+  // 1. Add already-executed actions from this turn (immediate player actions)
+  for (const action of (executedActionsRes.data ?? [])) {
+    const country = state.data.countries.find(c => c.id === action.country_id);
+    if (!country) continue;
+    
+    const actionData = {
+      id: action.id,
+      gameId: action.game_id,
+      countryId: action.country_id,
+      turn: action.turn,
+      actionType: action.action_type,
+      actionData: action.action_data,
+      status: action.status,
+      createdAt: action.created_at,
+    };
+    
+    const event = generateActionMessage(actionData, country.name);
+    if (event) {
+      actionSummaryEvents.push(event);
+    }
+  }
+  
+  // 2. Add newly executed actions from turn processing (AI actions)
+  for (const action of result.executedActions) {
+    const country = state.data.countries.find(c => c.id === action.countryId);
+    if (!country) continue;
+    
+    const event = generateActionMessage(action, country.name);
+    if (event) {
+      actionSummaryEvents.push(event);
     }
   }
 
-  // Combine economic events with action summary events and turn events
-  const allEvents = [...economicEvents, ...actionSummaryEvents, ...result.events];
+  // Only include action events in turn history (exclude economic background events)
+  // Turn history should only show player-visible actions, deals, and natural events
+  const allEvents = [...actionSummaryEvents, ...result.events.filter(e => !e.type.startsWith('economic'))];
 
   // Persist: mark executed actions, update stats, store snapshot, advance turn.
   if (result.executedActions.length) {
