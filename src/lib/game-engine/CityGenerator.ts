@@ -315,8 +315,15 @@ export class CityGenerator {
     const pathCoords = this.parsePathCoordinates(territoryPath);
     const bounds = this.calculateBounds(pathCoords);
     
-    // Use finer resolution for better coverage
-    const resolution = 0.5;
+    // Use very fine resolution to ensure we reach all edges
+    const resolution = 0.3;
+    
+    // Expand sampling area slightly beyond bounds to ensure edge coverage
+    const padding = 1;
+    const expandedMinX = bounds.minX - padding;
+    const expandedMinY = bounds.minY - padding;
+    const expandedMaxX = bounds.minX + bounds.width + padding;
+    const expandedMaxY = bounds.minY + bounds.height + padding;
     
     // Create Voronoi cells by assigning each point to nearest city
     const voronoiCells = new Map<Point, Point[]>();
@@ -324,9 +331,9 @@ export class CityGenerator {
       voronoiCells.set(city, []);
     }
     
-    // Sample the entire territory at high resolution
-    for (let x = bounds.minX; x <= bounds.minX + bounds.width; x += resolution) {
-      for (let y = bounds.minY; y <= bounds.minY + bounds.height; y += resolution) {
+    // Sample the entire expanded area at high resolution
+    for (let x = expandedMinX; x <= expandedMaxX; x += resolution) {
+      for (let y = expandedMinY; y <= expandedMaxY; y += resolution) {
         const point = { x, y };
         
         // Only include points inside the territory
@@ -351,6 +358,25 @@ export class CityGenerator {
       }
     }
     
+    // Add territory boundary points to ensure full coverage
+    // For each boundary point, assign to nearest city
+    for (const boundaryPoint of pathCoords) {
+      let minDist = Infinity;
+      let closestCity: Point | null = null;
+      
+      for (const city of cityPositions) {
+        const dist = this.distance(boundaryPoint, city);
+        if (dist < minDist) {
+          minDist = dist;
+          closestCity = city;
+        }
+      }
+      
+      if (closestCity && voronoiCells.has(closestCity)) {
+        voronoiCells.get(closestCity)!.push(boundaryPoint);
+      }
+    }
+    
     // Generate border paths for each city
     return cityPositions.map(cityPos => {
       const cellPoints = voronoiCells.get(cityPos) || [];
@@ -363,16 +389,25 @@ export class CityGenerator {
       // Find boundary points (points on the edge of the Voronoi cell)
       const boundary = this.findVoronoiBoundary(cellPoints, resolution, pathCoords);
       
-      if (boundary.length < 3) {
+      // Also include any territory boundary points that belong to this city
+      const territoryBoundaryPoints = pathCoords.filter(tbp => 
+        cellPoints.some(cp => 
+          Math.abs(cp.x - tbp.x) < resolution && Math.abs(cp.y - tbp.y) < resolution
+        )
+      );
+      
+      const allBoundaryPoints = [...boundary, ...territoryBoundaryPoints];
+      
+      if (allBoundaryPoints.length < 3) {
         // Fallback: convex hull or circle
         return this.createCirclePath(cityPos, 3);
       }
       
       // Sort boundary points to form a proper closed polygon
-      const sortedBoundary = this.sortBoundaryPoints(boundary, cityPos);
+      const sortedBoundary = this.sortBoundaryPoints(allBoundaryPoints, cityPos);
       
-      // Simplify the path to reduce complexity (Douglas-Peucker could be used here)
-      const simplified = this.simplifyPath(sortedBoundary, 1.0);
+      // Simplify the path to reduce complexity
+      const simplified = this.simplifyPath(sortedBoundary, 0.8);
       
       // Create SVG path
       const pathStr = simplified
@@ -522,6 +557,7 @@ export class CityGenerator {
   
   /**
    * Distribute resources and population proportionally by city size
+   * Limits each city to max 6 different resource types
    */
   private static distributeResources(
     totalResources: Record<string, number>,
@@ -534,16 +570,29 @@ export class CityGenerator {
     let remainingPopulation = totalPopulation;
     const remainingResources = { ...totalResources };
     
+    // Get resource types sorted by amount (descending)
+    const resourceEntries = Object.entries(totalResources)
+      .filter(([_, amount]) => amount > 0)
+      .sort((a, b) => b[1] - a[1]);
+    
     // Distribute to all cities except the last one
     for (let i = 0; i < sizes.length - 1; i++) {
       const proportion = sizes[i] / totalSize;
       
-      // Distribute each resource
+      // Determine which resources this city gets (max 6 types)
+      // Randomly select from available resources, favoring higher amounts
+      const cityResourceTypes = this.selectCityResources(resourceEntries, 6);
+      
+      // Distribute selected resources
       const resources: Record<string, number> = {};
       for (const [resource, total] of Object.entries(totalResources)) {
-        const amount = Math.floor(total * proportion);
-        resources[resource] = amount;
-        remainingResources[resource] = (remainingResources[resource] || 0) - amount;
+        if (cityResourceTypes.includes(resource)) {
+          const amount = Math.floor(total * proportion);
+          if (amount > 0) {
+            resources[resource] = amount;
+            remainingResources[resource] = (remainingResources[resource] || 0) - amount;
+          }
+        }
       }
       
       const population = Math.floor(totalPopulation * proportion);
@@ -553,9 +602,21 @@ export class CityGenerator {
     }
     
     // Give all remaining resources and population to the last city
-    // This ensures the sum is exactly equal to country totals
+    // Limit to 6 resource types for the last city too
+    const lastCityResources: Record<string, number> = {};
+    const remainingEntries = Object.entries(remainingResources)
+      .filter(([_, amount]) => amount > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6);
+    
+    for (const [resource, amount] of remainingEntries) {
+      if (amount > 0) {
+        lastCityResources[resource] = amount;
+      }
+    }
+    
     distributions.push({
-      resources: remainingResources,
+      resources: lastCityResources,
       population: remainingPopulation,
     });
     
@@ -563,18 +624,68 @@ export class CityGenerator {
   }
   
   /**
-   * Generate city names based on country name
+   * Select up to maxTypes resource types for a city
+   * Weighted selection favoring resources with higher amounts
+   */
+  private static selectCityResources(
+    resourceEntries: [string, number][],
+    maxTypes: number
+  ): string[] {
+    if (resourceEntries.length <= maxTypes) {
+      return resourceEntries.map(([name]) => name);
+    }
+    
+    const selected: string[] = [];
+    const available = [...resourceEntries];
+    
+    // Always include top 2-3 resources
+    const guaranteedCount = Math.min(3, maxTypes);
+    for (let i = 0; i < guaranteedCount && i < available.length; i++) {
+      selected.push(available[i][0]);
+    }
+    
+    // Randomly select remaining slots
+    const remaining = maxTypes - selected.length;
+    for (let i = 0; i < remaining && available.length > guaranteedCount; i++) {
+      // Weighted random selection from remaining resources
+      const startIndex = guaranteedCount;
+      const randomIndex = startIndex + Math.floor(Math.random() * (available.length - startIndex));
+      if (!selected.includes(available[randomIndex][0])) {
+        selected.push(available[randomIndex][0]);
+      }
+    }
+    
+    return selected;
+  }
+  
+  /**
+   * Generate interesting city names (not based on country name)
    */
   private static generateCityNames(countryName: string, count: number): string[] {
-    const prefixes = ["New ", "Old ", "Port ", "Fort ", "Saint ", "", "", "", ""];
-    const suffixes = [" City", " Town", " Bay", " Harbor", " Village", "dale", "ville", "burg", ""];
-    const adjectives = ["North", "South", "East", "West", "Central", "Upper", "Lower"];
+    // Diverse city name components for variety
+    const cityPrefixes = [
+      "Ash", "Bright", "Clear", "Dark", "Ever", "Fair", "Gold", "High", "Iron", "King",
+      "Lake", "Moon", "North", "Oak", "Pine", "Red", "River", "Silver", "South", "Star",
+      "Stone", "Sun", "West", "White", "Wind", "Winter", "Bay", "Cape", "Port", "Mount"
+    ];
+    
+    const citySuffixes = [
+      "ford", "bridge", "port", "haven", "dale", "field", "wood", "mount", "shire", "ton",
+      "burg", "ville", "city", "falls", "ridge", "vale", "gate", "shore", "crest", "peak",
+      "point", "view", "spring", "meadow", "grove", "hill", "watch", "keep", "harbor", "bay"
+    ];
+    
+    const standaloneNames = [
+      "Avalon", "Zenith", "Arcadia", "Valencia", "Meridian", "Aurora", "Cascade", "Olympia",
+      "Alexandria", "Constantinople", "Byzantium", "Carthage", "Corinth", "Delphi", "Memphis",
+      "Thebes", "Babylon", "Nineveh", "Persepolis", "Samarkand", "Timbuktu", "Zanzibar"
+    ];
     
     const names: string[] = [];
     const usedNames = new Set<string>();
     
-    // First city is often the capital - use country name
-    const capitalName = `${countryName} City`;
+    // First city is capital - use country name
+    const capitalName = `${countryName}`;
     names.push(capitalName);
     usedNames.add(capitalName.toLowerCase());
     
@@ -583,30 +694,27 @@ export class CityGenerator {
       let cityName = "";
       let attempts = 0;
       
-      while (attempts < 50) {
-        const usePrefix = Math.random() > 0.6;
-        const useSuffix = Math.random() > 0.4;
-        const useAdjective = Math.random() > 0.7;
-        
+      while (attempts < 100) {
         let name = "";
+        const nameType = Math.random();
         
-        if (usePrefix) {
-          name += prefixes[Math.floor(Math.random() * prefixes.length)];
-        }
-        
-        if (useAdjective && Math.random() > 0.5) {
-          name += adjectives[Math.floor(Math.random() * adjectives.length)] + " ";
-        }
-        
-        name += countryName;
-        
-        if (useSuffix) {
-          name += suffixes[Math.floor(Math.random() * suffixes.length)];
+        if (nameType < 0.4) {
+          // Prefix + Suffix combination
+          const prefix = cityPrefixes[Math.floor(Math.random() * cityPrefixes.length)];
+          const suffix = citySuffixes[Math.floor(Math.random() * citySuffixes.length)];
+          name = prefix + suffix;
+        } else if (nameType < 0.7) {
+          // Standalone name
+          name = standaloneNames[Math.floor(Math.random() * standaloneNames.length)];
+        } else {
+          // Prefix only with "City" or nothing
+          const prefix = cityPrefixes[Math.floor(Math.random() * cityPrefixes.length)];
+          name = Math.random() > 0.5 ? `${prefix} City` : prefix;
         }
         
         // Check for duplicates
-        if (!usedNames.has(name.toLowerCase().trim())) {
-          cityName = name.trim();
+        if (!usedNames.has(name.toLowerCase())) {
+          cityName = name;
           usedNames.add(cityName.toLowerCase());
           break;
         }
@@ -616,7 +724,7 @@ export class CityGenerator {
       
       // Fallback if we couldn't generate unique name
       if (!cityName) {
-        cityName = `${countryName} ${i + 1}`;
+        cityName = `City ${i + 1}`;
       }
       
       names.push(cityName);

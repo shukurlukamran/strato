@@ -277,8 +277,35 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
                       const scaleX = svgRect.width / viewBox.width;
                       const scaleY = svgRect.height / viewBox.height;
                       
-                      const screenX = svgRect.left + (city.positionX - viewBox.x) * scaleX;
-                      const screenY = svgRect.top + (city.positionY - viewBox.y) * scaleY;
+                      let screenX = svgRect.left + (city.positionX - viewBox.x) * scaleX;
+                      let screenY = svgRect.top + (city.positionY - viewBox.y) * scaleY;
+                      
+                      // Adjust position to keep tooltip on screen
+                      // Tooltip is roughly 320px wide and 300px tall
+                      const tooltipWidth = 320;
+                      const tooltipHeight = 300;
+                      const margin = 20;
+                      
+                      // Check right edge
+                      if (screenX + tooltipWidth / 2 > window.innerWidth - margin) {
+                        screenX = window.innerWidth - tooltipWidth / 2 - margin;
+                      }
+                      
+                      // Check left edge
+                      if (screenX - tooltipWidth / 2 < margin) {
+                        screenX = tooltipWidth / 2 + margin;
+                      }
+                      
+                      // Check top edge - tooltip appears above the city
+                      if (screenY - tooltipHeight - margin < 0) {
+                        // If too close to top, show below instead
+                        screenY = screenY + tooltipHeight / 2 + margin;
+                      }
+                      
+                      // Check bottom edge
+                      if (screenY + margin > window.innerHeight - margin) {
+                        screenY = window.innerHeight - margin - margin;
+                      }
                       
                       setTooltipPosition({ x: screenX, y: screenY });
                     }
@@ -288,26 +315,26 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
                 }}
               />
 
-              {/* City name (on hover) */}
+              {/* City name (on hover) - smaller */}
               {isHovered && (
                 <>
                   {/* Background for better readability */}
                   <rect
-                    x={city.positionX - 10}
-                    y={city.positionY - 2}
-                    width="20"
-                    height="4"
+                    x={city.positionX - 6}
+                    y={city.positionY - 1.5}
+                    width="12"
+                    height="3"
                     fill="#000"
-                    opacity="0.8"
-                    rx="0.5"
+                    opacity="0.75"
+                    rx="0.3"
                     className="pointer-events-none"
                   />
                   <text
                     x={city.positionX}
-                    y={city.positionY + 0.5}
+                    y={city.positionY + 0.2}
                     textAnchor="middle"
                     dominantBaseline="middle"
-                    className="pointer-events-none select-none text-[2.5px] font-bold"
+                    className="pointer-events-none select-none text-[1.8px] font-semibold"
                     fill="#fff"
                     opacity="1"
                   >
