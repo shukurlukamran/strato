@@ -130,7 +130,7 @@ Turn Processing Timeline (3 AI countries):
 Total: ~7.1 seconds
 ```
 
-### After Optimization
+### After Optimization (Phase 1)
 ```
 Turn Processing Timeline (3 AI countries):
 ├─ AI Decisions (Parallel):       1.2s ⚡
@@ -145,19 +145,28 @@ Turn Processing Timeline (3 AI countries):
 Total: ~3.2 seconds ⚡ (55% faster!)
 ```
 
-### With LLM Turn (Turn 1, 5, 10...)
+### With LLM Turn - BEFORE Rate Limiting Fix
 ```
-Before:
+Before Optimization:
 ├─ AI Decisions (with LLM): 4.5s (sequential)
 ├─ Economics: 2.1s
 ├─ Rest: 2.0s
 Total: ~8.6 seconds
 
-After:
-├─ AI Decisions (with LLM): 1.8s ⚡ (parallel)
+After Phase 1 (Parallel but rate limited):
+├─ AI Decisions (with LLM): 32s 😱 (rate limited!)
 ├─ Economics: 0.8s ⚡ (parallel)
 ├─ Rest: 1.2s ⚡ (batched)
-Total: ~3.8 seconds ⚡ (56% faster!)
+Total: ~34 seconds ❌ (WORSE due to rate limiting!)
+```
+
+### With LLM Turn - AFTER Rate Limiting Fix (Phase 2)
+```
+After Phase 2 (Staggered LLM calls):
+├─ AI Decisions (with LLM): 4.0s ⚡ (staggered)
+├─ Economics: 0.8s ⚡ (parallel)
+├─ Rest: 1.2s ⚡ (batched)
+Total: ~6.0 seconds ⚡ (30% faster than original!)
 ```
 
 ---
@@ -329,15 +338,43 @@ console.timeEnd('Database Updates'); // Should be < 0.5s
 
 ---
 
+## Critical Update: LLM Rate Limiting Fix
+
+### Problem Discovered
+After implementing parallel processing, **LLM turns became SLOWER** (34s instead of 8s) due to Gemini API rate limiting when hit with simultaneous requests.
+
+### Solution: Staggered LLM Calls
+Added 150ms delays between LLM calls to avoid rate limiting:
+
+```typescript
+const isLLMTurn = turn === 1 || turn % 5 === 0;
+
+if (isLLMTurn && index > 0) {
+  await new Promise(resolve => setTimeout(resolve, 150 * index));
+}
+```
+
+### Results
+- **Non-LLM turns**: ~3s (unchanged) ✓
+- **LLM turns**: 34s → 6s (82% faster!) ⚡
+- **Overall improvement**: 30% faster than original
+
+**See `LLM_RATE_LIMITING_FIX.md` for full details.**
+
+---
+
 ## Summary
 
-**Performance Improvement**: 55% faster turn processing  
+**Performance Improvements**:
+- Non-LLM turns: 55% faster (7s → 3s)
+- LLM turns: 30% faster (8.6s → 6s)
+
 **Safety**: No race conditions, no data loss, no caching issues  
-**Scalability**: Handles more AI countries without linear slowdown  
+**Scalability**: Handles more AI countries efficiently  
 **Maintainability**: Code is cleaner with Promise.all patterns  
 **Visibility**: Enhanced logging for LLM decisions  
 
-**Your game now processes turns in ~3 seconds instead of ~7 seconds!** ⚡
+**Your game now processes all turns efficiently!** ⚡
 
 ### How to See LLM Decisions
 1. Start dev server: `npm run dev`

@@ -275,17 +275,38 @@ THREAT ASSESSMENT:
 STRATEGIC QUESTION:
 Given this situation, what should ${country.name}'s strategic focus be for the next ${this.LLM_CALL_FREQUENCY} turns?
 
-Provide a concise strategic analysis in the following format:
+IMPORTANT: You must respond with ONLY valid JSON in the following exact format (no markdown, no extra text):
 
-FOCUS: [economy/military/diplomacy/research/balanced]
-RATIONALE: [One sentence explaining why]
-THREATS: [Most critical threats to address]
-OPPORTUNITIES: [Key opportunities to exploit]
-ACTIONS: [3-5 specific recommended actions]
-DIPLOMACY: [Suggested stance toward each neighbor: friendly/neutral/hostile]
-CONFIDENCE: [0.0-1.0 confidence in this strategy]
+{
+  "focus": "economy" | "military" | "diplomacy" | "research" | "balanced",
+  "rationale": "One concise sentence explaining your strategic choice (max 150 characters)",
+  "threats": "Specific threats this country faces (e.g., 'Neighbor military 180 vs our 60, food shortage in 3 turns')",
+  "opportunities": "Specific opportunities to exploit (e.g., 'Excellent Research ROI of 15 turns, abundant iron resources')",
+  "actions": [
+    "Specific action 1 (e.g., 'Build infrastructure to level 3 immediately')",
+    "Specific action 2 (e.g., 'Recruit 20 military units to address deficit')",
+    "Specific action 3 (e.g., 'Research technology to leverage 2.2x multiplier')",
+    "Specific action 4 (optional)",
+    "Specific action 5 (optional)"
+  ],
+  "diplomacy": {
+${neighbors.split('\n').filter(n => n.trim()).map(n => {
+  const match = n.match(/- ([^:]+):/);
+  return match ? `    "${match[1].trim()}": "neutral"` : '';
+}).filter(Boolean).join(',\n')}
+  },
+  "confidence": 0.85
+}
 
-Be strategic, realistic, and consider the long-term implications.`;
+CRITICAL RULES:
+1. Return ONLY the JSON object (no markdown code blocks, no extra text)
+2. "actions" must contain 3-5 SPECIFIC, actionable items (NOT "Continue balanced development")
+3. "diplomacy" must include ALL neighbors listed above with stance: "friendly", "neutral", or "hostile"
+4. "threats" and "opportunities" must be SPECIFIC with numbers and details
+5. "rationale" must be under 150 characters
+6. All text fields must be complete (not truncated)
+
+Be strategic, realistic, and consider long-term implications.`;
   }
   
   /**
@@ -321,49 +342,104 @@ Be strategic, realistic, and consider the long-term implications.`;
   
   /**
    * Parse LLM response into structured analysis
+   * Updated to handle JSON format for better reliability
    */
   private parseStrategicAnalysis(response: string, turn: number): LLMStrategicAnalysis {
+    try {
+      // Clean response (remove markdown code blocks if present)
+      let cleanedResponse = response.trim();
+      if (cleanedResponse.startsWith('```json')) {
+        cleanedResponse = cleanedResponse.substring(7);
+      } else if (cleanedResponse.startsWith('```')) {
+        cleanedResponse = cleanedResponse.substring(3);
+      }
+      if (cleanedResponse.endsWith('```')) {
+        cleanedResponse = cleanedResponse.substring(0, cleanedResponse.length - 3);
+      }
+      cleanedResponse = cleanedResponse.trim();
+      
+      // Parse JSON
+      const parsed = JSON.parse(cleanedResponse);
+      
+      // Validate and extract fields
+      const strategicFocus = ["economy", "military", "diplomacy", "research", "balanced"].includes(parsed.focus)
+        ? parsed.focus as LLMStrategicAnalysis["strategicFocus"]
+        : "balanced";
+      
+      const rationale = (parsed.rationale || "Strategic analysis completed").substring(0, 200);
+      const threatAssessment = parsed.threats || "Normal threat level";
+      const opportunityIdentified = parsed.opportunities || "Multiple opportunities available";
+      const recommendedActions = Array.isArray(parsed.actions) && parsed.actions.length > 0
+        ? parsed.actions.slice(0, 5)
+        : ["Continue balanced development"];
+      
+      const diplomaticStance: Record<string, "friendly" | "neutral" | "hostile"> = {};
+      if (parsed.diplomacy && typeof parsed.diplomacy === 'object') {
+        for (const [country, stance] of Object.entries(parsed.diplomacy)) {
+          if (["friendly", "neutral", "hostile"].includes(stance as string)) {
+            diplomaticStance[country] = stance as "friendly" | "neutral" | "hostile";
+          }
+        }
+      }
+      
+      const confidenceScore = typeof parsed.confidence === 'number'
+        ? Math.min(1, Math.max(0, parsed.confidence))
+        : 0.7;
+      
+      return {
+        strategicFocus,
+        rationale,
+        threatAssessment,
+        opportunityIdentified,
+        recommendedActions,
+        diplomaticStance,
+        confidenceScore,
+        turnAnalyzed: turn,
+      };
+    } catch (error) {
+      // Fallback: If JSON parsing fails, try old format
+      console.warn("[LLM Planner] Failed to parse JSON response, using fallback parsing:", error);
+      return this.parseStrategicAnalysisFallback(response, turn);
+    }
+  }
+  
+  /**
+   * Fallback parser for non-JSON responses
+   */
+  private parseStrategicAnalysisFallback(response: string, turn: number): LLMStrategicAnalysis {
     const lines = response.split('\n');
     
-    // Extract fields using simple parsing
     let strategicFocus: LLMStrategicAnalysis["strategicFocus"] = "balanced";
     let rationale = "";
     let threatAssessment = "";
     let opportunityIdentified = "";
     let recommendedActions: string[] = [];
     let diplomaticStance: Record<string, "friendly" | "neutral" | "hostile"> = {};
-    let confidenceScore = 0.7; // Default confidence
+    let confidenceScore = 0.7;
     
     for (const line of lines) {
       const trimmed = line.trim();
       
-      if (trimmed.startsWith("FOCUS:")) {
+      if (trimmed.match(/^FOCUS:/i)) {
         const focus = trimmed.substring(6).trim().toLowerCase();
         if (["economy", "military", "diplomacy", "research", "balanced"].includes(focus)) {
           strategicFocus = focus as any;
         }
-      } else if (trimmed.startsWith("RATIONALE:")) {
+      } else if (trimmed.match(/^RATIONALE:/i)) {
         rationale = trimmed.substring(10).trim();
-      } else if (trimmed.startsWith("THREATS:")) {
+      } else if (trimmed.match(/^THREATS:/i)) {
         threatAssessment = trimmed.substring(8).trim();
-      } else if (trimmed.startsWith("OPPORTUNITIES:")) {
+      } else if (trimmed.match(/^OPPORTUNITIES:/i)) {
         opportunityIdentified = trimmed.substring(14).trim();
-      } else if (trimmed.startsWith("ACTIONS:")) {
+      } else if (trimmed.match(/^ACTIONS:/i)) {
         const actionsText = trimmed.substring(8).trim();
         recommendedActions = actionsText.split(/[,;]/).map(a => a.trim()).filter(Boolean);
-      } else if (trimmed.startsWith("CONFIDENCE:")) {
+      } else if (trimmed.match(/^CONFIDENCE:/i)) {
         const conf = parseFloat(trimmed.substring(11).trim());
         if (!isNaN(conf)) confidenceScore = Math.min(1, Math.max(0, conf));
       }
-      
-      // Parse diplomatic stances (simple heuristic)
-      if (trimmed.toLowerCase().includes("friendly") || trimmed.toLowerCase().includes("hostile") || trimmed.toLowerCase().includes("neutral")) {
-        // Extract country names and stances (basic implementation)
-        // This could be enhanced with better parsing
-      }
     }
     
-    // If parsing failed, extract from full response
     if (!rationale) {
       rationale = response.substring(0, 200);
     }

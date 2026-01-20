@@ -150,32 +150,41 @@ export async function POST(req: Request) {
 
   // GENERATE AI ACTIONS for non-player countries
   // Phase 2.2: Now async to support LLM strategic planning
-  // OPTIMIZED: Process all AI countries in parallel
+  // OPTIMIZED: Process all AI countries in parallel with staggered LLM calls
   console.log(`[Turn API] Generating AI actions for turn ${turn}...`);
-  const aiActionPromises = state.data.countries
-    .filter(country => !country.isPlayerControlled)
-    .map(async (country) => {
-      const aiController = AIController.withRandomPersonality(country.id);
-      
-      try {
-        const actions = await aiController.decideTurnActions(state.data, country.id);
-        
-        console.log(`[AI] ${country.name}: Generated ${actions.length} actions`);
-        if (actions.length > 0) {
-          console.log(`[AI] ${country.name} actions:`, actions.map(a => ({
-            type: a.actionType,
-            data: a.actionData
-          })));
-        }
-        
-        return actions;
-      } catch (error) {
-        console.error(`[AI] Failed to generate actions for ${country.name}:`, error);
-        return [];
-      }
-    });
   
-  // Wait for all AI decisions in parallel
+  const aiCountries = state.data.countries.filter(country => !country.isPlayerControlled);
+  const isLLMTurn = turn === 1 || turn % 5 === 0;
+  
+  // If it's an LLM turn, stagger the calls to avoid API rate limiting
+  // Otherwise, process fully in parallel
+  const aiActionPromises = aiCountries.map(async (country, index) => {
+    // Stagger LLM calls by 150ms each to avoid overwhelming Gemini API
+    if (isLLMTurn && index > 0) {
+      await new Promise(resolve => setTimeout(resolve, 150 * index));
+    }
+    
+    const aiController = AIController.withRandomPersonality(country.id);
+    
+    try {
+      const actions = await aiController.decideTurnActions(state.data, country.id);
+      
+      console.log(`[AI] ${country.name}: Generated ${actions.length} actions`);
+      if (actions.length > 0) {
+        console.log(`[AI] ${country.name} actions:`, actions.map(a => ({
+          type: a.actionType,
+          data: a.actionData
+        })));
+      }
+      
+      return actions;
+    } catch (error) {
+      console.error(`[AI] Failed to generate actions for ${country.name}:`, error);
+      return [];
+    }
+  });
+  
+  // Wait for all AI decisions (staggered start, but all awaited together)
   const aiActionsArrays = await Promise.all(aiActionPromises);
   const aiActions = aiActionsArrays.flat();
   
