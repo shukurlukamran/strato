@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { CountryInitializer } from "@/lib/game-engine/CountryInitializer";
 import { CityGenerator } from "@/lib/game-engine/CityGenerator";
-import type { Country, City } from "@/types/country";
+import type { Country, City, CountryStats } from "@/types/country";
 
 const CreateGameSchema = z.object({
   name: z.string().min(1).default("New Game"),
@@ -172,10 +172,10 @@ export async function POST(req: Request) {
       };
     });
 
-    const insertedStats = await supabase.from("country_stats").insert(statsRows);
+    const insertedStats = await supabase.from("country_stats").insert(statsRows).select();
     if (insertedStats.error) throw insertedStats.error;
 
-    // Generate cities for each country
+    // Generate cities for each country using the actual inserted stats
     const countryObjects: Country[] = countries.map(c => ({
       id: c.id,
       gameId: c.game_id,
@@ -190,17 +190,41 @@ export async function POST(req: Request) {
     const allCities: City[] = [];
     for (let i = 0; i < countries.length; i++) {
       const country = countryObjects[i];
-      const stats = countryProfiles[i];
-      const cities = CityGenerator.generateCitiesForCountry(country, {
-        ...stats,
+      const profile = countryProfiles[i];
+      const insertedStat = insertedStats.data?.[i];
+      
+      // Use inserted stats if available, otherwise fall back to profile
+      const statsForCityGeneration: CountryStats = insertedStat ? {
+        id: insertedStat.id,
+        countryId: country.id,
+        turn: 1,
+        population: insertedStat.population,
+        budget: Number(insertedStat.budget),
+        technologyLevel: Number(insertedStat.technology_level),
+        infrastructureLevel: insertedStat.infrastructure_level ?? 0,
+        militaryStrength: insertedStat.military_strength,
+        militaryEquipment: insertedStat.military_equipment ?? {},
+        resources: insertedStat.resources ?? {},
+        resourceProfile: insertedStat.resource_profile,
+        diplomaticRelations: insertedStat.diplomatic_relations ?? {},
+        createdAt: insertedStat.created_at,
+      } : {
         id: '',
         countryId: country.id,
         turn: 1,
-        infrastructureLevel: stats.infrastructureLevel,
+        population: profile.population,
+        budget: profile.budget,
+        technologyLevel: profile.technologyLevel,
+        infrastructureLevel: profile.infrastructureLevel,
+        militaryStrength: profile.militaryStrength,
         militaryEquipment: {},
+        resources: profile.resources,
+        resourceProfile: profile.resourceProfile,
         diplomaticRelations: {},
-        createdAt: now
-      });
+        createdAt: now,
+      };
+
+      const cities = CityGenerator.generateCitiesForCountry(country, statsForCityGeneration);
 
       // Update country with cities
       country.cities = cities;
@@ -223,7 +247,13 @@ export async function POST(req: Request) {
       }));
 
       const insertedCities = await supabase.from("cities").insert(cityRows);
-      if (insertedCities.error) throw insertedCities.error;
+      if (insertedCities.error) {
+        console.error("[Game API] Failed to insert cities:", insertedCities.error);
+        throw insertedCities.error;
+      }
+      console.log(`[Game API] Created ${allCities.length} cities for game ${gameId}`);
+    } else {
+      console.warn(`[Game API] No cities generated for game ${gameId}`);
     }
 
     // Create chats
