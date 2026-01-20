@@ -3,6 +3,11 @@
 import { useState } from "react";
 import type { Country, CountryStats } from "@/types/country";
 import { Tooltip } from "./Tooltip";
+import { 
+  calculateResearchCostForDisplay, 
+  calculateInfrastructureCostForDisplay,
+  calculateMilitaryRecruitmentCostForDisplay 
+} from "@/lib/game-engine/EconomicClientUtils";
 
 interface ActionPanelProps {
   country: Country | null;
@@ -91,15 +96,14 @@ export function ActionPanel({
     }
   };
 
-  // Calculate costs
+  // Calculate costs using accurate formulas with profile modifiers
   const techLevel = Math.floor(stats.technologyLevel);
-  const techCost = Math.floor(500 * Math.pow(1.4, techLevel)); // Lower base, steeper curve
+  const { cost: techCost, reductionPercent: techReduction } = calculateResearchCostForDisplay(stats);
   
   const infraLevel = stats.infrastructureLevel || 0;
-  const infraCost = Math.floor(600 * Math.pow(1.3, infraLevel)); // Slightly cheaper
+  const infraCost = calculateInfrastructureCostForDisplay(stats);
   
-  const militaryCostPerUnit = 50; // Standardized cost per strength point
-  const militaryCost = militaryAmount * militaryCostPerUnit;
+  const { cost: militaryCost, reductionPercent: militaryReduction } = calculateMilitaryRecruitmentCostForDisplay(stats, militaryAmount);
   
   const currentBudget = Number(stats.budget);
 
@@ -128,7 +132,7 @@ export function ActionPanel({
 
           <div className="space-y-2">
             {/* Research Technology */}
-            <Tooltip content={`Research new technology to improve your economy and military capabilities. Each level increases tax revenue and unlocks new possibilities.\n\nCurrent Level: ${techLevel}\nNext Level: ${techLevel + 1}\nCost: $${techCost.toLocaleString()}`}>
+            <Tooltip content={`🔬 RESEARCH TECHNOLOGY\n\nBoost your resource production and military power!\n\n📈 CURRENT → NEXT LEVEL:\nLevel ${techLevel} → ${techLevel + 1}\n\n✨ BENEFITS GAINED:\n• Resource Production: Better multiplier\n• Military Effectiveness: +20% combat power\n• Military Recruitment: -5% cost\n• Future Research: -3% cost${techLevel >= 5 ? '\n\n⚠️ MAX LEVEL REACHED!' : ''}\n\n💰 UPGRADE COST:\nBase Cost: $${(800 * Math.pow(1.35, techLevel)).toFixed(0)}${techReduction > 0 ? `\nResearch Discount: -${techReduction.toFixed(1)}% (from tech)` : ''}${stats.resourceProfile ? `\nProfile Modifier: ${stats.resourceProfile.name === 'Technological Hub' ? '-25% ✓' : stats.resourceProfile.name === 'Agriculture' || stats.resourceProfile.name === 'Mining Empire' ? '+15% ⚠' : stats.resourceProfile.name === 'Precious Metals Trader' ? '+20% ⚠' : 'Standard'}` : ''}\n\nTotal Cost: $${techCost.toLocaleString()}\n\n💡 Technology affects: Production, Military, Research speed`}>
               <button
                 type="button"
                 disabled={loading !== null || currentBudget < techCost}
@@ -152,7 +156,7 @@ export function ActionPanel({
             </Tooltip>
 
             {/* Build Infrastructure */}
-            <Tooltip content={`Build infrastructure to boost your economy and population growth. Higher infrastructure increases tax revenue and reduces maintenance costs.\n\nCurrent Level: ${infraLevel}\nNext Level: ${infraLevel + 1}\nCost: $${infraCost.toLocaleString()}`}>
+            <Tooltip content={`🏗️ BUILD INFRASTRUCTURE\n\nExpand your capacity and administrative efficiency!\n\n📈 CURRENT → NEXT LEVEL:\nLevel ${infraLevel} → ${infraLevel + 1}\n\n✨ BENEFITS GAINED:\n• Tax Collection: +12% efficiency\n• Population Capacity: +50,000 citizens\n• Trade Capacity: +1 deal per turn\n• Trade Efficiency: +10% trade value\n\n💰 UPGRADE COST:\nBase Cost: $${(700 * Math.pow(1.30, infraLevel)).toFixed(0)}${stats.resourceProfile ? `\nProfile Modifier: ${stats.resourceProfile.name === 'Industrial Complex' ? '-20% ✓' : stats.resourceProfile.name === 'Coastal Trading Hub' ? '-15% ✓' : stats.resourceProfile.name === 'Mining Empire' ? '+10% ⚠' : stats.resourceProfile.name === 'Precious Metals Trader' ? '+20% ⚠' : 'Standard'}` : ''}\n\nTotal Cost: $${infraCost.toLocaleString()}\n\n📉 MAINTENANCE ADDED:\n+$35 per turn (ongoing cost)\n\n💡 Infrastructure affects: Tax, Capacity, Trade\n${stats.population > (200000 + infraLevel * 50000) ? '\n⚠️ YOU ARE OVERCROWDED! Build ASAP!' : ''}`}>
               <button
                 type="button"
                 disabled={loading !== null || currentBudget < infraCost}
@@ -176,7 +180,7 @@ export function ActionPanel({
             </Tooltip>
 
             {/* Recruit Military */}
-            <Tooltip content={`Recruit military units to defend your nation and project power. Choose how many units to recruit (multiples of 5).\n\nCurrent Strength: ${stats.militaryStrength}\nNew Strength: ${stats.militaryStrength + militaryAmount}\nCost per unit: $${militaryCostPerUnit}\nTotal Cost: $${militaryCost.toLocaleString()}`}>
+            <Tooltip content={`⚔️ RECRUIT MILITARY\n\nBuild your military strength for defense and conquest!\n\n💪 RECRUITMENT:\nCurrent Strength: ${stats.militaryStrength}\nRecruiting: +${militaryAmount} strength\nNew Total: ${stats.militaryStrength + militaryAmount}\n\n💰 COST BREAKDOWN:\nBase: $${militaryAmount} × $50 = $${militaryAmount * 50}${militaryReduction > 0 ? `\nTech Discount: -${militaryReduction.toFixed(1)}% (Level ${stats.technologyLevel.toFixed(1)})` : ''}${stats.resourceProfile ? `\nProfile Modifier: ${stats.resourceProfile.name === 'Technological Hub' ? '-10% ✓' : stats.resourceProfile.name === 'Oil Kingdom' ? '+5% ⚠' : stats.resourceProfile.name === 'Precious Metals Trader' ? '+20% ⚠' : 'Standard'}` : ''}\n\nTotal Cost: $${militaryCost.toLocaleString()}\n\n📉 ONGOING UPKEEP:\n+$${(militaryAmount * 0.8).toFixed(1)} per turn ($0.80 per strength)\n\n⚡ TECH BONUS:\nYour military fights at ${(100 + stats.technologyLevel * 20).toFixed(0)}% effectiveness!\nEffective Power: ${Math.floor((stats.militaryStrength + militaryAmount) * (1 + stats.technologyLevel * 0.20))}\n\n💡 Higher tech = Cheaper recruitment + Stronger army!`}>
               <div className={`w-full rounded-lg px-4 py-3 shadow-lg ${
                 currentBudget < militaryCost
                   ? "bg-slate-700/50 opacity-50"
