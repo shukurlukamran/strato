@@ -149,6 +149,7 @@ export async function POST(req: Request) {
   });
 
   // GENERATE AI ACTIONS for non-player countries
+  // Phase 2.2: Now async to support LLM strategic planning
   console.log(`[Turn API] Generating AI actions for turn ${turn}...`);
   const aiActions = [];
   
@@ -158,7 +159,8 @@ export async function POST(req: Request) {
       const aiController = AIController.withRandomPersonality(country.id);
       
       try {
-        const actions = aiController.decideTurnActions(state.data, country.id);
+        // Now async to support LLM planning
+        const actions = await aiController.decideTurnActions(state.data, country.id);
         aiActions.push(...actions);
         
         console.log(`[AI] ${country.name}: Generated ${actions.length} actions`);

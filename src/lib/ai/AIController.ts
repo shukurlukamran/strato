@@ -26,11 +26,12 @@ export class AIController {
 
   /**
    * Generate all actions for a country this turn
-   * Uses rule-based decision making (no LLM cost)
+   * Phase 2.2: Hybrid approach (rule-based + optional LLM)
    */
-  decideTurnActions(state: GameStateSnapshot, countryId: string): GameAction[] {
+  async decideTurnActions(state: GameStateSnapshot, countryId: string): Promise<GameAction[]> {
     // Step 1: Strategic planning - what should we focus on?
-    const intent = this.planner.plan(state, countryId);
+    // This may call LLM if it's the right turn (every 5 turns)
+    const intent = await this.planner.plan(state, countryId);
     
     console.log(`[AI Controller] Country ${countryId} strategic focus: ${intent.focus} - ${intent.rationale}`);
     
@@ -74,6 +75,13 @@ export class AIController {
     return new AIController(personality);
   }
 
+  /**
+   * Get LLM cost tracking information
+   */
+  getCostTracking() {
+    return this.planner.getCostTracking();
+  }
+  
   private static createSeededRNG(seed: string): () => number {
     let seedValue = 0;
     for (let i = 0; i < seed.length; i++) {

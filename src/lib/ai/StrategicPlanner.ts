@@ -1,6 +1,7 @@
 import type { GameStateSnapshot } from "@/lib/game-engine/GameState";
 import { RuleBasedAI } from "./RuleBasedAI";
 import { DefaultPersonality, type AIPersonality } from "./Personality";
+import { LLMStrategicPlanner } from "./LLMStrategicPlanner";
 
 export interface StrategyIntent {
   focus: "economy" | "military" | "diplomacy" | "research" | "balanced";
@@ -8,29 +9,94 @@ export interface StrategyIntent {
 }
 
 /**
- * Strategic Planner
- * Analyzes game state and determines high-level strategic focus for the country
- * Uses rule-based logic to make intelligent decisions
+ * Strategic Planner (Hybrid Rule-Based + LLM)
+ * Phase 2.2: Enhanced with optional LLM strategic analysis
+ * 
+ * Decision Flow:
+ * 1. Always run rule-based analysis (fast, free, reliable)
+ * 2. If turn % 5 === 0, also get LLM insight (expensive but strategic)
+ * 3. Combine both for best results
  */
 export class StrategicPlanner {
   private personality: AIPersonality;
+  private llmPlanner: LLMStrategicPlanner | null = null;
 
-  constructor(personality: AIPersonality = DefaultPersonality) {
+  constructor(personality: AIPersonality = DefaultPersonality, enableLLM: boolean = true) {
     this.personality = personality;
+    
+    // Initialize LLM planner if enabled and API key available
+    if (enableLLM) {
+      this.llmPlanner = new LLMStrategicPlanner();
+    }
   }
 
   /**
    * Determine strategic focus for this turn
+   * Phase 2.2: Hybrid approach (rule-based + LLM)
    */
-  plan(state: GameStateSnapshot, countryId: string): StrategyIntent {
+  async plan(state: GameStateSnapshot, countryId: string): Promise<StrategyIntent> {
     const stats = state.countryStatsByCountryId[countryId];
     
     if (!stats) {
       return { focus: "balanced", rationale: "Country not found, using default strategy." };
     }
 
-    // Analyze current situation
+    // STEP 1: Always get rule-based analysis (fast, free, reliable)
     const analysis = RuleBasedAI.analyzeEconomicSituation(state, countryId, stats);
+    const ruleBasedIntent = this.getRuleBasedIntent(state, countryId, stats, analysis);
+    
+    // STEP 2: Get LLM insight if available and it's the right turn
+    let freshLLMAnalysis = null;
+    if (this.llmPlanner && this.llmPlanner.shouldCallLLM(state.turn)) {
+      try {
+        freshLLMAnalysis = await this.llmPlanner.analyzeSituation(state, countryId, stats);
+        
+        if (freshLLMAnalysis) {
+          console.log(`[Strategic Planner] Country ${countryId}:`);
+          console.log(`  Rule-based: ${ruleBasedIntent.focus} - ${ruleBasedIntent.rationale}`);
+          console.log(`  Fresh LLM: ${freshLLMAnalysis.strategicFocus} - ${freshLLMAnalysis.rationale}`);
+        }
+      } catch (error) {
+        console.error(`[Strategic Planner] LLM analysis failed, falling back to rule-based:`, error);
+      }
+    }
+    
+    // STEP 3: Enhance intent with LLM guidance (fresh or cached from previous turns)
+    if (this.llmPlanner) {
+      const enhancedIntent = this.llmPlanner.enhanceStrategyIntent(
+        freshLLMAnalysis,
+        ruleBasedIntent,
+        state.turn,
+        countryId
+      );
+      
+      // If using cached plan, log it
+      if (!freshLLMAnalysis) {
+        const activePlan = this.llmPlanner.getActiveStrategicPlan(countryId, state.turn);
+        if (activePlan) {
+          const planAge = state.turn - activePlan.turnAnalyzed;
+          console.log(`[Strategic Planner] Country ${countryId}: Using cached LLM plan from turn ${activePlan.turnAnalyzed} (${planAge} turns ago)`);
+          console.log(`  Cached plan: ${activePlan.strategicFocus} - ${activePlan.rationale}`);
+        }
+      }
+      
+      return enhancedIntent;
+    }
+    
+    // FALLBACK: Use rule-based intent (LLM not available)
+    return ruleBasedIntent;
+  }
+  
+  /**
+   * Get rule-based strategic intent (Phase 2.1 logic)
+   * Extracted for reusability
+   */
+  private getRuleBasedIntent(
+    state: GameStateSnapshot,
+    countryId: string,
+    stats: typeof state.countryStatsByCountryId[string],
+    analysis: ReturnType<typeof RuleBasedAI.analyzeEconomicSituation>
+  ): StrategyIntent {
     
     // CRISIS PRIORITIES (override everything)
     
@@ -196,6 +262,13 @@ export class StrategicPlanner {
       focus: "balanced",
       rationale: "No urgent priorities. Maintain balanced development.",
     };
+  }
+  
+  /**
+   * Get LLM cost tracking information
+   */
+  getCostTracking() {
+    return this.llmPlanner?.getCostTracking();
   }
 }
 
