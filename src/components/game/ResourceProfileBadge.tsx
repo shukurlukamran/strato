@@ -2,7 +2,7 @@
 
 import type { ResourceProfile } from "@/lib/game-engine/ResourceProfile";
 import { Tooltip } from "./Tooltip";
-import { ProfileModifiers } from "@/lib/game-engine/ProfileModifiers";
+import { getAllProfileModifiers } from "@/lib/game-engine/ProfileModifiers";
 
 export function ResourceProfileBadge({ profile }: { profile: ResourceProfile | null | undefined }) {
   if (!profile) return null;
@@ -12,7 +12,7 @@ export function ResourceProfileBadge({ profile }: { profile: ResourceProfile | n
   const penalties = profile.modifiers.filter(m => m.multiplier < 1.0).sort((a, b) => a.multiplier - b.multiplier);
   
   // Get cost modifiers
-  const costMods = ProfileModifiers.getCostModifiers(profile);
+  const costMods = getAllProfileModifiers(profile);
 
   const tooltipContent = (
     <div className="max-w-xs">
@@ -44,38 +44,27 @@ export function ResourceProfileBadge({ profile }: { profile: ResourceProfile | n
       )}
       
       {/* Cost Modifiers Section */}
-      {(costMods.techCostMultiplier !== undefined || 
-        costMods.infraCostMultiplier !== undefined || 
-        costMods.militaryCostMultiplier !== undefined ||
-        costMods.tradeEfficiencyMultiplier !== undefined) && (
-        <div className="border-t border-white/10 pt-2 mt-2">
-          <div className="text-xs font-semibold text-blue-400 mb-1">Upgrade Cost Modifiers:</div>
-          
-          {costMods.techCostMultiplier !== undefined && (
-            <div className={`text-xs ${costMods.techCostMultiplier < 1 ? 'text-green-300' : costMods.techCostMultiplier > 1 ? 'text-red-300' : 'text-white/70'}`}>
-              • Technology: {Math.round(costMods.techCostMultiplier * 100)}% {costMods.techCostMultiplier < 1 ? '✓' : costMods.techCostMultiplier > 1 ? '⚠' : ''}
-            </div>
-          )}
-          
-          {costMods.infraCostMultiplier !== undefined && (
-            <div className={`text-xs ${costMods.infraCostMultiplier < 1 ? 'text-green-300' : costMods.infraCostMultiplier > 1 ? 'text-red-300' : 'text-white/70'}`}>
-              • Infrastructure: {Math.round(costMods.infraCostMultiplier * 100)}% {costMods.infraCostMultiplier < 1 ? '✓' : costMods.infraCostMultiplier > 1 ? '⚠' : ''}
-            </div>
-          )}
-          
-          {costMods.militaryCostMultiplier !== undefined && (
-            <div className={`text-xs ${costMods.militaryCostMultiplier < 1 ? 'text-green-300' : costMods.militaryCostMultiplier > 1 ? 'text-red-300' : 'text-white/70'}`}>
-              • Military: {Math.round(costMods.militaryCostMultiplier * 100)}% {costMods.militaryCostMultiplier < 1 ? '✓' : costMods.militaryCostMultiplier > 1 ? '⚠' : ''}
-            </div>
-          )}
-          
-          {costMods.tradeEfficiencyMultiplier !== undefined && costMods.tradeEfficiencyMultiplier !== 1 && (
-            <div className={`text-xs ${costMods.tradeEfficiencyMultiplier > 1 ? 'text-green-300' : 'text-red-300'}`}>
-              • Trade Efficiency: {Math.round(costMods.tradeEfficiencyMultiplier * 100)}% {costMods.tradeEfficiencyMultiplier > 1 ? '✓' : '⚠'}
-            </div>
-          )}
+      <div className="border-t border-white/10 pt-2 mt-2">
+        <div className="text-xs font-semibold text-blue-400 mb-1">Upgrade Cost Modifiers:</div>
+        
+        <div className={`text-xs ${costMods.techCost < 1 ? 'text-green-300' : costMods.techCost > 1 ? 'text-red-300' : 'text-white/70'}`}>
+          • Technology: {Math.round(costMods.techCost * 100)}% {costMods.techCost < 1 ? '✓' : costMods.techCost > 1 ? '⚠' : ''}
         </div>
-      )}
+        
+        <div className={`text-xs ${costMods.infraCost < 1 ? 'text-green-300' : costMods.infraCost > 1 ? 'text-red-300' : 'text-white/70'}`}>
+          • Infrastructure: {Math.round(costMods.infraCost * 100)}% {costMods.infraCost < 1 ? '✓' : costMods.infraCost > 1 ? '⚠' : ''}
+        </div>
+        
+        <div className={`text-xs ${costMods.militaryCost < 1 ? 'text-green-300' : costMods.militaryCost > 1 ? 'text-red-300' : 'text-white/70'}`}>
+          • Military: {Math.round(costMods.militaryCost * 100)}% {costMods.militaryCost < 1 ? '✓' : costMods.militaryCost > 1 ? '⚠' : ''}
+        </div>
+        
+        {costMods.tradeRevenue !== 1 && (
+          <div className={`text-xs ${costMods.tradeRevenue > 1 ? 'text-green-300' : 'text-red-300'}`}>
+            • Trade Revenue: {Math.round(costMods.tradeRevenue * 100)}% {costMods.tradeRevenue > 1 ? '✓' : '⚠'}
+          </div>
+        )}
+      </div>
     </div>
   );
 

@@ -9,6 +9,7 @@ import { BudgetCalculator, BudgetBreakdown } from './BudgetCalculator';
 import { MilitaryCalculator } from './MilitaryCalculator';
 import { ResourceAmount } from './ResourceTypes';
 import { ECONOMIC_BALANCE } from './EconomicBalance';
+import { getProfileTechCostModifier, getProfileInfraCostModifier } from './ProfileModifiers';
 
 /**
  * Calculate production output for display (client-side)
@@ -118,4 +119,63 @@ export function calculateMilitaryRecruitmentCost(
   stats: CountryStats
 ): number {
   return MilitaryCalculator.calculateRecruitmentCost(amount, stats);
+}
+
+/**
+ * Calculate effective military strength for display
+ */
+export function calculateEffectiveMilitaryStrengthForDisplay(stats: CountryStats): number {
+  return MilitaryCalculator.calculateEffectiveMilitaryStrength(stats);
+}
+
+/**
+ * Calculate population capacity for display
+ */
+export function calculatePopulationCapacityForDisplay(stats: CountryStats): number {
+  const infraLevel = stats.infrastructureLevel || 0;
+  return ECONOMIC_BALANCE.POPULATION.BASE_CAPACITY + (infraLevel * ECONOMIC_BALANCE.POPULATION.CAPACITY_PER_INFRASTRUCTURE);
+}
+
+/**
+ * Calculate trade capacity for display
+ */
+export function calculateTradeCapacityForDisplay(stats: CountryStats): number {
+  const infraLevel = stats.infrastructureLevel || 0;
+  return ECONOMIC_BALANCE.INFRASTRUCTURE.BASE_TRADE_CAPACITY + (infraLevel * ECONOMIC_BALANCE.INFRASTRUCTURE.TRADE_CAPACITY_PER_LEVEL);
+}
+
+/**
+ * Calculate research cost for display with all modifiers
+ */
+export function calculateResearchCostForDisplay(stats: CountryStats): { cost: number; reductionPercent: number } {
+  const techLevel = Math.floor(Number(stats.technologyLevel));
+  const profileTechCostMultiplier = getProfileTechCostModifier(stats.resourceProfile);
+  const researchSpeedBonus = Math.min(techLevel * ECONOMIC_BALANCE.TECHNOLOGY.RESEARCH_SPEED_BONUS_PER_LEVEL, ECONOMIC_BALANCE.TECHNOLOGY.MAX_RESEARCH_SPEED_BONUS);
+  const cost = Math.floor(ECONOMIC_BALANCE.UPGRADES.TECH_BASE_COST * Math.pow(ECONOMIC_BALANCE.UPGRADES.TECH_COST_MULTIPLIER, techLevel) * profileTechCostMultiplier * (1 - researchSpeedBonus));
+  
+  return { cost, reductionPercent: researchSpeedBonus * 100 };
+}
+
+/**
+ * Calculate infrastructure cost for display with all modifiers
+ */
+export function calculateInfrastructureCostForDisplay(stats: CountryStats): number {
+  const infraLevel = stats.infrastructureLevel || 0;
+  const profileInfraCostMultiplier = getProfileInfraCostModifier(stats.resourceProfile);
+  return Math.floor(ECONOMIC_BALANCE.UPGRADES.INFRA_BASE_COST * Math.pow(ECONOMIC_BALANCE.UPGRADES.INFRA_COST_MULTIPLIER, infraLevel) * profileInfraCostMultiplier);
+}
+
+/**
+ * Calculate military recruitment cost for display with all modifiers
+ */
+export function calculateMilitaryRecruitmentCostForDisplay(stats: CountryStats, amount: number = ECONOMIC_BALANCE.MILITARY.RECRUIT_AMOUNT_STANDARD): { cost: number; reductionPercent: number } {
+  const techLevel = stats.technologyLevel || 0;
+  const techCostReduction = Math.min(
+    ECONOMIC_BALANCE.TECHNOLOGY.MAX_MILITARY_COST_REDUCTION,
+    techLevel * ECONOMIC_BALANCE.TECHNOLOGY.MILITARY_COST_REDUCTION_PER_LEVEL
+  );
+  
+  const cost = MilitaryCalculator.calculateRecruitmentCost(amount, stats);
+  
+  return { cost, reductionPercent: techCostReduction * 100 };
 }
