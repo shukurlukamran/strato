@@ -47,40 +47,26 @@ export class CityGenerator {
 
     const basePopulationPerCity = Math.floor(totalPopulation / cityCount);
 
-    // Track allocated resources and population
-    const allocatedResources: Record<string, number> = {};
-    let allocatedPopulation = 0;
-
     // Generate cities with distributed resources
     for (let i = 0; i < cityCount; i++) {
       const citySize = this.determineCitySize(i, cityCount);
       const position = this.generateCityPosition(country, cities, i);
       const name = this.generateCityName(country.name, i);
-      const isLastCity = i === cityCount - 1;
 
       // Allocate resources to this city (with some randomization)
       const cityResources = this.allocateResourcesToCity(
         baseResourcesPerCity,
         totalResources,
         citySize,
-        !isLastCity,
-        allocatedResources
+        cities.length < cityCount - 1 // Last city gets remaining resources
       );
-
-      // Update allocated resources
-      for (const [key, amount] of Object.entries(cityResources)) {
-        allocatedResources[key] = (allocatedResources[key] || 0) + amount;
-      }
 
       const cityPopulation = this.allocatePopulationToCity(
         basePopulationPerCity,
         totalPopulation,
         citySize,
-        !isLastCity,
-        allocatedPopulation
+        cities.length < cityCount - 1
       );
-
-      allocatedPopulation += cityPopulation;
 
       const city: City = {
         id: `${country.id}-city-${i}`,
@@ -184,14 +170,12 @@ export class CityGenerator {
 
   /**
    * Allocate resources to a specific city
-   * NOTE: This is called during generation, so we need to track allocated resources
    */
   private static allocateResourcesToCity(
     baseResources: Record<string, number>,
     totalResources: Record<string, number>,
     citySize: 'small' | 'medium' | 'large',
-    hasRemainingCities: boolean,
-    alreadyAllocated: Record<string, number> // Track what's already been allocated
+    hasRemainingCities: boolean
   ): Record<string, number> {
     const sizeMultiplier = { small: 0.8, medium: 1.0, large: 1.3 }[citySize];
     const resources: Record<string, number> = {};
@@ -203,8 +187,8 @@ export class CityGenerator {
         resources[key] = Math.floor(baseAmount * sizeMultiplier * randomFactor);
       } else {
         // Final city gets all remaining resources
-        const alreadyAllocatedForResource = alreadyAllocated[key] || 0;
-        resources[key] = Math.max(0, totalResources[key] - alreadyAllocatedForResource);
+        resources[key] = Math.max(0, totalResources[key] -
+          Object.values(resources).reduce((sum, val) => sum + val, 0));
       }
     }
 
@@ -218,8 +202,7 @@ export class CityGenerator {
     basePopulation: number,
     totalPopulation: number,
     citySize: 'small' | 'medium' | 'large',
-    hasRemainingCities: boolean,
-    alreadyAllocated: number = 0 // Track what's already been allocated
+    hasRemainingCities: boolean
   ): number {
     const sizeMultiplier = { small: 0.7, medium: 1.0, large: 1.4 }[citySize];
 
@@ -228,7 +211,7 @@ export class CityGenerator {
       return Math.floor(basePopulation * sizeMultiplier * randomFactor);
     } else {
       // Final city gets remaining population
-      return Math.max(0, totalPopulation - alreadyAllocated);
+      return Math.max(0, totalPopulation);
     }
   }
 

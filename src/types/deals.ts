@@ -22,7 +22,6 @@ export interface DealCommitment {
   resource?: string;
   amount?: number;
   durationTurns?: number;
-  cityId?: string; // For city transfers
 }
 
 export interface DealTerms {
