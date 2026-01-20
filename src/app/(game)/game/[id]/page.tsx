@@ -178,7 +178,7 @@ export default function GamePage() {
         })),
       );
       setCities(
-        data.cities.map((c) => ({
+        (data.cities || []).map((c) => ({
           id: c.id,
           countryId: c.country_id,
           name: c.name,

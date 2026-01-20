@@ -92,7 +92,8 @@ export async function POST(req: Request) {
     .from("cities")
     .select("id, country_id, name, position_x, position_y, size, resources_per_turn, population, infrastructure, created_at")
     .in("country_id", (countriesRes.data ?? []).map((c) => c.id));
-  if (citiesRes.error) return NextResponse.json({ error: citiesRes.error.message }, { status: 400 });
+  // Cities might not exist yet if migration wasn't applied, so don't fail here
+  const cities = citiesRes.error ? [] : citiesRes.data ?? [];
 
   const state = new GameState({
     gameId,
@@ -126,7 +127,7 @@ export async function POST(req: Request) {
         },
       ]),
     ),
-    cities: (citiesRes.data ?? []).map((c) => ({
+    cities: cities.map((c) => ({
       id: c.id,
       countryId: c.country_id,
       name: c.name,

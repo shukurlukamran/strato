@@ -367,7 +367,7 @@ export async function GET(req: Request) {
         game: mem.game,
         countries: mem.countries,
         stats: Object.values(mem.stats),
-        cities: mem.cities || [],
+        cities: mem.cities ?? [],
         chats: Object.values(mem.chats),
         note: "Supabase not configured; using in-memory game store.",
       });
@@ -453,13 +453,14 @@ export async function GET(req: Request) {
         .from("cities")
         .select("id, country_id, name, position_x, position_y, size, resources_per_turn, population, infrastructure, created_at")
         .in("country_id", (countriesRes.data ?? []).map((c) => c.id));
-      if (citiesRes.error) throw citiesRes.error;
+      // Cities might not exist yet if migration wasn't applied
+      const cities = citiesRes.error ? [] : citiesRes.data ?? [];
 
       return NextResponse.json({
         game: game,
         countries: countriesRes.data ?? [],
         stats: statsWithInfra,
-        cities: citiesRes.data ?? [],
+        cities: cities,
         chats: chatsRes.data ?? [],
       });
     }
@@ -476,13 +477,14 @@ export async function GET(req: Request) {
       .from("cities")
       .select("id, country_id, name, position_x, position_y, size, resources_per_turn, population, infrastructure, created_at")
       .in("country_id", (countriesRes.data ?? []).map((c) => c.id));
-    if (citiesRes.error) throw citiesRes.error;
+    // Cities might not exist yet if migration wasn't applied
+    const cities = citiesRes.error ? [] : citiesRes.data ?? [];
 
     return NextResponse.json({
       game: game,
       countries: countriesRes.data ?? [],
       stats: statsRes.data ?? [],
-      cities: citiesRes.data ?? [],
+      cities: cities,
       chats: chatsRes.data ?? [],
     });
   } catch (error) {
@@ -494,7 +496,7 @@ export async function GET(req: Request) {
         game: mem.game,
         countries: mem.countries,
         stats: Object.values(mem.stats),
-        cities: mem.cities || [],
+        cities: mem.cities ?? [],
         chats: Object.values(mem.chats),
         note: "Supabase not configured; using in-memory game store.",
       });

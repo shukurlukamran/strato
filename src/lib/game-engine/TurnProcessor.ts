@@ -58,9 +58,10 @@ export class TurnProcessor {
       if (subType === "recruit") {
         const amount = (action.actionData as any)?.amount || 0;
         const country = state.data.countries.find(c => c.id === action.countryId);
+        if (!country) return events; // Skip if country not found
         events.push({
           type: "military",
-          message: `${country?.name || action.countryId} recruited ${amount} military units`,
+          message: `${country.name} recruited ${amount} military units`,
           data: { countryId: action.countryId, amount }
         });
       } else if (subType === "attack") {
@@ -70,9 +71,12 @@ export class TurnProcessor {
         if (combatResult) {
           const attackerCountry = state.data.countries.find(c => c.id === action.countryId);
           const defenderCountry = state.data.countries.find(c => c.id === combatResult.defenderCountryId);
-          const targetCity = state.getCity(combatResult.targetCityId);
+          if (!attackerCountry || !defenderCountry) return events; // Skip if countries not found
 
-          const attackMessage = `${attackerCountry?.name || action.countryId} attacked ${targetCity?.name || combatResult.targetCityId} (${defenderCountry?.name || combatResult.defenderCountryId})`;
+          const targetCity = state.getCity(combatResult.targetCityId);
+          const targetName = targetCity?.name || `City ${combatResult.targetCityId.slice(-4)}`;
+
+          const attackMessage = `${attackerCountry.name} attacked ${targetName} (${defenderCountry.name})`;
 
           if (combatResult.cityCaptured) {
             events.push({
@@ -112,11 +116,15 @@ export class TurnProcessor {
           }
         } else if (attackData?.resolvedAtTurnEnd) {
           // Turn-end resolution placeholder
-          const targetCity = state.getCity(attackData.targetCityId);
           const country = state.data.countries.find(c => c.id === action.countryId);
+          if (!country) return events;
+
+          const targetCity = state.getCity(attackData.targetCityId);
+          const targetName = targetCity?.name || `City ${attackData.targetCityId.slice(-4)}`;
+
           events.push({
             type: "military",
-            message: `${country?.name || action.countryId} launched attack on ${targetCity?.name || attackData.targetCityId} (resolving at turn end)`,
+            message: `${country.name} launched attack on ${targetName} (resolving at turn end)`,
             data: { countryId: action.countryId, cityId: attackData.targetCityId }
           });
         }
