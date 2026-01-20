@@ -73,13 +73,14 @@ export function HistoryLog({ gameId, currentTurn }: HistoryLogProps) {
     );
   }
 
-  // Filter to only show relevant events (actions, deals, natural events)
+  // Filter to only show relevant events (actions, deals, natural events, military)
   // Exclude economic events like population growth and treasury increases
-  const actionEvents = history?.events.filter(e => e.type.startsWith('action')) || [];
+  const actionEvents = history?.events.filter(e => e.type.startsWith('action') || e.type === 'research' || e.type === 'economic') || [];
+  const militaryEvents = history?.events.filter(e => e.type === 'military') || [];
   const dealEvents = history?.events.filter(e => e.type.startsWith('deal')) || [];
   const naturalEvents = history?.events.filter(e => e.type.startsWith('natural')) || [];
   
-  const totalRelevantEvents = actionEvents.length + dealEvents.length + naturalEvents.length;
+  const totalRelevantEvents = actionEvents.length + militaryEvents.length + dealEvents.length + naturalEvents.length;
 
   if (!history || totalRelevantEvents === 0) {
     return (
@@ -102,6 +103,16 @@ export function HistoryLog({ gameId, currentTurn }: HistoryLogProps) {
           <div className="space-y-1.5">
             {actionEvents.map((event, idx) => (
               <EventItem key={`action-${idx}`} event={event} />
+            ))}
+          </div>
+        )}
+
+        {/* Military Actions */}
+        {militaryEvents.length > 0 && (
+          <div className="space-y-1.5">
+            <div className="mb-1 mt-3 text-xs font-medium text-red-400">Military Actions</div>
+            {militaryEvents.map((event, idx) => (
+              <EventItem key={`military-${idx}`} event={event} />
             ))}
           </div>
         )}
@@ -135,7 +146,16 @@ function EventItem({ event }: { event: HistoryEvent }) {
   let icon = "•";
   let textColor = "text-white/80";
 
-  if (event.type === 'action.research') {
+  if (event.type === 'research') {
+    icon = "🔬";
+    textColor = "text-blue-300";
+  } else if (event.type === 'military') {
+    icon = "⚔️";
+    textColor = "text-red-300";
+  } else if (event.type === 'economic') {
+    icon = "🏗️";
+    textColor = "text-green-300";
+  } else if (event.type === 'action.research') {
     icon = "🔬";
     textColor = "text-blue-300";
   } else if (event.type === 'action.military') {

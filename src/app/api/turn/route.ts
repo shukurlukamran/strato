@@ -88,6 +88,12 @@ export async function POST(req: Request) {
     .eq("status", "active");
   if (dealsRes.error) return NextResponse.json({ error: dealsRes.error.message }, { status: 400 });
 
+  const citiesRes = await supabase
+    .from("cities")
+    .select("id, country_id, name, position_x, position_y, size, resources_per_turn, population, infrastructure, created_at")
+    .in("country_id", (countriesRes.data ?? []).map((c) => c.id));
+  if (citiesRes.error) return NextResponse.json({ error: citiesRes.error.message }, { status: 400 });
+
   const state = new GameState({
     gameId,
     turn,
@@ -120,6 +126,17 @@ export async function POST(req: Request) {
         },
       ]),
     ),
+    cities: (citiesRes.data ?? []).map((c) => ({
+      id: c.id,
+      countryId: c.country_id,
+      name: c.name,
+      positionX: Number(c.position_x),
+      positionY: Number(c.position_y),
+      size: c.size as 'small' | 'medium' | 'large',
+      resourcesPerTurn: c.resources_per_turn,
+      population: c.population,
+      infrastructure: c.infrastructure,
+    })),
     pendingActions: (actionsRes.data ?? []).map((a) => ({
       id: a.id,
       gameId: a.game_id,
@@ -336,7 +353,7 @@ export async function POST(req: Request) {
   }
 
   const processor = new TurnProcessor();
-  const result = processor.processTurn(state);
+  const result = await processor.processTurn(state);
 
   // Helper function to generate action summary message
   function generateActionMessage(action: any, countryName: string): { type: string; message: string; data: any } | null {

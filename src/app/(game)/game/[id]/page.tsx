@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import type { Country, CountryStats } from "@/types/country";
+import type { Country, CountryStats, City } from "@/types/country";
 import type { Deal } from "@/types/deals";
 import type { ChatMessage } from "@/types/chat";
 import { Map } from "@/components/game/Map";
@@ -13,6 +13,7 @@ import { BudgetPanel } from "@/components/game/BudgetPanel";
 import { ActionPanel } from "@/components/game/ActionPanel";
 import { AllProfilesInfo } from "@/components/game/AllProfilesInfo";
 import { HistoryLog } from "@/components/game/HistoryLog";
+import { AttackDialog } from "@/components/game/AttackDialog";
 import { useGameStore } from "@/lib/store/gameStore";
 
 type ApiGame = { id: string; name: string; current_turn: number; status: string; player_country_id: string };
@@ -39,6 +40,18 @@ type ApiStats = {
   diplomatic_relations: Record<string, number>;
   created_at: string;
 };
+type ApiCity = {
+  id: string;
+  country_id: string;
+  name: string;
+  position_x: number;
+  position_y: number;
+  size: string;
+  resources_per_turn: Record<string, number>;
+  population: number;
+  infrastructure: number;
+  created_at: string;
+};
 type ApiChat = { id: string; game_id: string; country_a_id: string; country_b_id: string };
 
 export default function GamePage() {
@@ -57,6 +70,7 @@ export default function GamePage() {
   const [turn, setTurn] = useState(1);
   const [playerCountryId, setPlayerCountryId] = useState<string>("");
   const [countries, setCountries] = useState<Country[]>([]);
+  const [cities, setCities] = useState<City[]>([]);
   const [statsByCountryId, setStatsByCountryId] = useState<Record<string, CountryStats>>({});
   const [chatByCounterpartCountryId, setChatByCounterpartCountryId] = useState<Record<string, string>>({});
   const [messagesByChatId, setMessagesByChatId] = useState<Record<string, ChatMessage[]>>({});
@@ -65,6 +79,8 @@ export default function GamePage() {
   const [showHistoryLog, setShowHistoryLog] = useState(true);
   const [endingTurn, setEndingTurn] = useState(false);
   const [turnProcessing, setTurnProcessing] = useState(false);
+  const [attackTarget, setAttackTarget] = useState<City | null>(null);
+  const [showAttackDialog, setShowAttackDialog] = useState(false);
 
   useEffect(() => setGameId(gameId), [gameId, setGameId]);
 
@@ -115,6 +131,7 @@ export default function GamePage() {
         game: ApiGame;
         countries: ApiCountry[];
         stats: ApiStats[];
+        cities: ApiCity[];
         chats: ApiChat[];
       };
 
@@ -158,6 +175,19 @@ export default function GamePage() {
           color: c.color,
           positionX: Number(c.position_x),
           positionY: Number(c.position_y),
+        })),
+      );
+      setCities(
+        data.cities.map((c) => ({
+          id: c.id,
+          countryId: c.country_id,
+          name: c.name,
+          positionX: Number(c.position_x),
+          positionY: Number(c.position_y),
+          size: c.size as 'small' | 'medium' | 'large',
+          resourcesPerTurn: c.resources_per_turn,
+          population: c.population,
+          infrastructure: c.infrastructure,
         })),
       );
       const statsMap: Record<string, CountryStats> = {};
@@ -405,6 +435,54 @@ export default function GamePage() {
 
   const playerCountry = countries.find((c) => c.isPlayerControlled);
 
+  const handleCityAttack = (city: City) => {
+    setAttackTarget(city);
+    setShowAttackDialog(true);
+  };
+
+  const handleAttackConfirm = async (militaryPercentage: number, isLiveResolution: boolean) => {
+    if (!attackTarget || !playerCountry) return;
+
+    try {
+      // Create attack action
+      const res = await fetch("/api/actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          gameId,
+          countryId: playerCountry.id,
+          actionType: "military",
+          actionData: {
+            subType: "attack",
+            targetCityId: attackTarget.id,
+            attackingMilitaryAllocated: militaryPercentage,
+            isLiveResolution,
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("Failed to create attack action:", errorText);
+        return;
+      }
+
+      // Refresh game data to show the new action
+      await refreshGameData();
+
+    } catch (error) {
+      console.error("Error creating attack action:", error);
+    } finally {
+      setShowAttackDialog(false);
+      setAttackTarget(null);
+    }
+  };
+
+  const handleAttackCancel = () => {
+    setShowAttackDialog(false);
+    setAttackTarget(null);
+  };
+
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
       {/* Turn Processing Overlay */}
@@ -419,7 +497,20 @@ export default function GamePage() {
           </div>
         </div>
       )}
-      
+
+      {/* Attack Dialog */}
+      {showAttackDialog && attackTarget && playerCountry && (
+        <AttackDialog
+          attackerCountry={playerCountry}
+          attackerStats={statsByCountryId[playerCountry.id]}
+          targetCity={attackTarget}
+          targetCountry={countries.find(c => c.id === attackTarget.countryId)!}
+          targetStats={statsByCountryId[attackTarget.countryId]}
+          onAttack={handleAttackConfirm}
+          onCancel={handleAttackCancel}
+        />
+      )}
+
       {/* Top HUD Bar */}
       <div className="absolute left-0 right-0 top-0 z-20 flex items-center justify-between border-b border-white/10 bg-slate-900/80 backdrop-blur-sm px-4 py-2">
         <div className="flex items-center gap-4">
@@ -495,12 +586,13 @@ export default function GamePage() {
                 try {
                   const res = await fetch(`/api/game?id=${encodeURIComponent(gameId)}`);
                   if (!res.ok) throw new Error(await res.text());
-                  const data = (await res.json()) as {
-                    game: ApiGame;
-                    countries: ApiCountry[];
-                    stats: ApiStats[];
-                    chats: ApiChat[];
-                  };
+      const data = (await res.json()) as {
+        game: ApiGame;
+        countries: ApiCountry[];
+        stats: ApiStats[];
+        cities: ApiCity[];
+        chats: ApiChat[];
+      };
                   
                   const statsMap: Record<string, CountryStats> = {};
                   for (const s of data.stats) {
@@ -586,7 +678,11 @@ export default function GamePage() {
 
         {/* Center - Map */}
         <div className="flex-1">
-          <Map countries={countries} />
+          <Map
+            countries={countries}
+            cities={cities}
+            onCityAttack={handleCityAttack}
+          />
         </div>
 
         {/* Right Sidebar - History Log */}
