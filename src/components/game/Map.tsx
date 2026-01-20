@@ -243,7 +243,7 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
           );
         })}
 
-        {/* City borders and labels */}
+        {/* City areas - interactive regions */}
         {cities.map((city) => {
           const country = countries.find(c => c.id === city.countryId);
           if (!country) return null;
@@ -253,52 +253,15 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
 
           return (
             <g key={city.id}>
-              {/* City border */}
+              {/* City area - clickable and hoverable */}
               <path
                 d={city.borderPath}
-                fill="none"
+                fill={isHovered ? country.color : "transparent"}
+                fillOpacity={isHovered ? 0.15 : 0}
                 stroke="#fff"
                 strokeWidth="0.2"
                 strokeDasharray="1 1"
-                opacity={isHovered ? 0.8 : isCountrySelected ? 0.5 : 0.3}
-                className="pointer-events-none"
-              />
-
-              {/* City name (on hover) */}
-              {isHovered && (
-                <>
-                  {/* Background for better readability */}
-                  <rect
-                    x={city.positionX - 8}
-                    y={city.positionY + 2}
-                    width="16"
-                    height="4"
-                    fill="#000"
-                    opacity="0.7"
-                    rx="0.5"
-                    className="pointer-events-none"
-                  />
-                  <text
-                    x={city.positionX}
-                    y={city.positionY + 5}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    className="pointer-events-none select-none text-[2px] font-semibold"
-                    fill="#fff"
-                    opacity="1"
-                  >
-                    {city.name}
-                  </text>
-                </>
-              )}
-
-              {/* City center marker (small dot) */}
-              <circle
-                cx={city.positionX}
-                cy={city.positionY}
-                r={0.8 * city.size}
-                fill="#fff"
-                opacity={isHovered ? 0.9 : 0.5}
+                opacity={isHovered ? 0.9 : isCountrySelected ? 0.5 : 0.3}
                 className="cursor-pointer transition-all duration-200"
                 onMouseEnter={() => setHoveredCityId(city.id)}
                 onMouseLeave={() => setHoveredCityId(null)}
@@ -324,6 +287,34 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
                   setSelectedCityId(city.id);
                 }}
               />
+
+              {/* City name (on hover) */}
+              {isHovered && (
+                <>
+                  {/* Background for better readability */}
+                  <rect
+                    x={city.positionX - 10}
+                    y={city.positionY - 2}
+                    width="20"
+                    height="4"
+                    fill="#000"
+                    opacity="0.8"
+                    rx="0.5"
+                    className="pointer-events-none"
+                  />
+                  <text
+                    x={city.positionX}
+                    y={city.positionY + 0.5}
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    className="pointer-events-none select-none text-[2.5px] font-bold"
+                    fill="#fff"
+                    opacity="1"
+                  >
+                    {city.name}
+                  </text>
+                </>
+              )}
             </g>
           );
         })}

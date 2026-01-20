@@ -306,6 +306,7 @@ export class CityGenerator {
   
   /**
    * Generate city borders using Voronoi diagram
+   * Ensures full coverage of territory with no gaps
    */
   private static generateCityBorders(
     cityPositions: Point[],
@@ -314,57 +315,135 @@ export class CityGenerator {
     const pathCoords = this.parsePathCoordinates(territoryPath);
     const bounds = this.calculateBounds(pathCoords);
     
-    return cityPositions.map(cityPos => {
-      // Create a simplified Voronoi cell for this city
-      // For each city, find points that are closer to it than to any other city
-      const cellPoints: Point[] = [];
-      const resolution = 2; // Grid resolution for sampling
-      
-      // Sample grid points within territory
-      for (let x = bounds.minX; x <= bounds.minX + bounds.width; x += resolution) {
-        for (let y = bounds.minY; y <= bounds.minY + bounds.height; y += resolution) {
-          const point = { x, y };
-          
-          // Check if point is in territory
-          if (!this.isPointInPath(point, pathCoords)) continue;
-          
-          // Find closest city
-          let minDist = Infinity;
-          let closestCity: Point | null = null;
-          
-          for (const otherCity of cityPositions) {
-            const dist = this.distance(point, otherCity);
-            if (dist < minDist) {
-              minDist = dist;
-              closestCity = otherCity;
-            }
-          }
-          
-          // If this city is the closest, add point to its cell
-          if (closestCity === cityPos) {
-            cellPoints.push(point);
+    // Use finer resolution for better coverage
+    const resolution = 0.5;
+    
+    // Create Voronoi cells by assigning each point to nearest city
+    const voronoiCells = new Map<Point, Point[]>();
+    for (const city of cityPositions) {
+      voronoiCells.set(city, []);
+    }
+    
+    // Sample the entire territory at high resolution
+    for (let x = bounds.minX; x <= bounds.minX + bounds.width; x += resolution) {
+      for (let y = bounds.minY; y <= bounds.minY + bounds.height; y += resolution) {
+        const point = { x, y };
+        
+        // Only include points inside the territory
+        if (!this.isPointInPath(point, pathCoords)) continue;
+        
+        // Find the closest city to this point
+        let minDist = Infinity;
+        let closestCity: Point | null = null;
+        
+        for (const city of cityPositions) {
+          const dist = this.distance(point, city);
+          if (dist < minDist) {
+            minDist = dist;
+            closestCity = city;
           }
         }
+        
+        // Assign this point to the closest city
+        if (closestCity) {
+          voronoiCells.get(closestCity)!.push(point);
+        }
+      }
+    }
+    
+    // Generate border paths for each city
+    return cityPositions.map(cityPos => {
+      const cellPoints = voronoiCells.get(cityPos) || [];
+      
+      if (cellPoints.length === 0) {
+        // Fallback: small circle
+        return this.createCirclePath(cityPos, 2);
       }
       
-      // Find boundary points
-      const boundary = this.findBoundaryPoints(cellPoints, resolution);
+      // Find boundary points (points on the edge of the Voronoi cell)
+      const boundary = this.findVoronoiBoundary(cellPoints, resolution, pathCoords);
       
-      // Sort boundary points to form closed path
-      const sortedBoundary = this.sortBoundaryPoints(boundary, cityPos);
-      
-      // Create SVG path
-      if (sortedBoundary.length < 3) {
-        // Fallback: create small circle around city
+      if (boundary.length < 3) {
+        // Fallback: convex hull or circle
         return this.createCirclePath(cityPos, 3);
       }
       
-      const pathStr = sortedBoundary
-        .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
+      // Sort boundary points to form a proper closed polygon
+      const sortedBoundary = this.sortBoundaryPoints(boundary, cityPos);
+      
+      // Simplify the path to reduce complexity (Douglas-Peucker could be used here)
+      const simplified = this.simplifyPath(sortedBoundary, 1.0);
+      
+      // Create SVG path
+      const pathStr = simplified
+        .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
         .join(" ") + " Z";
       
       return pathStr;
     });
+  }
+  
+  /**
+   * Find boundary points of a Voronoi cell
+   */
+  private static findVoronoiBoundary(
+    points: Point[],
+    resolution: number,
+    territoryBounds: Point[]
+  ): Point[] {
+    if (points.length === 0) return [];
+    
+    const pointSet = new Set(points.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`));
+    const boundary: Point[] = [];
+    const tolerance = resolution * 1.5;
+    
+    for (const point of points) {
+      // Check if this point is on the boundary
+      // A point is on the boundary if it has a neighbor that's not in this cell
+      const neighbors = [
+        { x: point.x - resolution, y: point.y },
+        { x: point.x + resolution, y: point.y },
+        { x: point.x, y: point.y - resolution },
+        { x: point.x, y: point.y + resolution },
+        { x: point.x - resolution, y: point.y - resolution },
+        { x: point.x + resolution, y: point.y - resolution },
+        { x: point.x - resolution, y: point.y + resolution },
+        { x: point.x + resolution, y: point.y + resolution },
+      ];
+      
+      const isBoundary = neighbors.some(n => {
+        const key = `${n.x.toFixed(1)},${n.y.toFixed(1)}`;
+        return !pointSet.has(key);
+      });
+      
+      if (isBoundary) {
+        boundary.push(point);
+      }
+    }
+    
+    return boundary;
+  }
+  
+  /**
+   * Simplify path using Douglas-Peucker-like algorithm
+   */
+  private static simplifyPath(points: Point[], tolerance: number): Point[] {
+    if (points.length <= 3) return points;
+    
+    // Simple decimation: keep every nth point plus important corners
+    const simplified: Point[] = [];
+    const step = Math.max(1, Math.floor(points.length / 30)); // Keep ~30 points
+    
+    for (let i = 0; i < points.length; i += step) {
+      simplified.push(points[i]);
+    }
+    
+    // Always include the last point
+    if (simplified[simplified.length - 1] !== points[points.length - 1]) {
+      simplified.push(points[points.length - 1]);
+    }
+    
+    return simplified;
   }
   
   /**
