@@ -4,6 +4,7 @@ import { GameState } from "@/lib/game-engine/GameState";
 import { ECONOMIC_BALANCE } from "./EconomicBalance";
 import { CombatResolver } from "./CombatResolver";
 import { DefenseAI } from "@/lib/ai/DefenseAI";
+import { CityTransferHelper } from "./CityTransferHelper";
 
 export class ActionResolver {
   /**
@@ -138,8 +139,22 @@ export class ActionResolver {
           state.withUpdatedStats(action.countryId, updatedAttackerStats);
           state.withUpdatedStats(defenderCountryId, updatedDefenderStats);
 
-          // If city was captured, transfer it
+          // If city was captured, transfer it and redistribute resources/population
           if (combatResult.cityCaptured && state.data.cities) {
+            // Transfer city and redistribute resources/population
+            const { fromStats: newDefenderStats, toStats: newAttackerStats } =
+              CityTransferHelper.transferCity(
+                targetCity,
+                defenderCountryId,
+                action.countryId,
+                updatedDefenderStats,
+                updatedAttackerStats
+              );
+
+            // Update stats with redistributed resources/population
+            state.withUpdatedStats(defenderCountryId, newDefenderStats);
+            state.withUpdatedStats(action.countryId, newAttackerStats);
+
             // Update city ownership
             const updatedCities = state.data.cities.map(city =>
               city.id === targetCity.id
@@ -147,8 +162,6 @@ export class ActionResolver {
                 : city
             );
             state.setCities(updatedCities);
-
-            // TODO: Redistribute resources/population
           }
 
           return {
