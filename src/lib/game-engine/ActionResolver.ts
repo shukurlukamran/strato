@@ -139,7 +139,7 @@ export class ActionResolver {
           state.withUpdatedStats(defenderCountryId, updatedDefenderStats);
 
           // If city was captured, transfer it
-          if (combatResult.cityCaptured && state.data.cities) {
+          if (combatResult.cityCaptured) {
             // Update city ownership
             const updatedCities = state.data.cities.map(city =>
               city.id === targetCity.id

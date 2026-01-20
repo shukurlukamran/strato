@@ -7,7 +7,7 @@ export interface GameStateSnapshot {
   turn: number;
   countries: Country[];
   countryStatsByCountryId: Record<string, CountryStats>;
-  cities?: City[];
+  cities: City[];
   pendingActions: GameAction[];
   activeDeals: Deal[];
 }
@@ -48,11 +48,11 @@ export class GameState {
   }
 
   getCity(cityId: string): City | undefined {
-    return this.snapshot.cities?.find(city => city.id === cityId);
+    return this.snapshot.cities.find(city => city.id === cityId);
   }
 
   getCitiesByCountry(countryId: string): City[] {
-    return this.snapshot.cities?.filter(city => city.countryId === countryId) || [];
+    return this.snapshot.cities.filter(city => city.countryId === countryId);
   }
 }
 
