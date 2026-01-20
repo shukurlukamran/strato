@@ -23,16 +23,15 @@ export class ResourceProduction {
   /**
    * Calculate all resource production for a country this turn
    * Includes resource profile specialization modifiers
+   * REDESIGN: Infrastructure no longer affects production. Only tech and profile matter.
    */
   static calculateProduction(
     country: Country,
     stats: CountryStats
   ): ProductionOutput {
-    // Calculate base multipliers (tech + infra)
+    // Calculate base multiplier (tech only - infra removed from production)
     const techMultiplier = this.getTechnologyMultiplier(stats.technologyLevel);
-    const infraLevel = stats.infrastructureLevel || 0;
-    const infraMultiplier = this.getInfrastructureMultiplier(infraLevel);
-    const totalMultiplier = techMultiplier * infraMultiplier;
+    const totalMultiplier = techMultiplier;
     
     // Calculate BASE production (without profile modifiers)
     const baseProductionMap: Record<string, number> = {};
@@ -75,7 +74,7 @@ export class ResourceProduction {
       productionSummary: {
         baseProduction: this.calculateBaseProduction(stats),
         technologyBonus: (techMultiplier - 1) * 100,
-        infrastructureBonus: (infraMultiplier - 1) * 100,
+        infrastructureBonus: 0, // Infrastructure no longer affects production
         totalProduction: this.calculateTotalProduction(production),
       }
     };
@@ -210,20 +209,13 @@ export class ResourceProduction {
   }
   
   /**
-   * Technology multiplier
+   * Technology multiplier (public for use in other systems)
    */
-  private static getTechnologyMultiplier(techLevel: number): number {
+  static getTechnologyMultiplier(techLevel: number): number {
     const multipliers = ECONOMIC_BALANCE.TECHNOLOGY;
     const level = Math.min(Math.max(0, Math.floor(techLevel)), 5);
     const key = `LEVEL_${level}_MULTIPLIER` as keyof typeof multipliers;
     return multipliers[key] || 1.0;
-  }
-  
-  /**
-   * Infrastructure multiplier
-   */
-  private static getInfrastructureMultiplier(infraLevel: number): number {
-    return 1 + (infraLevel * ECONOMIC_BALANCE.PRODUCTION.INFRASTRUCTURE_MULTIPLIER);
   }
   
   private static calculateBaseProduction(stats: CountryStats): number {

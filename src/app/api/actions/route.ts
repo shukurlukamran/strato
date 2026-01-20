@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { ECONOMIC_BALANCE } from "@/lib/game-engine/EconomicBalance";
+import { 
+  getProfileTechCostModifier, 
+  getProfileInfraCostModifier 
+} from "@/lib/game-engine/ProfileModifiers";
+import { MilitaryCalculator } from "@/lib/game-engine/MilitaryCalculator";
+import type { ResourceProfile } from "@/lib/game-engine/ResourceProfile";
 
 const ActionRequestSchema = z.object({
   gameId: z.string().uuid(),
@@ -52,10 +59,10 @@ export async function POST(req: Request) {
 
     const currentTurn = game.current_turn as number;
 
-    // Get current country stats for the current turn
+    // Get current country stats for the current turn (including resource_profile for modifiers)
     const statsRes = await supabase
       .from("country_stats")
-      .select("id, turn, budget, technology_level, infrastructure_level, military_strength")
+      .select("id, turn, budget, technology_level, infrastructure_level, military_strength, resource_profile")
       .eq("country_id", countryId)
       .eq("turn", currentTurn)
       .limit(1);
@@ -85,11 +92,29 @@ export async function POST(req: Request) {
     // Define action costs and effects
     let cost = 0;
     let newStats: Partial<typeof stats> = {};
+    
+    // Parse resource profile for modifiers
+    const resourceProfile = stats.resource_profile as ResourceProfile | null;
 
     switch (actionType) {
       case "research": {
         const techLevel = Math.floor(Number(stats.technology_level));
-        cost = Math.floor(500 * Math.pow(1.4, techLevel)); // Lower base, steeper curve
+        
+        // NEW FORMULA: Base cost with exponential growth
+        const baseCost = ECONOMIC_BALANCE.UPGRADES.TECH_BASE_COST * 
+                        Math.pow(ECONOMIC_BALANCE.UPGRADES.TECH_COST_MULTIPLIER, techLevel);
+        
+        // Profile modifier (e.g., Tech Hub gets 25% discount)
+        const profileModifier = getProfileTechCostModifier(resourceProfile);
+        
+        // Research speed bonus (higher tech makes further research slightly cheaper)
+        const researchBonus = Math.min(
+          ECONOMIC_BALANCE.TECHNOLOGY.MAX_RESEARCH_SPEED_BONUS,
+          techLevel * ECONOMIC_BALANCE.TECHNOLOGY.RESEARCH_SPEED_BONUS_PER_LEVEL
+        );
+        const researchModifier = 1 - researchBonus;
+        
+        cost = Math.floor(baseCost * profileModifier * researchModifier);
         
         if (currentBudget < cost) {
           return NextResponse.json({ 
@@ -106,7 +131,15 @@ export async function POST(req: Request) {
 
       case "infrastructure": {
         const infraLevel = stats.infrastructure_level || 0;
-        cost = Math.floor(600 * Math.pow(1.3, infraLevel)); // Slightly cheaper
+        
+        // NEW FORMULA: Base cost with exponential growth
+        const baseCost = ECONOMIC_BALANCE.UPGRADES.INFRA_BASE_COST * 
+                        Math.pow(ECONOMIC_BALANCE.UPGRADES.INFRA_COST_MULTIPLIER, infraLevel);
+        
+        // Profile modifier (e.g., Industrial Complex gets 20% discount)
+        const profileModifier = getProfileInfraCostModifier(resourceProfile);
+        
+        cost = Math.floor(baseCost * profileModifier);
         
         if (currentBudget < cost) {
           return NextResponse.json({ 
@@ -124,8 +157,19 @@ export async function POST(req: Request) {
       case "military": {
         // Use amount from request or default to 10
         const militaryAmount = amount && amount >= 5 && amount <= 50 && amount % 5 === 0 ? amount : 10;
-        const costPerUnit = 50; // Standardized cost per strength point
-        cost = militaryAmount * costPerUnit;
+        
+        // NEW: Use MilitaryCalculator with tech and profile modifiers
+        const countryStats = {
+          technologyLevel: Number(stats.technology_level),
+          resourceProfile: resourceProfile,
+          militaryStrength: stats.military_strength,
+          population: 0, // Not needed for cost calculation
+          budget: 0,
+          infrastructureLevel: 0,
+          resources: {},
+        };
+        
+        cost = MilitaryCalculator.calculateRecruitmentCost(militaryAmount, countryStats as any);
         
         if (currentBudget < cost) {
           return NextResponse.json({ 

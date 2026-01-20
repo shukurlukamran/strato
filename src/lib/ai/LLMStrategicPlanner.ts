@@ -33,46 +33,51 @@ export interface LLMCostTracking {
 /**
  * Game rules and mechanics that can be cached
  * This data rarely changes and should be part of cached context
+ * UPDATED: Economic redesign - Tech and Infra have distinct roles
  */
 const CACHED_GAME_RULES = `
-GAME MECHANICS REFERENCE:
+GAME MECHANICS (v2.0 - Redesign):
 
-ECONOMIC SYSTEM:
-- Budget Generation: Population × 15 × (1 + techLevel × 0.25) × (1 + infraLevel × 0.15)
-- Resource Production: Base production × techMultiplier × infraMultiplier × profileModifiers
-- Population Growth: 2% base rate, affected by food balance
-- Maintenance: 1% of budget per turn, 0.8 per military strength
+TECHNOLOGY (Production & Military):
+- Resource Production: Base × techMultiplier × profileModifiers
+- Tech Multipliers: L0=1.0x, L1=1.25x, L2=1.6x, L3=2.0x, L4=2.5x, L5=3.0x
+- Military Effectiveness: +20% per level (Level 3 = 60% stronger army)
+- Military Cost: -5% per level (max -25%)
+- Upgrade Cost: 800 × 1.35^level × profileMod (varies by profile)
 
-ACTION COSTS:
-- Research: 500 × 1.4^currentLevel
-- Infrastructure: 600 × 1.3^currentLevel  
-- Military Recruitment: 50 per strength point
+INFRASTRUCTURE (Capacity & Admin):
+- Tax Collection: +12% per level (ONLY infra affects tax, NOT tech!)
+- Population Capacity: 200k + (50k × level). OVERCROWDING if exceeded = -50% growth, -20% tax
+- Trade Capacity: 2 + level (max deals per turn)
+- Trade Efficiency: +10% per level
+- Maintenance: 35 per level per turn
+- Upgrade Cost: 700 × 1.30^level × profileMod
 
-TECHNOLOGY MULTIPLIERS:
-- Level 0: 1.0x
-- Level 1: 1.3x
-- Level 2: 1.7x
-- Level 3: 2.2x
-- Level 4: 3.0x
-- Level 5: 4.0x (max)
+BUDGET:
+- Tax: Population/10k × 12 × infraBonus × capacityPenalty × profileMod
+- Military Upkeep: 0.8 per strength
+- Maintenance: 1% of treasury
 
-RESOURCE PROFILES:
-- Oil Kingdom: 250% oil, 150% coal, 40% gold, 30% gems
-- Agriculture: 180% food, 200% timber, 160% water
-- Mining Empire: 220% iron, 200% stone, 250% rare_earth
-- Technological Hub: 230% aluminum, 180% steel, 160% rare_earth
-- Precious Metals: 300% gold, 350% gems
-- Balanced Nation: No major bonuses or penalties
-- Industrial Complex: 250% coal, 220% steel, 150% iron
-- Coastal Hub: 180% water, 140% food, 150% gold
+PROFILE COST MODIFIERS:
+- Tech Hub: 0.75x tech, 0.90x military (cheap tech & army)
+- Industrial: 0.80x infra, 1.10x trade (cheap infrastructure)
+- Coastal Hub: 0.85x infra, 1.25x trade (trade powerhouse)
+- Agriculture/Mining: 1.15x tech (expensive, focus resources)
+- Precious Metals: 1.20x everything (wealthy but inefficient)
 
-STRATEGIC CONSIDERATIONS:
-- Research ROI: Best when < 50 turns to break even
-- Infrastructure ROI: Best when < 40 turns to break even
-- Military: Maintain 70% of neighbor average strength minimum
-- Food: Must produce more than consume (5 per 10k population)
-- Technology: Gates advanced capabilities, prioritize early
-- Infrastructure: Compounds over time, invest consistently
+KEY CHANGES:
+- Tech NO LONGER affects tax! Only production & military
+- Infra NO LONGER affects production! Only capacity & admin
+- Population caps force infra investment
+- Profiles significantly affect upgrade costs
+- Military tech bonus makes Level 3+ armies much stronger
+
+STRATEGIC PRIORITIES:
+- Tech Hub: Rush tech for production & military advantage
+- Industrial/Coastal: Build infra for trade & capacity
+- Resource Nations: Export resources to afford expensive upgrades
+- Watch population capacity! Overcrowding hurts growth & economy
+- Military power scales with tech - Level 3+ makes big difference
 `;
 
 export class LLMStrategicPlanner {

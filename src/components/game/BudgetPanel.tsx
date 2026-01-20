@@ -1,7 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { calculateBudgetForDisplay } from "@/lib/game-engine/EconomicClientUtils";
+import { 
+  calculateBudgetForDisplay,
+  calculateEffectiveMilitaryStrength,
+  calculateMilitaryEffectivenessMultiplier,
+  calculatePopulationCapacity,
+  calculateTradeCapacity,
+} from "@/lib/game-engine/EconomicClientUtils";
 import { ECONOMIC_BALANCE } from "@/lib/game-engine/EconomicBalance";
 import type { Country, CountryStats } from "@/types/country";
 import { Tooltip } from "./Tooltip";
@@ -28,14 +34,20 @@ export function BudgetPanel({ country, stats, activeDealsValue = 0 }: BudgetPane
   const breakdown = calculateBudgetForDisplay(country, stats, activeDealsValue);
   const isSurplus = breakdown.netBudget > 0;
   const isDeficit = breakdown.netBudget < 0;
+  
+  // NEW: Calculate military effectiveness and population capacity
+  const effectiveMilitaryStrength = calculateEffectiveMilitaryStrength(stats);
+  const militaryMultiplier = calculateMilitaryEffectivenessMultiplier(stats);
+  const popCapacity = calculatePopulationCapacity(stats);
+  const tradeCapacity = calculateTradeCapacity(stats);
 
   // Tooltip content generators
   const getTaxRevenueTooltip = () => {
     const popUnits = stats.population / 10000;
     const baseTax = popUnits * ECONOMIC_BALANCE.BUDGET.BASE_TAX_PER_CITIZEN;
-    const techMult = Math.min(1 + (stats.technologyLevel * ECONOMIC_BALANCE.BUDGET.TECHNOLOGY_TAX_MULTIPLIER), ECONOMIC_BALANCE.BUDGET.MAX_TAX_MULTIPLIER);
-    const infraMult = 1 + ((stats.infrastructureLevel || 0) * ECONOMIC_BALANCE.BUDGET.INFRASTRUCTURE_BONUS);
-    return `Tax Revenue Calculation:\n\nBase: ${popUnits.toFixed(1)} pop units × $${ECONOMIC_BALANCE.BUDGET.BASE_TAX_PER_CITIZEN} = $${baseTax.toFixed(0)}\nTech Bonus: ×${techMult.toFixed(2)} (${stats.technologyLevel.toFixed(1)} level)\nInfra Bonus: ×${infraMult.toFixed(2)} (${stats.infrastructureLevel || 0} level)\n\nTotal: $${breakdown.taxRevenue.toLocaleString()}/turn`;
+    const infraMult = 1 + ((stats.infrastructureLevel || 0) * ECONOMIC_BALANCE.BUDGET.INFRASTRUCTURE_TAX_EFFICIENCY);
+    const capacityPenalty = popCapacity.isOvercrowded ? ECONOMIC_BALANCE.POPULATION.OVERCROWDING_TAX_PENALTY : 1.0;
+    return `Tax Revenue Calculation:\n\nBase: ${popUnits.toFixed(1)} pop units × $${ECONOMIC_BALANCE.BUDGET.BASE_TAX_PER_CITIZEN} = $${baseTax.toFixed(0)}\nInfra Efficiency: ×${infraMult.toFixed(2)} (${stats.infrastructureLevel || 0} level)${popCapacity.isOvercrowded ? `\nOvercrowding: ×${capacityPenalty.toFixed(2)} ⚠️` : ''}\n\nTotal: $${breakdown.taxRevenue.toLocaleString()}/turn\n\nNOTE: Technology boosts production, not taxes!`;
   };
 
   const getTradeRevenueTooltip = () => {
@@ -52,7 +64,7 @@ export function BudgetPanel({ country, stats, activeDealsValue = 0 }: BudgetPane
 
   const getInfrastructureCostTooltip = () => {
     const infraLevel = stats.infrastructureLevel || 0;
-    return `Infrastructure Maintenance: $${ECONOMIC_BALANCE.INFRASTRUCTURE.MAINTENANCE_COST_PER_LEVEL} per level\n\nInfrastructure Level: ${infraLevel}\nCost per Level: $${ECONOMIC_BALANCE.INFRASTRUCTURE.MAINTENANCE_COST_PER_LEVEL}\n\nTotal: $${breakdown.infrastructureCost.toLocaleString()}/turn`;
+    return `Infrastructure Maintenance: $${ECONOMIC_BALANCE.INFRASTRUCTURE.MAINTENANCE_COST_PER_LEVEL} per level\n\nInfrastructure Level: ${infraLevel}\nCost per Level: $${ECONOMIC_BALANCE.INFRASTRUCTURE.MAINTENANCE_COST_PER_LEVEL}\n\nTotal: $${breakdown.infrastructureCost.toLocaleString()}/turn\n\nHigher infrastructure needs more maintenance, but provides:\n• Better tax collection\n• More population capacity\n• More trade capacity`;
   };
 
   const getNetBudgetTooltip = () => {
@@ -75,41 +87,60 @@ export function BudgetPanel({ country, stats, activeDealsValue = 0 }: BudgetPane
           </Tooltip>
 
           {/* Population */}
-          <Tooltip content={`Population: The number of citizens in your country. Higher population generates more tax revenue.\n\nCurrent: ${stats.population.toLocaleString()} citizens`}>
-            <div className="rounded border border-white/10 bg-slate-800/50 px-4 py-2 cursor-help">
-              <div className="text-xs text-white/60 mb-1">👥 Population</div>
+          <Tooltip content={`Population: The number of citizens in your country. Higher population generates more tax revenue.\n\nCurrent: ${stats.population.toLocaleString()} / ${popCapacity.capacity.toLocaleString()} capacity\nUsage: ${popCapacity.percentUsed.toFixed(1)}%${popCapacity.isOvercrowded ? '\n\n⚠️ OVERCROWDED: -50% growth, -20% tax, +10% food consumption' : ''}`}>
+            <div className={`rounded border ${popCapacity.isOvercrowded ? 'border-yellow-500/50' : 'border-white/10'} bg-slate-800/50 px-4 py-2 cursor-help`}>
+              <div className="text-xs text-white/60 mb-1">
+                👥 Population {popCapacity.isOvercrowded && <span className="text-yellow-500">⚠️</span>}
+              </div>
               <div className="text-lg font-bold text-white">
                 {stats.population.toLocaleString()}
+              </div>
+              <div className="text-[10px] text-white/40 mt-0.5">
+                {popCapacity.percentUsed.toFixed(0)}% capacity
               </div>
             </div>
           </Tooltip>
 
           {/* Military */}
-          <Tooltip content={`Military Strength: Your nation's combat power. Higher strength allows you to defend territory and project power.\n\nCurrent: ${stats.militaryStrength} strength\nUpkeep: $${stats.militaryStrength * 5}/turn`}>
+          <Tooltip content={`Military Strength: Your nation's combat power.\n\nBase Strength: ${stats.militaryStrength}\nTech Bonus: +${((militaryMultiplier - 1) * 100).toFixed(0)}% (Level ${stats.technologyLevel.toFixed(1)})\n\nEffective Strength: ${effectiveMilitaryStrength} ${effectiveMilitaryStrength > stats.militaryStrength ? '⚡' : ''}\nUpkeep: $${(stats.militaryStrength * ECONOMIC_BALANCE.CONSUMPTION.MILITARY_UPKEEP_PER_STRENGTH).toFixed(0)}/turn`}>
             <div className="rounded border border-white/10 bg-slate-800/50 px-4 py-2 cursor-help">
               <div className="text-xs text-white/60 mb-1">⚔️ Military</div>
               <div className="text-lg font-bold text-red-400">
                 {stats.militaryStrength}
+                {effectiveMilitaryStrength > stats.militaryStrength && (
+                  <span className="text-yellow-400 text-sm ml-1">⚡{effectiveMilitaryStrength}</span>
+                )}
               </div>
+              {militaryMultiplier > 1 && (
+                <div className="text-[10px] text-yellow-400 mt-0.5">
+                  +{((militaryMultiplier - 1) * 100).toFixed(0)}% from tech
+                </div>
+              )}
             </div>
           </Tooltip>
 
           {/* Technology */}
-          <Tooltip content={`Technology Level: Your nation's technological advancement. Higher levels boost economy, military effectiveness, and unlock new capabilities.\n\nCurrent: Level ${stats.technologyLevel.toFixed(1)}\nTax Bonus: +${(stats.technologyLevel * 5).toFixed(0)}%`}>
+          <Tooltip content={`Technology Level: Your nation's technological advancement.\n\nCurrent: Level ${stats.technologyLevel.toFixed(1)}\n\nBenefits:\n• Resource Production: ${(ECONOMIC_BALANCE.TECHNOLOGY[`LEVEL_${Math.min(Math.floor(stats.technologyLevel), 5)}_MULTIPLIER` as keyof typeof ECONOMIC_BALANCE.TECHNOLOGY] * 100).toFixed(0)}% (multiplier)\n• Military Effectiveness: +${((militaryMultiplier - 1) * 100).toFixed(0)}%\n• Military Cost: -${(stats.technologyLevel * ECONOMIC_BALANCE.TECHNOLOGY.MILITARY_COST_REDUCTION_PER_LEVEL * 100).toFixed(0)}%`}>
             <div className="rounded border border-white/10 bg-slate-800/50 px-4 py-2 cursor-help">
               <div className="text-xs text-white/60 mb-1">🔬 Technology</div>
               <div className="text-lg font-bold text-purple-400">
-                {stats.technologyLevel.toFixed(1)}
+                Level {stats.technologyLevel.toFixed(1)}
+              </div>
+              <div className="text-[10px] text-purple-300 mt-0.5">
+                Production & Military
               </div>
             </div>
           </Tooltip>
 
           {/* Infrastructure */}
-          <Tooltip content={`Infrastructure Level: Your nation's development and public works. Higher levels boost economy and reduce costs.\n\nCurrent: Level ${stats.infrastructureLevel || 0}\nEconomy Bonus: +${((stats.infrastructureLevel || 0) * 10).toFixed(0)}%\nMaintenance: $${(stats.infrastructureLevel || 0) * 50}/turn`}>
+          <Tooltip content={`Infrastructure Level: Your nation's capacity and administration.\n\nCurrent: Level ${stats.infrastructureLevel || 0}\n\nBenefits:\n• Tax Collection: +${((stats.infrastructureLevel || 0) * ECONOMIC_BALANCE.BUDGET.INFRASTRUCTURE_TAX_EFFICIENCY * 100).toFixed(0)}%\n• Population Capacity: ${popCapacity.capacity.toLocaleString()}\n• Trade Capacity: ${tradeCapacity.maxDeals} deals/turn\n• Maintenance: $${(stats.infrastructureLevel || 0) * ECONOMIC_BALANCE.INFRASTRUCTURE.MAINTENANCE_COST_PER_LEVEL}/turn`}>
             <div className="rounded border border-white/10 bg-slate-800/50 px-4 py-2 cursor-help col-span-2">
               <div className="text-xs text-white/60 mb-1">🏗️ Infrastructure</div>
               <div className="text-lg font-bold text-green-400">
                 Level {stats.infrastructureLevel || 0}
+              </div>
+              <div className="text-[10px] text-green-300 mt-0.5">
+                Capacity: {popCapacity.capacity.toLocaleString()} pop • {tradeCapacity.maxDeals} deals/turn
               </div>
             </div>
           </Tooltip>

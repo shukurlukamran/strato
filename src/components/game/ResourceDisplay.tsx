@@ -82,14 +82,13 @@ export function ResourceDisplay({ country, stats, resources }: ResourceDisplayPr
     
     const popUnits = stats.population / 10000;
     const techMult = ECONOMIC_BALANCE.TECHNOLOGY[`LEVEL_${Math.min(Math.max(0, Math.floor(stats.technologyLevel)), 5)}_MULTIPLIER` as keyof typeof ECONOMIC_BALANCE.TECHNOLOGY] || 1;
-    const infraMult = 1 + ((stats.infrastructureLevel || 0) * ECONOMIC_BALANCE.PRODUCTION.INFRASTRUCTURE_MULTIPLIER);
     
     let calc = "";
     if (resourceId === 'food') {
-      calc = `Base: ${(popUnits * ECONOMIC_BALANCE.PRODUCTION.BASE_FOOD_PER_POP).toFixed(1)} × Tech(${techMult.toFixed(1)}x) × Infra(${infraMult.toFixed(2)}x) = ${prod}/turn`;
+      calc = `Base: ${(popUnits * ECONOMIC_BALANCE.PRODUCTION.BASE_FOOD_PER_POP).toFixed(1)} × Tech(${techMult.toFixed(1)}x) = ${prod}/turn\n\nNOTE: Infrastructure no longer affects production!`;
       if (cons > 0) calc += ` | Consumed: ${popUnits.toFixed(1)} × 5 = ${cons}/turn`;
     } else {
-      calc = `Production: ${prod}/turn`;
+      calc = `Production: ${prod}/turn (Tech ${techMult.toFixed(1)}x)`;
       if (cons > 0) calc += ` | Consumption: ${cons}/turn`;
     }
     
@@ -115,8 +114,7 @@ export function ResourceDisplay({ country, stats, resources }: ResourceDisplayPr
 
   const getInfraBonusTooltip = () => {
     const infraLevel = stats.infrastructureLevel || 0;
-    const mult = 1 + (infraLevel * ECONOMIC_BALANCE.PRODUCTION.INFRASTRUCTURE_MULTIPLIER);
-    return `Infrastructure Level ${infraLevel}: ${((mult - 1) * 100).toFixed(0)}% production bonus\n\nFormula: 1 + (${infraLevel} × 0.15) = ${mult.toFixed(2)}x`;
+    return `Infrastructure Level ${infraLevel}\n\nNEW: Infrastructure affects capacity & administration, NOT production!\n\nBenefits:\n• Tax collection: +${(infraLevel * 12)}%\n• Population capacity: ${200000 + (infraLevel * 50000).toLocaleString()}\n• Trade capacity: ${2 + infraLevel} deals/turn`;
   };
 
   // Group resources by category

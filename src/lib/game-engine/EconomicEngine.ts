@@ -101,14 +101,26 @@ export class EconomicEngine {
   
   /**
    * Calculate resource consumption
+   * NEW: Overcrowding increases food consumption
    */
   private static calculateConsumption(stats: CountryStats): ResourceAmount[] {
     const populationUnits = stats.population / 10000;
+    let foodConsumption = populationUnits * ECONOMIC_BALANCE.CONSUMPTION.FOOD_PER_10K_POPULATION;
+    
+    // NEW: Overcrowding increases food consumption
+    const infraLevel = stats.infrastructureLevel || 0;
+    const capacity = ECONOMIC_BALANCE.POPULATION.BASE_CAPACITY + 
+                    (infraLevel * ECONOMIC_BALANCE.POPULATION.CAPACITY_PER_INFRASTRUCTURE);
+    const isOvercrowded = stats.population > capacity;
+    
+    if (isOvercrowded) {
+      foodConsumption = foodConsumption * ECONOMIC_BALANCE.POPULATION.OVERCROWDING_FOOD_PENALTY;
+    }
     
     return [
       {
         resourceId: 'food',
-        amount: Math.ceil(populationUnits * ECONOMIC_BALANCE.CONSUMPTION.FOOD_PER_10K_POPULATION)
+        amount: Math.ceil(foodConsumption)
       },
       // Add other consumptions as needed
     ];
@@ -147,13 +159,24 @@ export class EconomicEngine {
   
   /**
    * Calculate population growth/decline
+   * NEW: Includes overcrowding penalty when population exceeds capacity
    */
   private static calculatePopulationChange(
     stats: CountryStats,
     foodBalance: number,
     foodConsumed: number
   ): number {
-    const baseGrowth = stats.population * ECONOMIC_BALANCE.POPULATION.GROWTH_RATE_BASE;
+    let baseGrowth = stats.population * ECONOMIC_BALANCE.POPULATION.GROWTH_RATE_BASE;
+    
+    // NEW: Overcrowding penalty (reduces growth when over capacity)
+    const infraLevel = stats.infrastructureLevel || 0;
+    const capacity = ECONOMIC_BALANCE.POPULATION.BASE_CAPACITY + 
+                    (infraLevel * ECONOMIC_BALANCE.POPULATION.CAPACITY_PER_INFRASTRUCTURE);
+    const isOvercrowded = stats.population > capacity;
+    
+    if (isOvercrowded) {
+      baseGrowth = baseGrowth * ECONOMIC_BALANCE.POPULATION.OVERCROWDING_GROWTH_PENALTY;
+    }
     
     // Food surplus bonus
     const foodBonus = foodBalance > 0 

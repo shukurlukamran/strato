@@ -351,16 +351,15 @@ export class RuleBasedAI {
   private static calculateInfrastructureROI(stats: CountryStats, cost: number): number {
     const currentLevel = stats.infrastructureLevel || 0;
     
-    // Simulate revenue with current infra
-    const currentInfraBonus = 1 + (currentLevel * ECONOMIC_BALANCE.BUDGET.INFRASTRUCTURE_BONUS);
+    // Simulate revenue with current infra (NEW: Only infra affects tax, not tech!)
+    const currentInfraBonus = 1 + (currentLevel * ECONOMIC_BALANCE.BUDGET.INFRASTRUCTURE_TAX_EFFICIENCY);
     const populationUnits = stats.population / 10000;
     const baseTax = populationUnits * ECONOMIC_BALANCE.BUDGET.BASE_TAX_PER_CITIZEN;
-    const techBonus = 1 + (stats.technologyLevel * ECONOMIC_BALANCE.BUDGET.TECHNOLOGY_TAX_MULTIPLIER);
-    const currentRevenue = Math.floor(baseTax * techBonus * currentInfraBonus);
+    const currentRevenue = Math.floor(baseTax * currentInfraBonus);
     
     // Simulate revenue with +1 infra
-    const newInfraBonus = 1 + ((currentLevel + 1) * ECONOMIC_BALANCE.BUDGET.INFRASTRUCTURE_BONUS);
-    const newRevenue = Math.floor(baseTax * techBonus * newInfraBonus);
+    const newInfraBonus = 1 + ((currentLevel + 1) * ECONOMIC_BALANCE.BUDGET.INFRASTRUCTURE_TAX_EFFICIENCY);
+    const newRevenue = Math.floor(baseTax * newInfraBonus);
     
     // Calculate revenue increase per turn
     const revenueIncrease = newRevenue - currentRevenue;
@@ -378,24 +377,28 @@ export class RuleBasedAI {
 
   /**
    * Calculate research investment ROI (turns to break even)
+   * NEW: Tech affects production, not tax. ROI based on production value increase.
    */
   private static calculateResearchROI(stats: CountryStats, cost: number): number {
-    // Tech increases both tax revenue and resource production
-    const currentTechMultiplier = 1 + (stats.technologyLevel * ECONOMIC_BALANCE.BUDGET.TECHNOLOGY_TAX_MULTIPLIER);
-    const newTechMultiplier = 1 + ((stats.technologyLevel + 1) * ECONOMIC_BALANCE.BUDGET.TECHNOLOGY_TAX_MULTIPLIER);
+    // Get current and next tech multipliers (discrete levels)
+    const currentLevel = Math.min(Math.floor(stats.technologyLevel), 5);
+    const nextLevel = Math.min(currentLevel + 1, 5);
     
+    const currentMultiplier = ECONOMIC_BALANCE.TECHNOLOGY[`LEVEL_${currentLevel}_MULTIPLIER` as keyof typeof ECONOMIC_BALANCE.TECHNOLOGY] as number;
+    const nextMultiplier = ECONOMIC_BALANCE.TECHNOLOGY[`LEVEL_${nextLevel}_MULTIPLIER` as keyof typeof ECONOMIC_BALANCE.TECHNOLOGY] as number;
+    
+    // Estimate production value increase (simplified - assume average resource value)
     const populationUnits = stats.population / 10000;
-    const baseTax = populationUnits * ECONOMIC_BALANCE.BUDGET.BASE_TAX_PER_CITIZEN;
-    const infraBonus = 1 + ((stats.infrastructureLevel || 0) * ECONOMIC_BALANCE.BUDGET.INFRASTRUCTURE_BONUS);
+    const baseProduction = populationUnits * ECONOMIC_BALANCE.PRODUCTION.BASE_FOOD_PER_POP;
+    const averageResourceValue = 2; // Rough estimate: 1 food ≈ 2 credits value
     
-    const currentRevenue = Math.floor(baseTax * currentTechMultiplier * infraBonus);
-    const newRevenue = Math.floor(baseTax * Math.min(newTechMultiplier, ECONOMIC_BALANCE.BUDGET.MAX_TAX_MULTIPLIER) * infraBonus);
+    const currentProductionValue = baseProduction * currentMultiplier * averageResourceValue;
+    const newProductionValue = baseProduction * nextMultiplier * averageResourceValue;
+    const productionIncrease = newProductionValue - currentProductionValue;
     
-    const revenueIncrease = newRevenue - currentRevenue;
+    if (productionIncrease <= 0) return Infinity;
     
-    if (revenueIncrease <= 0) return Infinity;
-    
-    return Math.ceil(cost / revenueIncrease);
+    return Math.ceil(cost / productionIncrease);
   }
 
   /**
