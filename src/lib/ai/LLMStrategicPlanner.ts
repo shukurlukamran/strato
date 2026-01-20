@@ -182,7 +182,26 @@ export class LLMStrategicPlanner {
       // IMPORTANT: Store as active strategic plan for this country
       // This plan will guide decisions for the next 5 turns
       this.activeStrategicPlans.set(countryId, analysis);
-      console.log(`[LLM Planner] 📋 Strategic plan stored for ${countryId} (valid for next ${this.LLM_CALL_FREQUENCY} turns)`);
+      
+      // Enhanced logging for development
+      const country = state.countries.find(c => c.id === countryId);
+      const countryName = country?.name || countryId;
+      console.log(`\n${'='.repeat(80)}`);
+      console.log(`🤖 LLM STRATEGIC DECISION - Turn ${state.turn}`);
+      console.log(`${'='.repeat(80)}`);
+      console.log(`Country: ${countryName} (${countryId})`);
+      console.log(`Focus: ${analysis.strategicFocus.toUpperCase()}`);
+      console.log(`Rationale: ${analysis.rationale}`);
+      console.log(`Threats: ${analysis.threatAssessment}`);
+      console.log(`Opportunities: ${analysis.opportunityIdentified}`);
+      console.log(`Recommended Actions:`);
+      analysis.recommendedActions.forEach((action, i) => {
+        console.log(`  ${i + 1}. ${action}`);
+      });
+      console.log(`Diplomatic Stance:`, analysis.diplomaticStance);
+      console.log(`Confidence: ${(analysis.confidenceScore * 100).toFixed(0)}%`);
+      console.log(`Plan Valid Until: Turn ${state.turn + this.LLM_CALL_FREQUENCY - 1}`);
+      console.log(`${'='.repeat(80)}\n`);
       
       // Clean old cache entries (keep last 10 turns)
       if (this.lastAnalysisCache.size > 10) {

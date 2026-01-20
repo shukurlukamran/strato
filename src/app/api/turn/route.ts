@@ -150,18 +150,15 @@ export async function POST(req: Request) {
 
   // GENERATE AI ACTIONS for non-player countries
   // Phase 2.2: Now async to support LLM strategic planning
+  // OPTIMIZED: Process all AI countries in parallel
   console.log(`[Turn API] Generating AI actions for turn ${turn}...`);
-  const aiActions = [];
-  
-  for (const country of state.data.countries) {
-    if (!country.isPlayerControlled) {
-      // Create AI controller with random personality (seeded by country ID for consistency)
+  const aiActionPromises = state.data.countries
+    .filter(country => !country.isPlayerControlled)
+    .map(async (country) => {
       const aiController = AIController.withRandomPersonality(country.id);
       
       try {
-        // Now async to support LLM planning
         const actions = await aiController.decideTurnActions(state.data, country.id);
-        aiActions.push(...actions);
         
         console.log(`[AI] ${country.name}: Generated ${actions.length} actions`);
         if (actions.length > 0) {
@@ -170,11 +167,17 @@ export async function POST(req: Request) {
             data: a.actionData
           })));
         }
+        
+        return actions;
       } catch (error) {
         console.error(`[AI] Failed to generate actions for ${country.name}:`, error);
+        return [];
       }
-    }
-  }
+    });
+  
+  // Wait for all AI decisions in parallel
+  const aiActionsArrays = await Promise.all(aiActionPromises);
+  const aiActions = aiActionsArrays.flat();
   
   // Save AI actions to database (let database auto-generate UUIDs)
   if (aiActions.length > 0) {
@@ -221,19 +224,19 @@ export async function POST(req: Request) {
   }
 
   // Process economic phase BEFORE action resolution
+  // OPTIMIZED: Process all countries' economics in parallel
   const economicEvents: Array<{ type: string; message: string; data?: Record<string, unknown> }> = [];
+  const economicEventInserts: Array<any> = [];
   
-  for (const country of state.data.countries) {
+  const economicPromises = state.data.countries.map(async (country) => {
     const stats = state.data.countryStatsByCountryId[country.id];
-    if (!stats) continue;
+    if (!stats) return { country, events: [], economicEventData: null };
     
     // Calculate active deals value for this country
     const activeDealsValue = state.data.activeDeals
       .filter(d => d.status === 'active' && 
         (d.proposingCountryId === country.id || d.receivingCountryId === country.id))
       .reduce((total, deal) => {
-        // Simple calculation: sum deal terms value (placeholder)
-        // TODO: Implement proper deal value calculation
         return total + 100; // Placeholder value
       }, 0);
     
@@ -271,17 +274,15 @@ export async function POST(req: Request) {
         });
       }
       
-      // Add economic events
-      economicResult.eventMessages.forEach(msg => {
-        economicEvents.push({
-          type: 'economic.update',
-          message: `${country.name}: ${msg}`,
-          data: { countryId: country.id }
-        });
-      });
+      // Collect events
+      const events = economicResult.eventMessages.map(msg => ({
+        type: 'economic.update',
+        message: `${country.name}: ${msg}`,
+        data: { countryId: country.id }
+      }));
       
-      // Log economic event to database
-      await supabase.from('economic_events').insert({
+      // Prepare economic event for batch insert
+      const economicEventData = {
         game_id: gameId,
         country_id: country.id,
         turn_number: turn,
@@ -292,15 +293,37 @@ export async function POST(req: Request) {
           resourcesProduced: economicResult.resourcesProduced,
           resourcesConsumed: economicResult.resourcesConsumed
         }
-      });
+      };
+      
+      return { country, events, economicEventData };
     } catch (error) {
       console.error(`Failed to process economics for country ${country.id}:`, error);
-      economicEvents.push({
-        type: 'economic.error',
-        message: `Economic processing failed for ${country.name}`,
-        data: { countryId: country.id, error: String(error) }
-      });
+      return {
+        country,
+        events: [{
+          type: 'economic.error',
+          message: `Economic processing failed for ${country.name}`,
+          data: { countryId: country.id, error: String(error) }
+        }],
+        economicEventData: null
+      };
     }
+  });
+  
+  // Wait for all economic processing in parallel
+  const economicResults = await Promise.all(economicPromises);
+  
+  // Collect all events and batch insert economic events
+  for (const result of economicResults) {
+    economicEvents.push(...result.events);
+    if (result.economicEventData) {
+      economicEventInserts.push(result.economicEventData);
+    }
+  }
+  
+  // Batch insert all economic events
+  if (economicEventInserts.length > 0) {
+    await supabase.from('economic_events').insert(economicEventInserts);
   }
 
   const processor = new TurnProcessor();
@@ -388,31 +411,44 @@ export async function POST(req: Request) {
   const allEvents = [...actionSummaryEvents, ...result.events.filter(e => !e.type.startsWith('economic'))];
 
   // Persist: mark executed actions, update stats, store snapshot, advance turn.
+  // OPTIMIZED: Batch all updates together
   if (result.executedActions.length) {
-    await supabase
-      .from("actions")
-      .upsert(
-        result.executedActions.map((a) => ({ id: a.id, status: a.status })),
-        { onConflict: "id" },
-      );
+    // Get unique country IDs that had actions
+    const affectedCountryIds = [...new Set(result.executedActions.map(a => a.countryId))];
     
-    // Update stats for countries that had actions executed
-    const updatedStats = result.executedActions
-      .map(a => state.data.countryStatsByCountryId[a.countryId])
-      .filter(Boolean);
-    
-    for (const stats of updatedStats) {
-      await supabase
+    // Batch update actions and stats in parallel
+    await Promise.all([
+      // Update action statuses
+      supabase
+        .from("actions")
+        .upsert(
+          result.executedActions.map((a) => ({ id: a.id, status: a.status })),
+          { onConflict: "id" },
+        ),
+      
+      // Batch update all stats at once (using upsert for efficiency)
+      supabase
         .from("country_stats")
-        .update({
-          budget: stats.budget,
-          technology_level: stats.technologyLevel,
-          infrastructure_level: stats.infrastructureLevel || 0,
-          military_strength: stats.militaryStrength
-        })
-        .eq("country_id", stats.countryId)
-        .eq("turn", turn);
-    }
+        .upsert(
+          affectedCountryIds.map(countryId => {
+            const stats = state.data.countryStatsByCountryId[countryId];
+            return {
+              country_id: countryId,
+              turn: turn,
+              budget: stats.budget,
+              technology_level: stats.technologyLevel,
+              infrastructure_level: stats.infrastructureLevel || 0,
+              military_strength: stats.militaryStrength,
+              population: stats.population,
+              military_equipment: stats.militaryEquipment,
+              resources: stats.resources,
+              diplomatic_relations: stats.diplomaticRelations,
+              resource_profile: stats.resourceProfile
+            };
+          }),
+          { onConflict: 'country_id,turn' }
+        )
+    ]);
   }
 
   await supabase.from("turn_history").insert({

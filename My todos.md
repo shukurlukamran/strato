@@ -6,3 +6,4 @@ Random rational rss/budget/population/military/tech allocation.
 - Prevent cheating in the chat deals (you can get money for technology level now, but tech level isn't actually transferred, for example)
 - AI should initiate deal requests too (to player and among each other - among each other can be done in the background without AI probably)
 - Player shouldn't be able to see the "Propose Deal" button for their own country, it should only be shown for other countries.
+- Ending turn takes forever. We need to increase its speed but we have to do it in a way that we're sure won't create any technical or functional problems. We have had issues with caching before.
