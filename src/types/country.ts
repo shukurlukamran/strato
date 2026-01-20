@@ -1,17 +1,3 @@
-export interface City {
-  id: string;
-  countryId: string;
-  name: string;
-  positionX: number;
-  positionY: number;
-  size: 'small' | 'medium' | 'large'; // Affects visual appearance
-  // Resources per turn produced by this city
-  resourcesPerTurn: Record<string, number>;
-  population: number;
-  // Infrastructure level affects production efficiency
-  infrastructure: number;
-}
-
 export interface Country {
   id: string;
   gameId: string;
@@ -20,7 +6,6 @@ export interface Country {
   color: string;
   positionX: number;
   positionY: number;
-  cities?: City[];
 }
 
 import type { ResourceProfile } from '@/lib/game-engine/ResourceProfile';

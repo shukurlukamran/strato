@@ -1,9 +1,8 @@
 "use client";
 
-import type { Country, City } from "@/types/country";
+import type { Country } from "@/types/country";
 import { useGameStore } from "@/lib/store/gameStore";
 import { useState, useMemo } from "react";
-import { CityTooltip } from "./CityTooltip";
 
 // Generate connected territories using a simpler, faster approach
 // Creates regions that share borders by using distance-based expansion
@@ -103,15 +102,7 @@ function sortBoundaryPoints(boundary: Array<{ x: number; y: number }>, center: C
   });
 }
 
-export function Map({
-  countries,
-  cities,
-  onCityAttack
-}: {
-  countries: Country[],
-  cities: City[],
-  onCityAttack?: (city: City) => void
-}) {
+export function Map({ countries }: { countries: Country[] }) {
   const selectedCountryId = useGameStore((s) => s.selectedCountryId);
   const selectCountry = useGameStore((s) => s.selectCountry);
   const [hoveredCountryId, setHoveredCountryId] = useState<string | null>(null);
@@ -238,56 +229,6 @@ export function Map({
                   ⚜
                 </text>
               )}
-            </g>
-          );
-        })}
-
-        {/* Cities */}
-        {cities.map((city) => {
-          const country = countries.find(c => c.id === city.countryId);
-          if (!country) return null;
-
-          const playerCountry = countries.find(c => c.isPlayerControlled);
-          const isPlayerCity = playerCountry?.id === city.countryId;
-
-          const citySize = { small: 0.8, medium: 1.2, large: 1.6 }[city.size] || 1;
-          const baseRadius = 0.6;
-
-          return (
-            <g key={city.id}>
-              {/* City circle (background) */}
-              <circle
-                cx={city.positionX}
-                cy={city.positionY}
-                r={baseRadius * citySize}
-                fill={country.color}
-                stroke="#fff"
-                strokeWidth="0.2"
-                opacity={0.9}
-              />
-
-              {/* City name */}
-              <text
-                x={city.positionX}
-                y={city.positionY - baseRadius * citySize - 0.5}
-                textAnchor="middle"
-                dominantBaseline="middle"
-                className="pointer-events-none select-none text-[2px] font-bold"
-                fill="#fff"
-                stroke="#000"
-                strokeWidth="0.1"
-                paintOrder="stroke"
-              >
-                {city.name}
-              </text>
-
-              {/* City tooltip */}
-              <CityTooltip
-                city={city}
-                country={country}
-                isPlayerCity={isPlayerCity}
-                onAttack={onCityAttack}
-              />
             </g>
           );
         })}

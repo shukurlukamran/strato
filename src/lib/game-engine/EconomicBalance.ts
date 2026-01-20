@@ -85,12 +85,6 @@ export const ECONOMIC_BALANCE = {
     COST_PER_STRENGTH_POINT: 50,       // Standard cost per military strength point
     RECRUIT_AMOUNT_STANDARD: 10,       // Standard recruitment amount per action
     RECRUIT_COST_STANDARD: 500,        // Standard cost (50 * 10 = 500)
-
-    // Combat System
-    ATTACK_BASE_COST: 100,             // Base economic cost for launching an attack
-    ATTACK_COST_PER_STRENGTH: 2,       // Additional cost per military strength allocated
-    COMBAT_CASUALTY_RATE: 0.15,        // Base casualty rate (15% of engaged forces)
-    MAX_ATTACK_DISTANCE: 5,             // Maximum distance for city attacks
   },
   
   // Upgrade Costs

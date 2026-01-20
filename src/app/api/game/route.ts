@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { CountryInitializer } from "@/lib/game-engine/CountryInitializer";
-import { CityGenerator } from "@/lib/game-engine/CityGenerator";
-import type { Country, City } from "@/types/country";
 
 const CreateGameSchema = z.object({
   name: z.string().min(1).default("New Game"),
@@ -31,25 +29,11 @@ type DbCountryStats = {
   population: number;
   budget: number;
   technology_level: number;
-  infrastructure_level?: number;
   military_strength: number;
   military_equipment: Record<string, unknown>;
   resources: Record<string, number>;
   resource_profile?: Record<string, unknown>; // Resource specialization profile
   diplomatic_relations: Record<string, number>;
-  created_at: string;
-};
-
-type DbCity = {
-  id: string;
-  country_id: string;
-  name: string;
-  position_x: number;
-  position_y: number;
-  size: string;
-  resources_per_turn: Record<string, number>;
-  population: number;
-  infrastructure: number;
   created_at: string;
 };
 
@@ -59,7 +43,6 @@ export const memoryGames = new Map<
     game: DbGame;
     countries: DbCountry[];
     stats: Record<string, DbCountryStats>;
-    cities: DbCity[];
     chats: Record<string, { id: string; country_a_id: string; country_b_id: string }>;
   }
 >();
@@ -175,57 +158,6 @@ export async function POST(req: Request) {
     const insertedStats = await supabase.from("country_stats").insert(statsRows);
     if (insertedStats.error) throw insertedStats.error;
 
-    // Generate cities for each country
-    const countryObjects: Country[] = countries.map(c => ({
-      id: c.id,
-      gameId: c.game_id,
-      name: c.name,
-      isPlayerControlled: c.is_player_controlled,
-      color: c.color,
-      positionX: Number(c.position_x),
-      positionY: Number(c.position_y),
-      cities: [] // Will be populated below
-    }));
-
-    const allCities: City[] = [];
-    for (let i = 0; i < countries.length; i++) {
-      const country = countryObjects[i];
-      const stats = countryProfiles[i];
-      const cities = CityGenerator.generateCitiesForCountry(country, {
-        ...stats,
-        id: '',
-        countryId: country.id,
-        turn: 1,
-        infrastructureLevel: stats.infrastructureLevel,
-        militaryEquipment: {},
-        diplomaticRelations: {},
-        createdAt: now
-      });
-
-      // Update country with cities
-      country.cities = cities;
-      allCities.push(...cities);
-    }
-
-    // Insert cities into database
-    if (allCities.length > 0) {
-      const cityRows = allCities.map(city => ({
-        country_id: city.countryId,
-        name: city.name,
-        position_x: city.positionX,
-        position_y: city.positionY,
-        size: city.size,
-        resources_per_turn: city.resourcesPerTurn,
-        population: city.population,
-        infrastructure: city.infrastructure,
-        created_at: now,
-        updated_at: now,
-      }));
-
-      const insertedCities = await supabase.from("cities").insert(cityRows);
-      if (insertedCities.error) throw insertedCities.error;
-    }
-
     // Create chats
     const chats = await ensureChats(gameId, countries);
     if (chats.length) {
@@ -266,56 +198,11 @@ export async function POST(req: Request) {
       stats[c.id] = makeInitialStats(c.id, 1, gameId, i, countryProfiles[i]);
     }
 
-    // Generate cities for in-memory games
-    const countryObjects: Country[] = countries.map(c => ({
-      id: c.id,
-      gameId: c.game_id,
-      name: c.name,
-      isPlayerControlled: c.is_player_controlled,
-      color: c.color,
-      positionX: Number(c.position_x),
-      positionY: Number(c.position_y),
-      cities: []
-    }));
-
-    const allCities: City[] = [];
-    for (let i = 0; i < countries.length; i++) {
-      const country = countryObjects[i];
-      const profile = countryProfiles[i];
-      const cities = CityGenerator.generateCitiesForCountry(country, {
-        ...profile,
-        id: stats[country.id].id,
-        countryId: country.id,
-        turn: 1,
-        infrastructureLevel: profile.infrastructureLevel,
-        militaryEquipment: {},
-        diplomaticRelations: {},
-        createdAt: new Date().toISOString()
-      });
-
-      country.cities = cities;
-      allCities.push(...cities);
-    }
-
     const chatsArr = await ensureChats(gameId, countries);
     const chats: Record<string, { id: string; country_a_id: string; country_b_id: string }> = {};
     for (const ch of chatsArr) chats[ch.id] = { id: ch.id, country_a_id: ch.country_a_id, country_b_id: ch.country_b_id };
 
-    // Convert City[] to DbCity[] for in-memory store
-    const dbCities: DbCity[] = allCities.map(city => ({
-      id: city.id,
-      country_id: city.countryId,
-      name: city.name,
-      position_x: city.positionX,
-      position_y: city.positionY,
-      size: city.size,
-      resources_per_turn: city.resourcesPerTurn,
-      population: city.population,
-      infrastructure: city.infrastructure,
-      created_at: now,
-    }));
-
-    memoryGames.set(gameId, { game, countries, stats, cities: dbCities, chats });
+    memoryGames.set(gameId, { game, countries, stats, chats });
     return NextResponse.json({ gameId, note: "Supabase not configured; using in-memory game store." });
   }
 }
@@ -367,7 +254,6 @@ export async function GET(req: Request) {
         game: mem.game,
         countries: mem.countries,
         stats: Object.values(mem.stats),
-        cities: mem.cities || [],
         chats: Object.values(mem.chats),
         note: "Supabase not configured; using in-memory game store.",
       });
@@ -449,17 +335,10 @@ export async function GET(req: Request) {
         .eq("game_id", gameId);
       if (chatsRes.error) throw chatsRes.error;
 
-      const citiesRes = await supabase
-        .from("cities")
-        .select("id, country_id, name, position_x, position_y, size, resources_per_turn, population, infrastructure, created_at")
-        .in("country_id", (countriesRes.data ?? []).map((c) => c.id));
-      if (citiesRes.error) throw citiesRes.error;
-
       return NextResponse.json({
         game: game,
         countries: countriesRes.data ?? [],
         stats: statsWithInfra,
-        cities: citiesRes.data ?? [],
         chats: chatsRes.data ?? [],
       });
     }
@@ -472,17 +351,10 @@ export async function GET(req: Request) {
       .eq("game_id", gameId);
     if (chatsRes.error) throw chatsRes.error;
 
-    const citiesRes = await supabase
-      .from("cities")
-      .select("id, country_id, name, position_x, position_y, size, resources_per_turn, population, infrastructure, created_at")
-      .in("country_id", (countriesRes.data ?? []).map((c) => c.id));
-    if (citiesRes.error) throw citiesRes.error;
-
     return NextResponse.json({
       game: game,
       countries: countriesRes.data ?? [],
       stats: statsRes.data ?? [],
-      cities: citiesRes.data ?? [],
       chats: chatsRes.data ?? [],
     });
   } catch (error) {
@@ -494,7 +366,6 @@ export async function GET(req: Request) {
         game: mem.game,
         countries: mem.countries,
         stats: Object.values(mem.stats),
-        cities: mem.cities || [],
         chats: Object.values(mem.chats),
         note: "Supabase not configured; using in-memory game store.",
       });

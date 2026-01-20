@@ -1,4 +1,4 @@
-import type { Country, CountryStats, City } from "@/types/country";
+import type { Country, CountryStats } from "@/types/country";
 import type { Deal } from "@/types/deals";
 import type { GameAction } from "@/types/actions";
 
@@ -7,7 +7,6 @@ export interface GameStateSnapshot {
   turn: number;
   countries: Country[];
   countryStatsByCountryId: Record<string, CountryStats>;
-  cities: City[];
   pendingActions: GameAction[];
   activeDeals: Deal[];
 }
@@ -41,18 +40,6 @@ export class GameState {
 
   setActiveDeals(deals: Deal[]): void {
     this.snapshot.activeDeals = deals;
-  }
-
-  setCities(cities: City[]): void {
-    this.snapshot.cities = cities;
-  }
-
-  getCity(cityId: string): City | undefined {
-    return this.snapshot.cities.find(city => city.id === cityId);
-  }
-
-  getCitiesByCountry(countryId: string): City[] {
-    return this.snapshot.cities.filter(city => city.countryId === countryId);
   }
 }
 
