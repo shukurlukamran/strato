@@ -1,18 +1,51 @@
-- Develop a plan for Military actions (attack, etc.) with simple actions for now and more complex action plans for future. AI countries should be able to use these actions too against Player or other AI countries just like the Actions we currently have. Decide the costs, advantages, disadvantages of using military actions. 
+# ✅ Military Actions & Cities System - COMPLETE PLAN AVAILABLE
 
-I also want the countries have cities inside separated with borders. Each country should have at least 6 cities, but ideally ranging between 6-15 cities depending on the area size on the map. Cities shouldn't be the same size and shape to make it look more interesting. We don't need any separate stats for cities, at least for now. 
+See **MILITARY_AND_CITIES_PLAN.md** for the comprehensive implementation plan.
 
-But cities are for capturing and using in deals (can be given away in exchange of something else). Cities include some portion of country's "per turn resources and  population", which means when city moves from one country to another, that portion of per turn resources and population moves to the new country too. For example, city may have 5 oils, 2 gems, 3 coal per turn and 10000 population, etc. We also need to show City's name and what it includes with a tooltip that shows/hides when clicking on it (not hover). It's critical that sum of these per turn resources and populations for all cities inside a country should be the same with the total values of that country.
+## Summary of Decisions Made:
 
-Attack ideas I have: A country can only capture or receive (in a deal) a neighboring city of another country, for now. When a city changes its nation, it should be shown inside the new country and with its color on the map - so we are updating the map to be interactive and flexible. When clicking on a city, there should be an Attack button on the opening tooltip. Decide how attack should be initiated, how combat resolution should be decided, and how much an attack should weaken both sides' army. Maybe both countries can decide how much of their military strength they wanna allocate to the specific attack/defense on a slider.
+### Cities System
+- **6-15 cities per country** based on territory size
+- Cities contain **proportional resources and population** that sum to country totals
+- **Voronoi-based generation** with varied sizes and organic shapes
+- **Click-to-show tooltip** with city details and attack button
+- Cities can be **captured in combat** or **traded in deals**
 
-LLM should be initiated when a player attacks AI country to make the defense decision, but LLM shouldn't be informed how much military power player allocated for this attack to make it fair. You can decide if it's better to handle AI countries' attacks among each other or against Player by rules or LLM.
+### Military Actions
+- **Attack neighboring cities only** (share border)
+- **Strength allocation slider** (10-100% of military)
+- **End-of-turn resolution** (not live combat)
+- **Combat formula**: Strength ratio + randomness + defender bonus (20%)
+- **Both sides lose troops**: Winner loses 20-40%, loser loses 40-80%
+- **Costs**: 100 budget + 10 per strength point allocated
 
-Also, decide if attack/defense should happen live or wait for turn end for the resolution.
+### AI Decisions
+- **AI vs Player Defense**: Uses LLM (doesn't know attacker's allocation - FAIR)
+- **AI vs Player Attack**: Uses LLM for strategic decisions
+- **AI vs AI Combat**: Uses rule-based system (faster, cheaper)
+- **Defense factors**: City value, military strength, strategic importance, personality
 
-History logs should include all military actions and their results.
+### Map Updates
+- Dynamic city border visualization
+- **Color changes when cities are captured**
+- Cities shown with borders inside country territories
+- Visual indicators for cities under attack
 
-This is pretty much rough plan, improve it, fill gaps and make sure it's implemented fair and properly.
+### History Logging
+- All attacks logged with full details
+- Combat results: winner, losses, city transfers
+- Country eliminations tracked
+
+### Technical Implementation
+- 8 phases planned (see full document)
+- Database schema designed
+- Code structure outlined with TypeScript examples
+- Balance considerations documented
+
+## Next Steps:
+1. Review the full plan in **MILITARY_AND_CITIES_PLAN.md**
+2. Approve/adjust any decisions
+3. Begin Phase 1: Cities Foundation implementation
 
 - Resource usage (actions should use resources and each resource should at least have one use case)
 - Prevent cheating in the chat deals (you can get money for technology level now, but tech level isn't actually transferred, for example)
