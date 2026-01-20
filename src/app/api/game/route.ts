@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { CountryInitializer } from "@/lib/game-engine/CountryInitializer";
+import { CityGenerator } from "@/lib/game-engine/CityGenerator";
+import type { Country, CountryStats } from "@/types/country";
 
 const CreateGameSchema = z.object({
   name: z.string().min(1).default("New Game"),
@@ -55,6 +57,32 @@ const defaultCountries = [
   { name: "Eldoria", color: "#8B5CF6", x: 50, y: 55 },
   { name: "Falken", color: "#64748B", x: 75, y: 45 },
 ];
+
+/**
+ * Generate a simple circular territory path for initial city generation
+ * This will be replaced by proper Voronoi territories in the Map component
+ */
+function generateSimpleTerritoryPath(centerX: number, centerY: number, index: number): string {
+  // Vary radius based on position to create different sized territories
+  const baseRadius = 10;
+  const radiusVariation = 2 + (index % 3) * 1.5;
+  const radius = baseRadius + radiusVariation;
+  const points = 16; // Number of points in the circle
+  
+  const pathParts: string[] = [];
+  
+  for (let i = 0; i <= points; i++) {
+    const angle = (i / points) * Math.PI * 2;
+    // Add some irregularity
+    const irregularity = 0.9 + (Math.sin(angle * 3 + index) * 0.2);
+    const r = radius * irregularity;
+    const x = centerX + Math.cos(angle) * r;
+    const y = centerY + Math.sin(angle) * r;
+    pathParts.push(`${i === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`);
+  }
+  
+  return pathParts.join(" ") + " Z";
+}
 
 function makeInitialStats(countryId: string, turn: number, gameSeed: string, countryIndex: number, profile: any): DbCountryStats {
   return {
@@ -158,6 +186,75 @@ export async function POST(req: Request) {
     const insertedStats = await supabase.from("country_stats").insert(statsRows);
     if (insertedStats.error) throw insertedStats.error;
 
+    // Generate cities for each country
+    // Note: We need territory paths, which are generated client-side in Map component
+    // For now, we'll generate a simple circular territory path for each country
+    const allCities = [];
+    for (let i = 0; i < countries.length; i++) {
+      const dbCountry = countries[i];
+      const stats = statsRows[i];
+      
+      // Convert DbCountry to Country format
+      const country: Country = {
+        id: dbCountry.id,
+        gameId: dbCountry.game_id,
+        name: dbCountry.name,
+        isPlayerControlled: dbCountry.is_player_controlled,
+        color: dbCountry.color,
+        positionX: Number(dbCountry.position_x),
+        positionY: Number(dbCountry.position_y),
+      };
+      
+      // Generate a simple territory path (circle around country position)
+      const territoryPath = generateSimpleTerritoryPath(country.positionX, country.positionY, i);
+      
+      // Convert stats row to CountryStats format
+      const countryStats: CountryStats = {
+        id: crypto.randomUUID(),
+        countryId: country.id,
+        turn: 1,
+        population: stats.population,
+        budget: stats.budget,
+        technologyLevel: stats.technology_level,
+        infrastructureLevel: stats.infrastructure_level,
+        militaryStrength: stats.military_strength,
+        militaryEquipment: stats.military_equipment,
+        resources: stats.resources,
+        resourceProfile: stats.resource_profile,
+        diplomaticRelations: stats.diplomatic_relations,
+        createdAt: now,
+      };
+      
+      const cities = CityGenerator.generateCitiesForCountry(
+        country,
+        countryStats,
+        territoryPath
+      );
+      
+      allCities.push(...cities.map(city => ({
+        country_id: city.countryId,
+        game_id: city.gameId,
+        name: city.name,
+        position_x: city.positionX,
+        position_y: city.positionY,
+        size: city.size,
+        border_path: city.borderPath,  // Convert camelCase to snake_case
+        per_turn_resources: city.perTurnResources,
+        population: city.population,
+        is_under_attack: city.isUnderAttack,
+        created_at: now,
+      })));
+    }
+    
+    // Insert all cities
+    if (allCities.length > 0) {
+      const insertedCities = await supabase.from("cities").insert(allCities);
+      if (insertedCities.error) {
+        console.error("Failed to create cities:", insertedCities.error);
+        // Don't fail the game creation if cities fail
+      }
+    }
+
     // Create chats
     const chats = await ensureChats(gameId, countries);
     if (chats.length) {
@@ -255,6 +352,7 @@ export async function GET(req: Request) {
         countries: mem.countries,
         stats: Object.values(mem.stats),
         chats: Object.values(mem.chats),
+        cities: [], // Cities not supported in memory mode yet
         note: "Supabase not configured; using in-memory game store.",
       });
     }
@@ -335,11 +433,19 @@ export async function GET(req: Request) {
         .eq("game_id", gameId);
       if (chatsRes.error) throw chatsRes.error;
 
+      // Fetch cities
+      const citiesRes = await supabase
+        .from("cities")
+        .select("*")
+        .eq("game_id", gameId);
+      const cities = citiesRes.error ? [] : (citiesRes.data ?? []);
+
       return NextResponse.json({
         game: game,
         countries: countriesRes.data ?? [],
         stats: statsWithInfra,
         chats: chatsRes.data ?? [],
+        cities: cities,
       });
     }
     
@@ -351,11 +457,21 @@ export async function GET(req: Request) {
       .eq("game_id", gameId);
     if (chatsRes.error) throw chatsRes.error;
 
+    // Fetch cities
+    const citiesRes = await supabase
+      .from("cities")
+      .select("*")
+      .eq("game_id", gameId);
+    
+    // Don't throw error if cities table doesn't exist yet (migration pending)
+    const cities = citiesRes.error ? [] : (citiesRes.data ?? []);
+
     return NextResponse.json({
       game: game,
       countries: countriesRes.data ?? [],
       stats: statsRes.data ?? [],
       chats: chatsRes.data ?? [],
+      cities: cities,
     });
   } catch (error) {
     console.error("Error loading game:", error);
@@ -367,6 +483,7 @@ export async function GET(req: Request) {
         countries: mem.countries,
         stats: Object.values(mem.stats),
         chats: Object.values(mem.chats),
+        cities: [], // Cities not supported in memory mode yet
         note: "Supabase not configured; using in-memory game store.",
       });
     }

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Country, CountryStats } from "@/types/country";
+import type { City } from "@/types/city";
 import type { Deal } from "@/types/deals";
 import type { ChatMessage } from "@/types/chat";
 import { Map } from "@/components/game/Map";
@@ -57,6 +58,7 @@ export default function GamePage() {
   const [turn, setTurn] = useState(1);
   const [playerCountryId, setPlayerCountryId] = useState<string>("");
   const [countries, setCountries] = useState<Country[]>([]);
+  const [cities, setCities] = useState<City[]>([]);
   const [statsByCountryId, setStatsByCountryId] = useState<Record<string, CountryStats>>({});
   const [chatByCounterpartCountryId, setChatByCounterpartCountryId] = useState<Record<string, string>>({});
   const [messagesByChatId, setMessagesByChatId] = useState<Record<string, ChatMessage[]>>({});
@@ -116,6 +118,20 @@ export default function GamePage() {
         countries: ApiCountry[];
         stats: ApiStats[];
         chats: ApiChat[];
+        cities?: Array<{
+          id: string;
+          country_id: string;
+          game_id: string;
+          name: string;
+          position_x: number;
+          position_y: number;
+          size: number;
+          border_path: string;
+          per_turn_resources: Record<string, number>;
+          population: number;
+          is_under_attack?: boolean;
+          created_at: string;
+        }>;
       };
 
       // Verify we got valid game data
@@ -160,6 +176,29 @@ export default function GamePage() {
           positionY: Number(c.position_y),
         })),
       );
+      
+      // Load cities (if available)
+      if (data.cities) {
+        setCities(
+          data.cities.map((c) => ({
+            id: c.id,
+            countryId: c.country_id,
+            gameId: c.game_id,
+            name: c.name,
+            positionX: Number(c.position_x),
+            positionY: Number(c.position_y),
+            size: Number(c.size),
+            borderPath: c.border_path,
+            perTurnResources: c.per_turn_resources ?? {},
+            population: c.population,
+            isUnderAttack: c.is_under_attack,
+            createdAt: c.created_at,
+          })),
+        );
+      } else {
+        setCities([]);
+      }
+      
       const statsMap: Record<string, CountryStats> = {};
       for (const s of data.stats) {
         statsMap[s.country_id] = {
@@ -586,7 +625,7 @@ export default function GamePage() {
 
         {/* Center - Map */}
         <div className="flex-1">
-          <Map countries={countries} />
+          <Map countries={countries} cities={cities} />
         </div>
 
         {/* Right Sidebar - History Log */}

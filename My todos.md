@@ -1,3 +1,5 @@
+(DO NOT TOUCH THIS FILE. THIS FILE IS FOR MY PERSONAL NOTES.)
+
 # ✅ Military Actions & Cities System - COMPLETE PLAN AVAILABLE
 
 See **MILITARY_AND_CITIES_PLAN.md** for the comprehensive implementation plan.
