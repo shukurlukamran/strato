@@ -9,6 +9,9 @@ import { TerritoryGenerator } from "@/lib/game-engine/TerritoryGenerator";
 
 type Pt = { x: number; y: number };
 
+// Smaller = smoother borders (more compute). 0.4 is a good balance for 100x80 map.
+const CITY_TILING_RESOLUTION = 0.4;
+
 function parsePathToPolygon(pathStr: string): Pt[] {
   const coords: Pt[] = [];
   const commands = pathStr.match(/[ML]\s*[-\d.]+\s+[-\d.]+/g) || [];
@@ -154,7 +157,7 @@ function mergeIntervals(intervals: Array<[number, number]>, eps = 1e-6): Array<[
 function buildSharedCityTilingForCountry(
   countryCities: City[],
   territoryPath: string,
-  resolution = 0.6,
+  resolution = CITY_TILING_RESOLUTION,
 ): { cityPathById: globalThis.Map<string, string>; internalBordersPath: string } {
   const poly = parsePathToPolygon(territoryPath);
   if (poly.length < 3 || countryCities.length === 0) {
@@ -488,9 +491,14 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
               <path
                 d={cityPath}
                 fill={isHovered ? country.color : "transparent"}
-                fillOpacity={isHovered ? 0.15 : 0}
-                stroke="none"
-                opacity={isHovered ? 0.9 : isCountrySelected ? 0.5 : 0.3}
+                // Make hover highlight clearly visible again
+                fillOpacity={isHovered ? 0.32 : 0}
+                // Add a subtle outline on hover (solid) for readability.
+                // This avoids the "double dashed border" artifact because only the overlay uses dashes.
+                stroke={isHovered ? "rgba(255,255,255,0.85)" : "none"}
+                strokeWidth={isHovered ? "0.28" : "0"}
+                strokeLinejoin="round"
+                opacity={isHovered ? 1 : isCountrySelected ? 0.5 : 0.35}
                 className="cursor-pointer transition-all duration-200"
                 onMouseEnter={() => setHoveredCityId(city.id)}
                 onMouseLeave={() => setHoveredCityId(null)}
@@ -594,10 +602,14 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
             d={derivedCityGeometry.internalBordersPath}
             fill="none"
             stroke="#fff"
-            strokeWidth="0.2"
-            strokeDasharray="1 1"
+            // Round caps + tiny dash length creates proper "dots"
+            strokeWidth="0.24"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeDasharray="0.01 0.9"
             opacity={selectedCountryId ? 0.5 : 0.35}
             className="pointer-events-none"
+            shapeRendering="geometricPrecision"
           />
         )}
       </svg>
