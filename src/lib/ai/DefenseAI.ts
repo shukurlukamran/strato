@@ -186,9 +186,9 @@ Your decision:`;
       throw new Error("GOOGLE_GEMINI_API_KEY or GEMINI_API_KEY not configured");
     }
 
-    // Use Gemini 2.0 Flash (gemini-1.5 models were deprecated)
+    // Use Gemini 2.5 Flash (matches existing LLM usage in codebase)
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
