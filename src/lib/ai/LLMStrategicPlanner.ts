@@ -114,11 +114,11 @@ export class LLMStrategicPlanner {
   
   /**
    * Determine if LLM should be called this turn
-   * Call every 5 turns to balance insight with cost
+   * Call on turn 2, then every 5 turns (2, 5, 10, 15, 20...)
    */
   shouldCallLLM(turn: number): boolean {
-    // Call on turn 1 (game start) and every 5 turns after
-    return turn === 1 || turn % this.LLM_CALL_FREQUENCY === 0;
+    // Call on turn 2 (after initial setup), then every 5 turns after that
+    return turn === 2 || (turn >= 5 && turn % this.LLM_CALL_FREQUENCY === 0);
   }
   
   /**
