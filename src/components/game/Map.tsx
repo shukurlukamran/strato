@@ -156,12 +156,22 @@ function mergeIntervals(intervals: Array<[number, number]>, eps = 1e-6): Array<[
 
 function buildSharedCityTilingForCountry(
   countryCities: City[],
+  allCountries: Country[],
+  ownCountryId: string,
   territoryPath: string,
   resolution = CITY_TILING_RESOLUTION,
-): { cityPathById: globalThis.Map<string, string>; internalBordersPath: string } {
+): {
+  cityPathById: globalThis.Map<string, string>;
+  internalBordersPath: string;
+  borderNeighborCountryIdsByCityId: globalThis.Map<string, globalThis.Set<string>>;
+} {
   const poly = parsePathToPolygon(territoryPath);
   if (poly.length < 3 || countryCities.length === 0) {
-    return { cityPathById: new globalThis.Map(), internalBordersPath: "" };
+    return {
+      cityPathById: new globalThis.Map(),
+      internalBordersPath: "",
+      borderNeighborCountryIdsByCityId: new globalThis.Map(),
+    };
   }
 
   const { minX, minY, maxX, maxY } = boundsOf(poly);
@@ -176,6 +186,24 @@ function buildSharedCityTilingForCountry(
   label.fill(-1);
 
   const idx = (ix: number, iy: number) => iy * nx + ix;
+
+  const mapWidth = 100;
+  const mapHeight = 80;
+
+  const nearestCountryId = (x: number, y: number): string | null => {
+    let bestId: string | null = null;
+    let bestD = Infinity;
+    for (const c of allCountries) {
+      const dx = x - c.positionX;
+      const dy = y - c.positionY;
+      const d = dx * dx + dy * dy;
+      if (d < bestD) {
+        bestD = d;
+        bestId = c.id;
+      }
+    }
+    return bestId;
+  };
 
   // Raster Voronoi assignment inside the country polygon
   for (let iy = 0; iy < ny; iy++) {
@@ -276,6 +304,22 @@ function buildSharedCityTilingForCountry(
   const isInside = (ix: number, iy: number): boolean => ix >= 0 && ix < nx && iy >= 0 && iy < ny && inside[idx(ix, iy)] === 1;
   const getLabel = (ix: number, iy: number): number => label[idx(ix, iy)];
 
+  // For each city, track which neighboring countries it touches along the COUNTRY border.
+  // This enables "attackable city" determination (enemy city touches player country border).
+  const neighborCountryIdsByCityIndex: Array<globalThis.Set<string>> = Array.from(
+    { length: countryCities.length },
+    () => new globalThis.Set<string>(),
+  );
+
+  const recordNeighborCountry = (cityIndex: number, sampleX: number, sampleY: number) => {
+    // Outside map → no neighbor
+    if (sampleX < 0 || sampleX > mapWidth || sampleY < 0 || sampleY > mapHeight) return;
+    const neighborId = nearestCountryId(sampleX, sampleY);
+    if (!neighborId) return;
+    if (neighborId === ownCountryId) return;
+    neighborCountryIdsByCityIndex[cityIndex].add(neighborId);
+  };
+
   for (let iy = 0; iy < ny; iy++) {
     const y = originY + iy * resolution;
     for (let ix = 0; ix < nx; ix++) {
@@ -286,10 +330,22 @@ function buildSharedCityTilingForCountry(
       const h = resolution / 2;
 
       // Neighbor checks: when neighbor is different/outside => boundary edge for this city
-      const upDiff = !isInside(ix, iy - 1) || getLabel(ix, iy - 1) !== ci;
-      const downDiff = !isInside(ix, iy + 1) || getLabel(ix, iy + 1) !== ci;
-      const leftDiff = !isInside(ix - 1, iy) || getLabel(ix - 1, iy) !== ci;
-      const rightDiff = !isInside(ix + 1, iy) || getLabel(ix + 1, iy) !== ci;
+      const upInside = isInside(ix, iy - 1);
+      const downInside = isInside(ix, iy + 1);
+      const leftInside = isInside(ix - 1, iy);
+      const rightInside = isInside(ix + 1, iy);
+
+      const upDiff = !upInside || getLabel(ix, iy - 1) !== ci;
+      const downDiff = !downInside || getLabel(ix, iy + 1) !== ci;
+      const leftDiff = !leftInside || getLabel(ix - 1, iy) !== ci;
+      const rightDiff = !rightInside || getLabel(ix + 1, iy) !== ci;
+
+      // If this is a COUNTRY boundary edge (neighbor cell is outside the territory),
+      // sample just outside the edge to determine which other country lies beyond.
+      if (!upInside) recordNeighborCountry(ci, x, y - resolution);
+      if (!downInside) recordNeighborCountry(ci, x, y + resolution);
+      if (!leftInside) recordNeighborCountry(ci, x - resolution, y);
+      if (!rightInside) recordNeighborCountry(ci, x + resolution, y);
 
       // Top edge (inside is below) => left -> right
       if (upDiff) addEdge(ci, { x: x - h, y: y - h }, { x: x + h, y: y - h });
@@ -314,7 +370,17 @@ function buildSharedCityTilingForCountry(
     cityPathById.set(countryCities[ci].id, d);
   }
 
-  return { cityPathById, internalBordersPath: internalParts.join(" ") };
+  const borderNeighborCountryIdsByCityId = new globalThis.Map<string, globalThis.Set<string>>();
+  for (let ci = 0; ci < countryCities.length; ci++) {
+    const set = neighborCountryIdsByCityIndex[ci];
+    if (set.size > 0) borderNeighborCountryIdsByCityId.set(countryCities[ci].id, set);
+  }
+
+  return {
+    cityPathById,
+    internalBordersPath: internalParts.join(" "),
+    borderNeighborCountryIdsByCityId,
+  };
 }
 
 export function Map({ countries, cities = [] }: { countries: Country[]; cities?: City[] }) {
@@ -334,6 +400,7 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
   // This eliminates the "two dashed lines + seam" artifact by ensuring shared edges are identical.
   const derivedCityGeometry = useMemo(() => {
     const cityPathById = new globalThis.Map<string, string>();
+    const borderNeighborCountryIdsByCityId = new globalThis.Map<string, globalThis.Set<string>>();
     const borderParts: string[] = [];
 
     for (const country of countries) {
@@ -342,12 +409,30 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
       const countryCities = cities.filter((c) => c.countryId === country.id);
       if (countryCities.length === 0) continue;
 
-      const { cityPathById: byId, internalBordersPath } = buildSharedCityTilingForCountry(countryCities, territoryPath);
+      const { cityPathById: byId, internalBordersPath, borderNeighborCountryIdsByCityId: byCityNeighbor } =
+        buildSharedCityTilingForCountry(countryCities, countries, country.id, territoryPath);
       for (const [id, d] of byId.entries()) cityPathById.set(id, d);
+      for (const [cityId, neighborSet] of byCityNeighbor.entries()) borderNeighborCountryIdsByCityId.set(cityId, neighborSet);
       if (internalBordersPath) borderParts.push(internalBordersPath);
     }
 
-    return { cityPathById, internalBordersPath: borderParts.join(" ") };
+    const playerCountryId = countries.find((c) => c.isPlayerControlled)?.id ?? null;
+    const attackableCityIds = new globalThis.Set<string>();
+    if (playerCountryId) {
+      for (const city of cities) {
+        if (city.countryId === playerCountryId) continue; // can't attack own city
+        const neighbors = borderNeighborCountryIdsByCityId.get(city.id);
+        if (neighbors?.has(playerCountryId)) attackableCityIds.add(city.id);
+      }
+    }
+
+    return {
+      cityPathById,
+      internalBordersPath: borderParts.join(" "),
+      borderNeighborCountryIdsByCityId,
+      playerCountryId,
+      attackableCityIds,
+    };
   }, [countries, cities, territoryPaths]);
 
   // Calculate viewBox based on zoom level (centered zoom)
@@ -369,6 +454,11 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
   // Selected city and its country for tooltip
   const selectedCity = cities.find(c => c.id === selectedCityId);
   const selectedCityCountry = selectedCity ? countries.find(c => c.id === selectedCity.countryId) : null;
+  const canAttackSelectedCity =
+    !!selectedCity &&
+    !!derivedCityGeometry.playerCountryId &&
+    selectedCity.countryId !== derivedCityGeometry.playerCountryId &&
+    derivedCityGeometry.attackableCityIds.has(selectedCity.id);
 
   return (
     <div ref={mapContainerRef} className="relative h-full w-full overflow-hidden">
@@ -484,6 +574,7 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
           const isHovered = city.id === hoveredCityId;
           const isCountrySelected = country.id === selectedCountryId;
           const cityPath = derivedCityGeometry.cityPathById.get(city.id) ?? city.borderPath;
+          const isAttackable = derivedCityGeometry.attackableCityIds.has(city.id);
 
           return (
             <g key={city.id}>
@@ -495,7 +586,13 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
                 fillOpacity={isHovered ? 0.32 : 0}
                 // Add a subtle outline on hover (solid) for readability.
                 // This avoids the "double dashed border" artifact because only the overlay uses dashes.
-                stroke={isHovered ? "rgba(255,255,255,0.85)" : "none"}
+                stroke={
+                  isHovered && isAttackable
+                    ? "rgba(239,68,68,0.95)"
+                    : isHovered
+                      ? "rgba(255,255,255,0.85)"
+                      : "none"
+                }
                 strokeWidth={isHovered ? "0.28" : "0"}
                 strokeLinejoin="round"
                 opacity={isHovered ? 1 : isCountrySelected ? 0.5 : 0.35}
@@ -672,6 +769,16 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
           city={selectedCity}
           country={selectedCityCountry}
           position={tooltipPosition}
+          canAttack={canAttackSelectedCity}
+          onAttack={
+            canAttackSelectedCity
+              ? () => {
+                  // Phase 3 will wire this to the attack modal + API.
+                  // For now, keep the hook in place.
+                  console.log("[Map] Attack clicked:", { targetCityId: selectedCity.id });
+                }
+              : undefined
+          }
           onClose={() => {
             setSelectedCityId(null);
             setTooltipPosition(undefined);
