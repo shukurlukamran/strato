@@ -607,8 +607,8 @@ export function Map({
           
           const isHovered = city.id === hoveredCityId;
           const isCountrySelected = country.id === selectedCountryId;
-          // Always use the stored border path to keep city size and location fixed
-          const cityPath = city.borderPath;
+          // Use runtime-calculated borders for consistency between hover and display
+          const cityPath = derivedCityGeometry.cityPathById.get(city.id) ?? city.borderPath;
           const isAttackable = derivedCityGeometry.attackableCityIds.has(city.id);
 
           return (

@@ -124,7 +124,7 @@ export class TerritoryGenerator {
 
   /**
    * Generate territories based on city ownership
-   * Uses Voronoi at fine resolution (0.3) to match city border resolution
+   * Uses Voronoi at fine resolution (0.4) to match city tiling resolution
    * This ensures the entire map is covered with no gaps and perfect alignment
    */
   static generateTerritoriesFromCities(countries: Country[], cities: City[]): Map<string, string> {
@@ -142,9 +142,9 @@ export class TerritoryGenerator {
       }
     }
     
-    // Use FINE resolution (0.3) to match the resolution used during city border generation
+    // Use FINE resolution (0.4) to match the CITY_TILING_RESOLUTION in Map.tsx
     // This ensures perfect alignment and covers the entire map with no gaps
-    const FINE_RESOLUTION = 0.3;
+    const FINE_RESOLUTION = 0.4;
     
     // For each country, find all points that are closest to any of its cities
     const countryRegions = new Map<string, Point[]>();
