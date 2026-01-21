@@ -154,7 +154,7 @@ export async function POST(req: Request) {
   console.log(`[Turn API] Generating AI actions for turn ${turn}...`);
   
   const aiCountries = state.data.countries.filter(country => !country.isPlayerControlled);
-  const isLLMTurn = turn === 1 || turn % 5 === 0;
+  const isLLMTurn = turn === 2 || (turn > 2 && turn % 5 === 0);
   
   // If it's an LLM turn, stagger the calls to avoid API rate limiting
   // Otherwise, process fully in parallel
