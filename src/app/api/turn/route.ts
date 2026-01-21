@@ -335,8 +335,36 @@ export async function POST(req: Request) {
     await supabase.from('economic_events').insert(economicEventInserts);
   }
 
+  // Create a helper function to fetch city data for combat resolution
+  const getCityData = async (cityId: string) => {
+    const cityRes = await supabase
+      .from("cities")
+      .select("id, name, country_id, per_turn_resources, population")
+      .eq("id", cityId)
+      .limit(1);
+    
+    if (cityRes.data && cityRes.data.length > 0) {
+      const city = cityRes.data[0];
+      return {
+        id: city.id,
+        name: city.name,
+        countryId: city.country_id,
+        gameId: gameId,
+        positionX: 0,
+        positionY: 0,
+        size: 1,
+        borderPath: "",
+        perTurnResources: city.per_turn_resources as Record<string, number>,
+        population: city.population,
+        createdAt: new Date().toISOString(),
+      };
+    }
+    
+    return null;
+  };
+
   const processor = new TurnProcessor();
-  const result = processor.processTurn(state);
+  const result = await processor.processTurn(state, getCityData);
 
   // Handle combat results: transfer cities and generate history events
   const combatEvents: Array<{ type: string; message: string; data?: Record<string, unknown> }> = [];
@@ -416,12 +444,14 @@ export async function POST(req: Request) {
             // Create history event for successful capture
             combatEvents.push({
               type: "action.military.capture",
-              message: `⚔️ ${attackerCountry.name} captured ${city.name} from ${defenderCountry.name}! Losses: ${attackerCountry.name} -${combatResult.attackerLosses} military, ${defenderCountry.name} -${combatResult.defenderLosses} military`,
+              message: `⚔️ ${attackerCountry.name} captured ${city.name} from ${defenderCountry.name}! Attack: ${actionData.allocatedStrength} vs Defense: ${combatResult.defenderAllocation}. Losses: ${attackerCountry.name} -${combatResult.attackerLosses}, ${defenderCountry.name} -${combatResult.defenderLosses}`,
               data: {
                 attackerId,
                 defenderId,
                 cityId: targetCityId,
                 cityName: city.name,
+                attackerAllocation: actionData.allocatedStrength,
+                defenderAllocation: combatResult.defenderAllocation,
                 attackerLosses: combatResult.attackerLosses,
                 defenderLosses: combatResult.defenderLosses,
                 captured: true
@@ -437,12 +467,14 @@ export async function POST(req: Request) {
             // Create history event for failed capture
             combatEvents.push({
               type: "action.military.defense",
-              message: `🛡️ ${defenderCountry.name} defended ${city.name} against ${attackerCountry.name}! Losses: ${attackerCountry.name} -${combatResult.attackerLosses} military, ${defenderCountry.name} -${combatResult.defenderLosses} military`,
+              message: `🛡️ ${defenderCountry.name} defended ${city.name} against ${attackerCountry.name}! Attack: ${actionData.allocatedStrength} vs Defense: ${combatResult.defenderAllocation}. Losses: ${attackerCountry.name} -${combatResult.attackerLosses}, ${defenderCountry.name} -${combatResult.defenderLosses}`,
               data: {
                 attackerId,
                 defenderId,
                 cityId: targetCityId,
                 cityName: city.name,
+                attackerAllocation: actionData.allocatedStrength,
+                defenderAllocation: combatResult.defenderAllocation,
                 attackerLosses: combatResult.attackerLosses,
                 defenderLosses: combatResult.defenderLosses,
                 captured: false

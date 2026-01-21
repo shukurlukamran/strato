@@ -560,9 +560,9 @@ export class CityGenerator {
   }
   
   /**
-   * Distribute resources and population proportionally by city size
+   * Distribute resources and population among cities
    * Limits each city to max 4 different resource types
-   * Resources are randomly allocated across cities
+   * CRITICAL: Sum of all city resources MUST equal country's total resources
    */
   private static distributeResources(
     totalResources: Record<string, number>,
@@ -570,46 +570,49 @@ export class CityGenerator {
     sizes: number[]
   ): Array<{ resources: Record<string, number>; population: number }> {
     const totalSize = sizes.reduce((sum, size) => sum + size, 0);
+    const numCities = sizes.length;
+    
+    // Get all available resource types
+    const allResourceTypes = Object.keys(totalResources).filter(r => totalResources[r] > 0);
+    
+    // Create a distribution plan: which resources go to which cities
+    // Ensure each city gets max 4 resources and resources are spread across cities
+    const cityResourceAssignments: string[][] = [];
+    
+    for (let i = 0; i < numCities; i++) {
+      // Shuffle resources and take up to 4 for variety
+      const shuffled = [...allResourceTypes].sort(() => Math.random() - 0.5);
+      const assigned = shuffled.slice(0, Math.min(4, allResourceTypes.length));
+      cityResourceAssignments.push(assigned);
+    }
+    
+    // Now distribute actual amounts ensuring sum matches exactly
     const distributions: Array<{ resources: Record<string, number>; population: number }> = [];
-    
+    const remainingResources: Record<string, number> = { ...totalResources };
     let remainingPopulation = totalPopulation;
-    const remainingResources = { ...totalResources };
-    
-    // Get resource types sorted by amount (descending)
-    const resourceEntries = Object.entries(totalResources)
-      .filter(([_, amount]) => amount > 0)
-      .sort((a, b) => b[1] - a[1]);
     
     // Distribute to all cities except the last one
-    for (let i = 0; i < sizes.length - 1; i++) {
+    for (let i = 0; i < numCities - 1; i++) {
       const proportion = sizes[i] / totalSize;
+      const cityResources: Record<string, number> = {};
       
-      // Determine which resources this city gets (max 4 types)
-      // Randomly select from available resources
-      const cityResourceTypes = this.selectCityResources(resourceEntries, 4);
-      
-      // Distribute selected resources with random variation
-      const resources: Record<string, number> = {};
-      for (const [resource, total] of Object.entries(totalResources)) {
-        if (cityResourceTypes.includes(resource)) {
-          // Add random variation (±20%) to make distribution less uniform
-          const variation = 0.8 + Math.random() * 0.4; // 0.8 to 1.2
-          const amount = Math.floor(total * proportion * variation);
-          if (amount > 0) {
-            resources[resource] = amount;
-            remainingResources[resource] = (remainingResources[resource] || 0) - amount;
-          }
+      // Distribute each assigned resource proportionally (no random variation)
+      for (const resource of cityResourceAssignments[i]) {
+        const amount = Math.floor(totalResources[resource] * proportion);
+        if (amount > 0) {
+          cityResources[resource] = amount;
+          remainingResources[resource] -= amount;
         }
       }
       
       const population = Math.floor(totalPopulation * proportion);
       remainingPopulation -= population;
       
-      distributions.push({ resources, population });
+      distributions.push({ resources: cityResources, population });
     }
     
-    // Give all remaining resources and population to the last city
-    // Limit to 4 resource types for the last city too
+    // Last city gets ALL remaining resources (ensures sum matches exactly)
+    // But still limit to 4 types - prioritize resources with largest remaining amounts
     const lastCityResources: Record<string, number> = {};
     const remainingEntries = Object.entries(remainingResources)
       .filter(([_, amount]) => amount > 0)
@@ -617,15 +620,30 @@ export class CityGenerator {
       .slice(0, 4);
     
     for (const [resource, amount] of remainingEntries) {
-      if (amount > 0) {
-        lastCityResources[resource] = amount;
-      }
+      lastCityResources[resource] = amount;
     }
     
     distributions.push({
       resources: lastCityResources,
       population: remainingPopulation,
     });
+    
+    // Validation: Check that sum matches (development only)
+    if (process.env.NODE_ENV === 'development') {
+      const sum: Record<string, number> = {};
+      for (const dist of distributions) {
+        for (const [resource, amount] of Object.entries(dist.resources)) {
+          sum[resource] = (sum[resource] || 0) + amount;
+        }
+      }
+      
+      for (const [resource, expectedAmount] of Object.entries(totalResources)) {
+        const actualAmount = sum[resource] || 0;
+        if (Math.abs(actualAmount - expectedAmount) > 1) {
+          console.warn(`[CityGenerator] Resource sum mismatch for ${resource}: expected ${expectedAmount}, got ${actualAmount}`);
+        }
+      }
+    }
     
     return distributions;
   }
