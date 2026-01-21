@@ -154,7 +154,10 @@ export async function POST(req: Request) {
   console.log(`[Turn API] Generating AI actions for turn ${turn}...`);
   
   const aiCountries = state.data.countries.filter(country => !country.isPlayerControlled);
-  const isLLMTurn = turn === 2 || (turn > 2 && turn % 5 === 0);
+  // LLM is used at turn 2, then every 5 turns (2, 5, 10, 15, 20...)
+  const isLLMTurn = turn === 2 || (turn >= 5 && turn % 5 === 0);
+  
+  console.log(`[Turn API] Processing turn ${turn}. LLM mode: ${isLLMTurn ? 'ENABLED' : 'DISABLED (using rule-based AI)'}`);
   
   // If it's an LLM turn, stagger the calls to avoid API rate limiting
   // Otherwise, process fully in parallel
@@ -400,45 +403,27 @@ export async function POST(req: Request) {
               .eq("id", targetCityId);
             
             // Update country stats to reflect city transfer
-            // Get current stats for both countries
-            const statsAfterCombat = await supabase
-              .from("country_stats")
-              .select("country_id, population, resources")
-              .eq("turn", turn)
-              .in("country_id", [attackerId, defenderId]);
+            // IMPORTANT: We update the GameState object which will be saved later
+            const attackerStats = state.data.countryStatsByCountryId[attackerId];
+            const defenderStats = state.data.countryStatsByCountryId[defenderId];
             
-            if (statsAfterCombat.data) {
-              for (const stats of statsAfterCombat.data) {
-                if (stats.country_id === attackerId) {
-                  // Add city resources to attacker
-                  const updatedResources = { ...(stats.resources as Record<string, number> || {}) };
-                  for (const [resource, amount] of Object.entries(city.per_turn_resources as Record<string, number> || {})) {
-                    updatedResources[resource] = (updatedResources[resource] || 0) + amount;
-                  }
-                  await supabase
-                    .from("country_stats")
-                    .update({
-                      population: stats.population + city.population,
-                      resources: updatedResources
-                    })
-                    .eq("country_id", attackerId)
-                    .eq("turn", turn);
-                } else if (stats.country_id === defenderId) {
-                  // Remove city resources from defender
-                  const updatedResources = { ...(stats.resources as Record<string, number> || {}) };
-                  for (const [resource, amount] of Object.entries(city.per_turn_resources as Record<string, number> || {})) {
-                    updatedResources[resource] = Math.max(0, (updatedResources[resource] || 0) - amount);
-                  }
-                  await supabase
-                    .from("country_stats")
-                    .update({
-                      population: Math.max(0, stats.population - city.population),
-                      resources: updatedResources
-                    })
-                    .eq("country_id", defenderId)
-                    .eq("turn", turn);
-                }
+            if (attackerStats && defenderStats) {
+              // Transfer population
+              attackerStats.population += city.population;
+              defenderStats.population = Math.max(0, defenderStats.population - city.population);
+              
+              // Transfer stockpile resources (immediate effect)
+              for (const [resource, amount] of Object.entries(city.per_turn_resources as Record<string, number> || {})) {
+                attackerStats.resources[resource] = (attackerStats.resources[resource] || 0) + amount;
+                defenderStats.resources[resource] = Math.max(0, (defenderStats.resources[resource] || 0) - amount);
               }
+              
+              // Update state (will be saved to database later in batch)
+              state.withUpdatedStats(attackerId, attackerStats);
+              state.withUpdatedStats(defenderId, defenderStats);
+              
+              console.log(`[Combat] City transfer complete: ${city.name} from ${defenderCountry.name} to ${attackerCountry.name}`);
+              console.log(`[Combat] Attacker gained: ${city.population} population, ${Object.keys(city.per_turn_resources).length} resource types`);
             }
             
             // Create history event for successful capture

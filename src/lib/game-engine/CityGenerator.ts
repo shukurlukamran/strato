@@ -589,36 +589,42 @@ export class CityGenerator {
     
     // STEP 1: Assign resources to cities ensuring:
     // - Each city gets max 4 resources
-    // - EVERY resource is assigned to at least one city
-    // - Resources are distributed evenly across cities
+    // - EVERY resource is assigned to MULTIPLE cities (distributed)
+    // - Resources are spread evenly
     const cityResourceAssignments: string[][] = Array(numCities).fill(null).map(() => []);
     
-    // Round-robin assignment: ensures every resource goes to at least one city
-    for (let i = 0; i < allResourceTypes.length; i++) {
-      const cityIndex = i % numCities;
-      if (cityResourceAssignments[cityIndex].length < 4) {
-        cityResourceAssignments[cityIndex].push(allResourceTypes[i]);
-      } else {
-        // City is full (4 resources), try next city
-        let assigned = false;
-        for (let j = 0; j < numCities; j++) {
-          const nextCity = (cityIndex + j) % numCities;
-          if (cityResourceAssignments[nextCity].length < 4) {
-            cityResourceAssignments[nextCity].push(allResourceTypes[i]);
-            assigned = true;
-            break;
-          }
-        }
+    // For each resource, assign it to multiple cities (not just one)
+    // This ensures resources are spread out, not concentrated in one city
+    for (const resource of allResourceTypes) {
+      // Determine how many cities should have this resource
+      // Aim for 2-4 cities per resource (depending on total cities)
+      const citiesPerResource = Math.min(
+        Math.max(2, Math.floor(numCities / 2)),
+        numCities
+      );
+      
+      // Select random cities for this resource (that aren't full)
+      const availableCities = cityResourceAssignments
+        .map((assignments, idx) => ({ idx, count: assignments.length }))
+        .filter(c => c.count < 4)
+        .sort(() => Math.random() - 0.5); // Shuffle
+      
+      let assigned = 0;
+      for (const { idx } of availableCities) {
+        if (assigned >= citiesPerResource) break;
         
-        // If all cities are full, add to smallest city (override 4 limit for this edge case)
-        if (!assigned) {
-          const smallestCityIndex = cityResourceAssignments.reduce(
-            (minIdx, arr, idx, arrays) => 
-              arr.length < arrays[minIdx].length ? idx : minIdx,
-            0
-          );
-          cityResourceAssignments[smallestCityIndex].push(allResourceTypes[i]);
-        }
+        cityResourceAssignments[idx].push(resource);
+        assigned++;
+      }
+      
+      // If we couldn't assign to enough cities (all full), force assign to smallest
+      if (assigned === 0) {
+        const smallestCityIndex = cityResourceAssignments.reduce(
+          (minIdx, arr, idx, arrays) => 
+            arr.length < arrays[minIdx].length ? idx : minIdx,
+          0
+        );
+        cityResourceAssignments[smallestCityIndex].push(resource);
       }
     }
     
