@@ -12,6 +12,7 @@ import { TurnIndicator } from "@/components/game/TurnIndicator";
 import { ResourceDisplay } from "@/components/game/ResourceDisplay";
 import { BudgetPanel } from "@/components/game/BudgetPanel";
 import { ActionPanel } from "@/components/game/ActionPanel";
+import { AttackModal } from "@/components/game/AttackModal";
 import { AllProfilesInfo } from "@/components/game/AllProfilesInfo";
 import { HistoryLog } from "@/components/game/HistoryLog";
 import { useGameStore } from "@/lib/store/gameStore";
@@ -67,6 +68,7 @@ export default function GamePage() {
   const [showHistoryLog, setShowHistoryLog] = useState(true);
   const [endingTurn, setEndingTurn] = useState(false);
   const [turnProcessing, setTurnProcessing] = useState(false);
+  const [attackTargetCity, setAttackTargetCity] = useState<City | null>(null);
 
   useEffect(() => setGameId(gameId), [gameId, setGameId]);
 
@@ -625,7 +627,11 @@ export default function GamePage() {
 
         {/* Center - Map */}
         <div className="flex-1">
-          <Map countries={countries} cities={cities} />
+          <Map
+            countries={countries}
+            cities={cities}
+            onAttackCity={(city) => setAttackTargetCity(city)}
+          />
         </div>
 
         {/* Right Sidebar - History Log */}
@@ -669,3 +675,4 @@ export default function GamePage() {
     </div>
   );
 }
+

@@ -328,12 +328,18 @@ function buildSharedCityTilingForCountry(
       const ci = label[i];
       const x = originX + ix * resolution;
       const h = resolution / 2;
+      const eps = Math.max(0.01, resolution * 0.06);
+      const out = h + eps;
 
       // Neighbor checks: when neighbor is different/outside => boundary edge for this city
       const upInside = isInside(ix, iy - 1);
       const downInside = isInside(ix, iy + 1);
       const leftInside = isInside(ix - 1, iy);
       const rightInside = isInside(ix + 1, iy);
+      const upLeftInside = isInside(ix - 1, iy - 1);
+      const upRightInside = isInside(ix + 1, iy - 1);
+      const downLeftInside = isInside(ix - 1, iy + 1);
+      const downRightInside = isInside(ix + 1, iy + 1);
 
       const upDiff = !upInside || getLabel(ix, iy - 1) !== ci;
       const downDiff = !downInside || getLabel(ix, iy + 1) !== ci;
@@ -342,10 +348,18 @@ function buildSharedCityTilingForCountry(
 
       // If this is a COUNTRY boundary edge (neighbor cell is outside the territory),
       // sample just outside the edge to determine which other country lies beyond.
-      if (!upInside) recordNeighborCountry(ci, x, y - resolution);
-      if (!downInside) recordNeighborCountry(ci, x, y + resolution);
-      if (!leftInside) recordNeighborCountry(ci, x - resolution, y);
-      if (!rightInside) recordNeighborCountry(ci, x + resolution, y);
+      if (!upInside) recordNeighborCountry(ci, x, y - out);
+      if (!downInside) recordNeighborCountry(ci, x, y + out);
+      if (!leftInside) recordNeighborCountry(ci, x - out, y);
+      if (!rightInside) recordNeighborCountry(ci, x + out, y);
+
+      // IMPORTANT: diagonal borders can be missed if we only sample N/S/E/W.
+      // If a territory boundary passes diagonally, a pixel can have all 4-cardinal neighbors inside,
+      // but a diagonal neighbor outside. Sampling diagonals fixes "border city not attackable" cases.
+      if (!upLeftInside) recordNeighborCountry(ci, x - out, y - out);
+      if (!upRightInside) recordNeighborCountry(ci, x + out, y - out);
+      if (!downLeftInside) recordNeighborCountry(ci, x - out, y + out);
+      if (!downRightInside) recordNeighborCountry(ci, x + out, y + out);
 
       // Top edge (inside is below) => left -> right
       if (upDiff) addEdge(ci, { x: x - h, y: y - h }, { x: x + h, y: y - h });
@@ -383,7 +397,15 @@ function buildSharedCityTilingForCountry(
   };
 }
 
-export function Map({ countries, cities = [] }: { countries: Country[]; cities?: City[] }) {
+export function Map({
+  countries,
+  cities = [],
+  onAttackCity,
+}: {
+  countries: Country[];
+  cities?: City[];
+  onAttackCity?: (city: City) => void;
+}) {
   const selectedCountryId = useGameStore((s) => s.selectedCountryId);
   const selectCountry = useGameStore((s) => s.selectCountry);
   const [hoveredCountryId, setHoveredCountryId] = useState<string | null>(null);
@@ -773,9 +795,7 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
           onAttack={
             canAttackSelectedCity
               ? () => {
-                  // Phase 3 will wire this to the attack modal + API.
-                  // For now, keep the hook in place.
-                  console.log("[Map] Attack clicked:", { targetCityId: selectedCity.id });
+                  onAttackCity?.(selectedCity);
                 }
               : undefined
           }
