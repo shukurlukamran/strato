@@ -138,6 +138,12 @@ function EventItem({ event }: { event: HistoryEvent }) {
   if (event.type === 'action.research') {
     icon = "🔬";
     textColor = "text-blue-300";
+  } else if (event.type === 'action.military.capture') {
+    icon = "⚔️";
+    textColor = "text-red-400";
+  } else if (event.type === 'action.military.defense') {
+    icon = "🛡️";
+    textColor = "text-blue-400";
   } else if (event.type === 'action.military') {
     icon = "⚔️";
     textColor = "text-red-300";

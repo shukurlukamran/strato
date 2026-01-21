@@ -338,17 +338,126 @@ export async function POST(req: Request) {
   const processor = new TurnProcessor();
   const result = processor.processTurn(state);
 
-  // MVP bridge: clear "under attack" flags for attacks that were processed this turn.
-  // Full combat resolution (wins/losses/city transfer) comes in Phase 5.
-  const processedAttackCityIds = result.executedActions
-    .filter((a) => a.actionType === "military" && (a.actionData as any)?.subType === "attack")
-    .map((a) => (a.actionData as any)?.targetCityId)
-    .filter((id): id is string => typeof id === "string" && id.length > 0);
-
-  if (processedAttackCityIds.length > 0) {
-    // Unique list
-    const uniqueIds = [...new Set(processedAttackCityIds)];
-    await supabase.from("cities").update({ is_under_attack: false }).in("id", uniqueIds);
+  // Handle combat results: transfer cities and generate history events
+  const combatEvents: Array<{ type: string; message: string; data?: Record<string, unknown> }> = [];
+  
+  if (result.combatResults && result.combatResults.length > 0) {
+    for (const combatResult of result.combatResults) {
+      const actionData = combatResult.attackAction.actionData as any;
+      const targetCityId = actionData.targetCityId;
+      const attackerId = actionData.attackerId || combatResult.attackAction.countryId;
+      const defenderId = actionData.defenderId;
+      
+      // Fetch city data
+      const cityRes = await supabase
+        .from("cities")
+        .select("id, name, country_id, per_turn_resources, population")
+        .eq("id", targetCityId)
+        .limit(1);
+      
+      if (cityRes.data && cityRes.data.length > 0) {
+        const city = cityRes.data[0];
+        const attackerCountry = state.data.countries.find(c => c.id === attackerId);
+        const defenderCountry = state.data.countries.find(c => c.id === defenderId);
+        
+        if (attackerCountry && defenderCountry) {
+          if (combatResult.attackerWins) {
+            // Transfer city to attacker
+            await supabase
+              .from("cities")
+              .update({ 
+                country_id: attackerId,
+                is_under_attack: false 
+              })
+              .eq("id", targetCityId);
+            
+            // Update country stats to reflect city transfer
+            // Get current stats for both countries
+            const statsAfterCombat = await supabase
+              .from("country_stats")
+              .select("country_id, population, resources")
+              .eq("turn", turn)
+              .in("country_id", [attackerId, defenderId]);
+            
+            if (statsAfterCombat.data) {
+              for (const stats of statsAfterCombat.data) {
+                if (stats.country_id === attackerId) {
+                  // Add city resources to attacker
+                  const updatedResources = { ...(stats.resources as Record<string, number> || {}) };
+                  for (const [resource, amount] of Object.entries(city.per_turn_resources as Record<string, number> || {})) {
+                    updatedResources[resource] = (updatedResources[resource] || 0) + amount;
+                  }
+                  await supabase
+                    .from("country_stats")
+                    .update({
+                      population: stats.population + city.population,
+                      resources: updatedResources
+                    })
+                    .eq("country_id", attackerId)
+                    .eq("turn", turn);
+                } else if (stats.country_id === defenderId) {
+                  // Remove city resources from defender
+                  const updatedResources = { ...(stats.resources as Record<string, number> || {}) };
+                  for (const [resource, amount] of Object.entries(city.per_turn_resources as Record<string, number> || {})) {
+                    updatedResources[resource] = Math.max(0, (updatedResources[resource] || 0) - amount);
+                  }
+                  await supabase
+                    .from("country_stats")
+                    .update({
+                      population: Math.max(0, stats.population - city.population),
+                      resources: updatedResources
+                    })
+                    .eq("country_id", defenderId)
+                    .eq("turn", turn);
+                }
+              }
+            }
+            
+            // Create history event for successful capture
+            combatEvents.push({
+              type: "action.military.capture",
+              message: `⚔️ ${attackerCountry.name} captured ${city.name} from ${defenderCountry.name}! Losses: ${attackerCountry.name} -${combatResult.attackerLosses} military, ${defenderCountry.name} -${combatResult.defenderLosses} military`,
+              data: {
+                attackerId,
+                defenderId,
+                cityId: targetCityId,
+                cityName: city.name,
+                attackerLosses: combatResult.attackerLosses,
+                defenderLosses: combatResult.defenderLosses,
+                captured: true
+              }
+            });
+          } else {
+            // Defense successful - just clear attack flag
+            await supabase
+              .from("cities")
+              .update({ is_under_attack: false })
+              .eq("id", targetCityId);
+            
+            // Create history event for failed capture
+            combatEvents.push({
+              type: "action.military.defense",
+              message: `🛡️ ${defenderCountry.name} defended ${city.name} against ${attackerCountry.name}! Losses: ${attackerCountry.name} -${combatResult.attackerLosses} military, ${defenderCountry.name} -${combatResult.defenderLosses} military`,
+              data: {
+                attackerId,
+                defenderId,
+                cityId: targetCityId,
+                cityName: city.name,
+                attackerLosses: combatResult.attackerLosses,
+                defenderLosses: combatResult.defenderLosses,
+                captured: false
+              }
+            });
+          }
+        }
+      } else {
+        // City not found - just clear the attack flag if it exists
+        await supabase
+          .from("cities")
+          .update({ is_under_attack: false })
+          .eq("id", targetCityId);
+      }
+    }
   }
 
   // Helper function to generate action summary message
@@ -375,9 +484,8 @@ export async function POST(req: Request) {
       const amount = (action.actionData as any)?.amount || 10;
       if (subType === "recruit") {
         actionMessage = `${countryName} recruited ${amount} military units`;
-      } else {
-        actionMessage = `${countryName} took military action`;
       }
+      // Don't show generic "took military action" for attacks - they're handled separately
     } else if (action.actionType === "diplomacy") {
       actionMessage = `${countryName} engaged in diplomacy`;
     }
@@ -430,13 +538,28 @@ export async function POST(req: Request) {
 
   // Only include action events in turn history (exclude economic background events)
   // Turn history should only show player-visible actions, deals, and natural events
-  const allEvents = [...actionSummaryEvents, ...result.events.filter(e => !e.type.startsWith('economic'))];
+  // Include combat events with detailed outcomes
+  const allEvents = [...combatEvents, ...actionSummaryEvents, ...result.events.filter(e => !e.type.startsWith('economic'))];
 
   // Persist: mark executed actions, update stats, store snapshot, advance turn.
   // OPTIMIZED: Batch all updates together
   if (result.executedActions.length) {
-    // Get unique country IDs that had actions
-    const affectedCountryIds = [...new Set(result.executedActions.map(a => a.countryId))];
+    // Get unique country IDs that had actions OR were involved in combat
+    const actionCountryIds = new Set(result.executedActions.map(a => a.countryId));
+    const combatCountryIds = new Set<string>();
+    
+    // Add all countries involved in combat (both attackers and defenders)
+    if (result.combatResults) {
+      for (const combatResult of result.combatResults) {
+        const actionData = combatResult.attackAction.actionData as any;
+        combatCountryIds.add(actionData.attackerId || combatResult.attackAction.countryId);
+        if (actionData.defenderId) {
+          combatCountryIds.add(actionData.defenderId);
+        }
+      }
+    }
+    
+    const affectedCountryIds = [...new Set([...actionCountryIds, ...combatCountryIds])];
     
     // Batch update actions and stats in parallel
     await Promise.all([
@@ -449,6 +572,7 @@ export async function POST(req: Request) {
         ),
       
       // Batch update all stats at once (using upsert for efficiency)
+      // This includes military losses from combat
       supabase
         .from("country_stats")
         .upsert(

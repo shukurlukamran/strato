@@ -561,7 +561,8 @@ export class CityGenerator {
   
   /**
    * Distribute resources and population proportionally by city size
-   * Limits each city to max 6 different resource types
+   * Limits each city to max 4 different resource types
+   * Resources are randomly allocated across cities
    */
   private static distributeResources(
     totalResources: Record<string, number>,
@@ -583,15 +584,17 @@ export class CityGenerator {
     for (let i = 0; i < sizes.length - 1; i++) {
       const proportion = sizes[i] / totalSize;
       
-      // Determine which resources this city gets (max 6 types)
-      // Randomly select from available resources, favoring higher amounts
-      const cityResourceTypes = this.selectCityResources(resourceEntries, 6);
+      // Determine which resources this city gets (max 4 types)
+      // Randomly select from available resources
+      const cityResourceTypes = this.selectCityResources(resourceEntries, 4);
       
-      // Distribute selected resources
+      // Distribute selected resources with random variation
       const resources: Record<string, number> = {};
       for (const [resource, total] of Object.entries(totalResources)) {
         if (cityResourceTypes.includes(resource)) {
-          const amount = Math.floor(total * proportion);
+          // Add random variation (±20%) to make distribution less uniform
+          const variation = 0.8 + Math.random() * 0.4; // 0.8 to 1.2
+          const amount = Math.floor(total * proportion * variation);
           if (amount > 0) {
             resources[resource] = amount;
             remainingResources[resource] = (remainingResources[resource] || 0) - amount;
@@ -606,12 +609,12 @@ export class CityGenerator {
     }
     
     // Give all remaining resources and population to the last city
-    // Limit to 6 resource types for the last city too
+    // Limit to 4 resource types for the last city too
     const lastCityResources: Record<string, number> = {};
     const remainingEntries = Object.entries(remainingResources)
       .filter(([_, amount]) => amount > 0)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 6);
+      .slice(0, 4);
     
     for (const [resource, amount] of remainingEntries) {
       if (amount > 0) {
@@ -629,7 +632,7 @@ export class CityGenerator {
   
   /**
    * Select up to maxTypes resource types for a city
-   * Weighted selection favoring resources with higher amounts
+   * More random selection to distribute resources across cities
    */
   private static selectCityResources(
     resourceEntries: [string, number][],
@@ -642,21 +645,18 @@ export class CityGenerator {
     const selected: string[] = [];
     const available = [...resourceEntries];
     
-    // Always include top 2-3 resources
-    const guaranteedCount = Math.min(3, maxTypes);
-    for (let i = 0; i < guaranteedCount && i < available.length; i++) {
-      selected.push(available[i][0]);
+    // Randomly select resources (more variation than before)
+    // Include top resource for consistency
+    if (available.length > 0) {
+      selected.push(available[0][0]);
     }
     
-    // Randomly select remaining slots
+    // Randomly select remaining slots from all available resources
     const remaining = maxTypes - selected.length;
-    for (let i = 0; i < remaining && available.length > guaranteedCount; i++) {
-      // Weighted random selection from remaining resources
-      const startIndex = guaranteedCount;
-      const randomIndex = startIndex + Math.floor(Math.random() * (available.length - startIndex));
-      if (!selected.includes(available[randomIndex][0])) {
-        selected.push(available[randomIndex][0]);
-      }
+    const shuffled = available.slice(1).sort(() => Math.random() - 0.5);
+    
+    for (let i = 0; i < remaining && i < shuffled.length; i++) {
+      selected.push(shuffled[i][0]);
     }
     
     return selected;
