@@ -7,6 +7,8 @@ import { calculateCityValue } from "@/types/city";
 interface CityTooltipProps {
   city: City;
   country: Country;
+  canAttack?: boolean;
+  onAttack?: () => void;
   onClose: () => void;
   position?: { x: number; y: number };
 }
@@ -15,7 +17,7 @@ interface CityTooltipProps {
  * CityTooltip - Display city information in a tooltip
  * Shows city name, owner, population, and per-turn resources
  */
-export function CityTooltip({ city, country, onClose, position }: CityTooltipProps) {
+export function CityTooltip({ city, country, canAttack, onAttack, onClose, position }: CityTooltipProps) {
   const cityValue = calculateCityValue(city);
   
   // Resource icons (simple emoji representation)
@@ -126,6 +128,22 @@ export function CityTooltip({ city, country, onClose, position }: CityTooltipPro
               <span className="text-sm font-semibold text-red-300">
                 City Under Attack!
               </span>
+            </div>
+          </div>
+        )}
+
+        {/* Attack Action (Phase 2 -> Phase 3 will wire modal/API) */}
+        {canAttack && (
+          <div className="pt-3 border-t border-slate-700">
+            <button
+              type="button"
+              onClick={onAttack}
+              className="w-full rounded-lg bg-gradient-to-r from-red-600 to-red-700 px-4 py-2 text-sm font-semibold text-white shadow-lg transition-all hover:from-red-500 hover:to-red-600 active:scale-[0.99]"
+            >
+              ⚔️ Attack
+            </button>
+            <div className="mt-1 text-xs text-white/60">
+              This city borders your country.
             </div>
           </div>
         )}
