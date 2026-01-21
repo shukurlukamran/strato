@@ -1,0 +1,123 @@
+import type { Country } from "@/types/country";
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+/**
+ * TerritoryGenerator - Generates Voronoi-based connected territories for countries
+ * 
+ * This ensures territories:
+ * - Cover the entire map with no gaps
+ * - Share borders with neighboring countries (no empty spaces)
+ * - Are based on proximity to country centers
+ */
+export class TerritoryGenerator {
+  private static readonly MAP_WIDTH = 100;
+  private static readonly MAP_HEIGHT = 80;
+  private static readonly RESOLUTION = 1; // Grid resolution for Voronoi calculation
+  
+  /**
+   * Generate connected Voronoi territories for all countries
+   * Returns a map of countryId -> SVG path string
+   */
+  static generateTerritories(countries: Country[]): Map<string, string> {
+    const cells = new Map<string, string>();
+    
+    // For each country, find all points that are closest to it
+    // This creates a Voronoi diagram with connected regions
+    const countryRegions = new Map<string, Point[]>();
+    
+    // Initialize regions
+    for (const country of countries) {
+      countryRegions.set(country.id, []);
+    }
+    
+    // Assign each grid point to nearest country
+    for (let y = 0; y < this.MAP_HEIGHT; y += this.RESOLUTION) {
+      for (let x = 0; x < this.MAP_WIDTH; x += this.RESOLUTION) {
+        let minDist = Infinity;
+        let closestCountryId: string | null = null;
+        
+        for (const country of countries) {
+          const dx = x - country.positionX;
+          const dy = y - country.positionY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < minDist) {
+            minDist = dist;
+            closestCountryId = country.id;
+          }
+        }
+        
+        if (closestCountryId) {
+          countryRegions.get(closestCountryId)!.push({ x, y });
+        }
+      }
+    }
+    
+    // Create paths for each country using boundary tracing
+    for (const [countryId, points] of countryRegions.entries()) {
+      if (points.length === 0) continue;
+      
+      // Find boundary points (points on the edge of the region)
+      const boundary = this.findBoundary(points);
+      if (boundary.length < 3) continue;
+      
+      // Sort boundary points to form a closed path
+      const country = countries.find(c => c.id === countryId)!;
+      const sortedBoundary = this.sortBoundaryPoints(boundary, country);
+      
+      // Create SVG path
+      const pathStr = sortedBoundary
+        .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+        .join(" ") + " Z";
+      
+      cells.set(countryId, pathStr);
+    }
+    
+    return cells;
+  }
+  
+  /**
+   * Find boundary points of a region
+   */
+  private static findBoundary(points: Point[]): Point[] {
+    const pointSet = new Set(points.map(p => `${p.x},${p.y}`));
+    const boundary: Point[] = [];
+    
+    for (const point of points) {
+      // Check if this point is on the boundary (has a neighbor that's not in the set)
+      const neighbors = [
+        { x: point.x - this.RESOLUTION, y: point.y },
+        { x: point.x + this.RESOLUTION, y: point.y },
+        { x: point.x, y: point.y - this.RESOLUTION },
+        { x: point.x, y: point.y + this.RESOLUTION },
+      ];
+      
+      const isBoundary = neighbors.some(n => 
+        !pointSet.has(`${n.x},${n.y}`) || 
+        n.x < 0 || n.x >= this.MAP_WIDTH || 
+        n.y < 0 || n.y >= this.MAP_HEIGHT
+      );
+      
+      if (isBoundary) {
+        boundary.push(point);
+      }
+    }
+    
+    return boundary;
+  }
+  
+  /**
+   * Sort boundary points to form a closed path
+   */
+  private static sortBoundaryPoints(boundary: Point[], center: Country): Point[] {
+    // Sort by angle from center
+    return [...boundary].sort((a, b) => {
+      const angleA = Math.atan2(a.y - center.positionY, a.x - center.positionX);
+      const angleB = Math.atan2(b.y - center.positionY, b.x - center.positionX);
+      return angleA - angleB;
+    });
+  }
+}

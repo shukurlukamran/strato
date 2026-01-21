@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { CountryInitializer } from "@/lib/game-engine/CountryInitializer";
 import { CityGenerator } from "@/lib/game-engine/CityGenerator";
+import { TerritoryGenerator } from "@/lib/game-engine/TerritoryGenerator";
 import type { Country, CountryStats } from "@/types/country";
 
 const CreateGameSchema = z.object({
@@ -58,31 +59,9 @@ const defaultCountries = [
   { name: "Falken", color: "#64748B", x: 75, y: 45 },
 ];
 
-/**
- * Generate a simple circular territory path for initial city generation
- * This will be replaced by proper Voronoi territories in the Map component
- */
-function generateSimpleTerritoryPath(centerX: number, centerY: number, index: number): string {
-  // Vary radius based on position to create different sized territories
-  const baseRadius = 10;
-  const radiusVariation = 2 + (index % 3) * 1.5;
-  const radius = baseRadius + radiusVariation;
-  const points = 16; // Number of points in the circle
-  
-  const pathParts: string[] = [];
-  
-  for (let i = 0; i <= points; i++) {
-    const angle = (i / points) * Math.PI * 2;
-    // Add some irregularity
-    const irregularity = 0.9 + (Math.sin(angle * 3 + index) * 0.2);
-    const r = radius * irregularity;
-    const x = centerX + Math.cos(angle) * r;
-    const y = centerY + Math.sin(angle) * r;
-    pathParts.push(`${i === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`);
-  }
-  
-  return pathParts.join(" ") + " Z";
-}
+// Note: generateSimpleTerritoryPath has been removed
+// We now use TerritoryGenerator.generateTerritories which creates Voronoi-based territories
+// This ensures cities cover the exact same territory displayed on the map
 
 function makeInitialStats(countryId: string, turn: number, gameSeed: string, countryIndex: number, profile: any): DbCountryStats {
   return {
@@ -187,26 +166,34 @@ export async function POST(req: Request) {
     if (insertedStats.error) throw insertedStats.error;
 
     // Generate cities for each country
-    // Note: We need territory paths, which are generated client-side in Map component
-    // For now, we'll generate a simple circular territory path for each country
+    // First, convert all countries to Country format for territory generation
+    const countryObjects: Country[] = countries.map(dbCountry => ({
+      id: dbCountry.id,
+      gameId: dbCountry.game_id,
+      name: dbCountry.name,
+      isPlayerControlled: dbCountry.is_player_controlled,
+      color: dbCountry.color,
+      positionX: Number(dbCountry.position_x),
+      positionY: Number(dbCountry.position_y),
+    }));
+    
+    // Generate Voronoi territories for all countries
+    // This ensures cities cover the exact same territories that will be displayed on the map
+    const territoryPaths = TerritoryGenerator.generateTerritories(countryObjects);
+    
+    // Now generate cities for each country using their Voronoi territory
     const allCities = [];
     for (let i = 0; i < countries.length; i++) {
       const dbCountry = countries[i];
       const stats = statsRows[i];
+      const country = countryObjects[i];
       
-      // Convert DbCountry to Country format
-      const country: Country = {
-        id: dbCountry.id,
-        gameId: dbCountry.game_id,
-        name: dbCountry.name,
-        isPlayerControlled: dbCountry.is_player_controlled,
-        color: dbCountry.color,
-        positionX: Number(dbCountry.position_x),
-        positionY: Number(dbCountry.position_y),
-      };
-      
-      // Generate a simple territory path (circle around country position)
-      const territoryPath = generateSimpleTerritoryPath(country.positionX, country.positionY, i);
+      // Get the Voronoi territory path for this country
+      const territoryPath = territoryPaths.get(country.id);
+      if (!territoryPath) {
+        console.error(`No territory path found for country ${country.name}`);
+        continue;
+      }
       
       // Convert stats row to CountryStats format
       const countryStats: CountryStats = {

@@ -5,104 +5,7 @@ import type { City } from "@/types/city";
 import { useGameStore } from "@/lib/store/gameStore";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { CityTooltip } from "./CityTooltip";
-
-// Generate connected territories using a simpler, faster approach
-// Creates regions that share borders by using distance-based expansion
-function generateConnectedTerritories(countries: Country[]): globalThis.Map<string, string> {
-  const cells = new globalThis.Map<string, string>();
-  const viewBox = { width: 100, height: 80 };
-  
-  // For each country, find all points that are closest to it
-  // This creates a Voronoi-like diagram but with connected regions
-  const resolution = 1; // Grid resolution
-  const countryRegions = new globalThis.Map<string, Array<{ x: number; y: number }>>();
-  
-  // Initialize regions
-  for (const country of countries) {
-    countryRegions.set(country.id, []);
-  }
-  
-  // Assign each grid point to nearest country
-  for (let y = 0; y < viewBox.height; y += resolution) {
-    for (let x = 0; x < viewBox.width; x += resolution) {
-      let minDist = Infinity;
-      let closestCountryId: string | null = null;
-      
-      for (const country of countries) {
-        const dx = x - country.positionX;
-        const dy = y - country.positionY;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist < minDist) {
-          minDist = dist;
-          closestCountryId = country.id;
-        }
-      }
-      
-      if (closestCountryId) {
-        countryRegions.get(closestCountryId)!.push({ x, y });
-      }
-    }
-  }
-  
-  // Create paths for each country using boundary tracing
-  for (const [countryId, points] of countryRegions.entries()) {
-    if (points.length === 0) continue;
-    
-    // Find boundary points (points on the edge of the region)
-    const boundary = findBoundary(points, viewBox);
-    if (boundary.length < 3) continue;
-    
-    // Sort boundary points to form a closed path
-    const sortedBoundary = sortBoundaryPoints(boundary, countries.find(c => c.id === countryId)!);
-    
-    // Create SVG path
-    const pathStr = sortedBoundary
-      .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
-      .join(" ") + " Z";
-    
-    cells.set(countryId, pathStr);
-  }
-  
-  return cells;
-}
-
-// Find boundary points of a region
-function findBoundary(points: Array<{ x: number; y: number }>, viewBox: { width: number; height: number }): Array<{ x: number; y: number }> {
-  const pointSet = new Set(points.map(p => `${p.x},${p.y}`));
-  const boundary: Array<{ x: number; y: number }> = [];
-  
-  for (const point of points) {
-    // Check if this point is on the boundary (has a neighbor that's not in the set)
-    const neighbors = [
-      { x: point.x - 1, y: point.y },
-      { x: point.x + 1, y: point.y },
-      { x: point.x, y: point.y - 1 },
-      { x: point.x, y: point.y + 1 },
-    ];
-    
-    const isBoundary = neighbors.some(n => 
-      !pointSet.has(`${n.x},${n.y}`) || 
-      n.x < 0 || n.x >= viewBox.width || 
-      n.y < 0 || n.y >= viewBox.height
-    );
-    
-    if (isBoundary) {
-      boundary.push(point);
-    }
-  }
-  
-  return boundary;
-}
-
-// Sort boundary points to form a closed path
-function sortBoundaryPoints(boundary: Array<{ x: number; y: number }>, center: Country): Array<{ x: number; y: number }> {
-  // Sort by angle from center
-  return [...boundary].sort((a, b) => {
-    const angleA = Math.atan2(a.y - center.positionY, a.x - center.positionX);
-    const angleB = Math.atan2(b.y - center.positionY, b.x - center.positionX);
-    return angleA - angleB;
-  });
-}
+import { TerritoryGenerator } from "@/lib/game-engine/TerritoryGenerator";
 
 export function Map({ countries, cities = [] }: { countries: Country[]; cities?: City[] }) {
   const selectedCountryId = useGameStore((s) => s.selectedCountryId);
@@ -115,7 +18,7 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
   // Generate connected territories once
-  const territoryPaths = useMemo(() => generateConnectedTerritories(countries), [countries]) as globalThis.Map<string, string>;
+  const territoryPaths = useMemo(() => TerritoryGenerator.generateTerritories(countries), [countries]);
 
   // Calculate viewBox based on zoom level (centered zoom)
   const baseViewBox = { width: 100, height: 80 };
@@ -268,6 +171,16 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
                 onClick={(e) => {
                   e.stopPropagation();
                   
+                  // Toggle tooltip if clicking the same city
+                  if (selectedCityId === city.id) {
+                    setSelectedCityId(null);
+                    setTooltipPosition(undefined);
+                    return;
+                  }
+                  
+                  // Select the country that owns this city
+                  selectCountry(city.countryId);
+                  
                   // Calculate tooltip position relative to viewport
                   if (mapContainerRef.current) {
                     const svgRect = mapContainerRef.current.getBoundingClientRect();
@@ -280,31 +193,34 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
                       let screenX = svgRect.left + (city.positionX - viewBox.x) * scaleX;
                       let screenY = svgRect.top + (city.positionY - viewBox.y) * scaleY;
                       
-                      // Adjust position to keep tooltip on screen
-                      // Tooltip is roughly 320px wide and 300px tall
+                      // Tooltip dimensions
                       const tooltipWidth = 320;
                       const tooltipHeight = 300;
                       const margin = 20;
                       
-                      // Check right edge
-                      if (screenX + tooltipWidth / 2 > window.innerWidth - margin) {
-                        screenX = window.innerWidth - tooltipWidth / 2 - margin;
+                      // The tooltip uses transform: translate(-50%, -120%) by default
+                      // This means it's centered horizontally and positioned above the point
+                      
+                      // Calculate where the tooltip edges will be with the default transform
+                      const tooltipLeft = screenX - tooltipWidth / 2;
+                      const tooltipRight = screenX + tooltipWidth / 2;
+                      const tooltipTop = screenY - tooltipHeight * 1.2; // -120% transform
+                      const tooltipBottom = screenY - tooltipHeight * 0.2;
+                      
+                      // Adjust horizontally if needed
+                      if (tooltipLeft < margin) {
+                        // Too far left - shift right
+                        screenX = margin + tooltipWidth / 2;
+                      } else if (tooltipRight > window.innerWidth - margin) {
+                        // Too far right - shift left
+                        screenX = window.innerWidth - margin - tooltipWidth / 2;
                       }
                       
-                      // Check left edge
-                      if (screenX - tooltipWidth / 2 < margin) {
-                        screenX = tooltipWidth / 2 + margin;
-                      }
-                      
-                      // Check top edge - tooltip appears above the city
-                      if (screenY - tooltipHeight - margin < 0) {
-                        // If too close to top, show below instead
-                        screenY = screenY + tooltipHeight / 2 + margin;
-                      }
-                      
-                      // Check bottom edge
-                      if (screenY + margin > window.innerHeight - margin) {
-                        screenY = window.innerHeight - margin - margin;
+                      // Adjust vertically if needed
+                      if (tooltipTop < margin) {
+                        // Too close to top - position below instead
+                        // Adjust screenY so that with -120% transform, tooltip appears below
+                        screenY = screenY + tooltipHeight + margin;
                       }
                       
                       setTooltipPosition({ x: screenX, y: screenY });
