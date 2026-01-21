@@ -3,9 +3,313 @@
 import type { Country } from "@/types/country";
 import type { City } from "@/types/city";
 import { useGameStore } from "@/lib/store/gameStore";
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef } from "react";
 import { CityTooltip } from "./CityTooltip";
 import { TerritoryGenerator } from "@/lib/game-engine/TerritoryGenerator";
+
+type Pt = { x: number; y: number };
+
+function parsePathToPolygon(pathStr: string): Pt[] {
+  const coords: Pt[] = [];
+  const commands = pathStr.match(/[ML]\s*[-\d.]+\s+[-\d.]+/g) || [];
+  for (const cmd of commands) {
+    const match = cmd.match(/([-\d.]+)\s+([-\d.]+)/);
+    if (match) {
+      coords.push({ x: Number.parseFloat(match[1]), y: Number.parseFloat(match[2]) });
+    }
+  }
+  return coords;
+}
+
+function pointInPolygon(p: Pt, poly: Pt[]): boolean {
+  // Ray casting
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x;
+    const yi = poly[i].y;
+    const xj = poly[j].x;
+    const yj = poly[j].y;
+
+    const intersects = (yi > p.y) !== (yj > p.y) && p.x < ((xj - xi) * (p.y - yi)) / (yj - yi) + xi;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function boundsOf(points: Pt[]) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of points) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY };
+}
+
+function keyPt(x: number, y: number) {
+  return `${x.toFixed(3)},${y.toFixed(3)}`;
+}
+
+function parseKeyPt(k: string): Pt {
+  const [xs, ys] = k.split(",");
+  return { x: Number.parseFloat(xs), y: Number.parseFloat(ys) };
+}
+
+function simplifyAxisAlignedLoop(points: Pt[]): Pt[] {
+  if (points.length <= 3) return points;
+  const simplified: Pt[] = [];
+  for (let i = 0; i < points.length; i++) {
+    const prev = points[(i - 1 + points.length) % points.length];
+    const curr = points[i];
+    const next = points[(i + 1) % points.length];
+    const collinearX = prev.x === curr.x && curr.x === next.x;
+    const collinearY = prev.y === curr.y && curr.y === next.y;
+    if (!collinearX && !collinearY) simplified.push(curr);
+  }
+  return simplified;
+}
+
+function traceLoopsFromAdjacency(adjacency: Map<string, string[]>): Pt[] {
+  const loops: Pt[][] = [];
+  const maxSteps = 200000;
+
+  const popEdge = (from: string): string | null => {
+    const list = adjacency.get(from);
+    if (!list || list.length === 0) return null;
+    const to = list.pop()!;
+    if (list.length === 0) adjacency.delete(from);
+    return to;
+  };
+
+  const findStartKey = (): string | null => {
+    let bestKey: string | null = null;
+    let best: Pt | null = null;
+    for (const k of adjacency.keys()) {
+      const p = parseKeyPt(k);
+      if (!best || p.y < best.y || (p.y === best.y && p.x < best.x)) {
+        best = p;
+        bestKey = k;
+      }
+    }
+    return bestKey;
+  };
+
+  while (adjacency.size > 0) {
+    const startKey = findStartKey();
+    if (!startKey) break;
+    const startPt = parseKeyPt(startKey);
+    const pts: Pt[] = [startPt];
+
+    let current = startKey;
+    let steps = 0;
+    while (steps++ < maxSteps) {
+      const next = popEdge(current);
+      if (!next) break;
+      const nextPt = parseKeyPt(next);
+      pts.push(nextPt);
+      current = next;
+      if (current === startKey) break;
+    }
+
+    // Drop duplicate closing point if present
+    if (pts.length >= 2) {
+      const last = pts[pts.length - 1];
+      if (last.x === startPt.x && last.y === startPt.y) pts.pop();
+    }
+
+    if (pts.length >= 3) loops.push(simplifyAxisAlignedLoop(pts));
+  }
+
+  // Pick the largest loop (Voronoi cells should be single-loop; this is a safety net)
+  let best: Pt[] = [];
+  for (const loop of loops) {
+    if (loop.length > best.length) best = loop;
+  }
+  return best;
+}
+
+function mergeIntervals(intervals: Array<[number, number]>, eps = 1e-6): Array<[number, number]> {
+  if (intervals.length === 0) return [];
+  const sorted = [...intervals].sort((a, b) => a[0] - b[0]);
+  const merged: Array<[number, number]> = [];
+  let [curS, curE] = sorted[0];
+  for (let i = 1; i < sorted.length; i++) {
+    const [s, e] = sorted[i];
+    if (s <= curE + eps) {
+      curE = Math.max(curE, e);
+    } else {
+      merged.push([curS, curE]);
+      curS = s;
+      curE = e;
+    }
+  }
+  merged.push([curS, curE]);
+  return merged;
+}
+
+function buildSharedCityTilingForCountry(
+  countryCities: City[],
+  territoryPath: string,
+  resolution = 0.6,
+): { cityPathById: Map<string, string>; internalBordersPath: string } {
+  const poly = parsePathToPolygon(territoryPath);
+  if (poly.length < 3 || countryCities.length === 0) {
+    return { cityPathById: new Map(), internalBordersPath: "" };
+  }
+
+  const { minX, minY, maxX, maxY } = boundsOf(poly);
+  const originX = minX;
+  const originY = minY;
+  const nx = Math.max(1, Math.ceil((maxX - minX) / resolution) + 3);
+  const ny = Math.max(1, Math.ceil((maxY - minY) / resolution) + 3);
+
+  const size = nx * ny;
+  const inside = new Uint8Array(size);
+  const label = new Int16Array(size);
+  label.fill(-1);
+
+  const idx = (ix: number, iy: number) => iy * nx + ix;
+
+  // Raster Voronoi assignment inside the country polygon
+  for (let iy = 0; iy < ny; iy++) {
+    const y = originY + iy * resolution;
+    for (let ix = 0; ix < nx; ix++) {
+      const x = originX + ix * resolution;
+      if (!pointInPolygon({ x, y }, poly)) continue;
+      inside[idx(ix, iy)] = 1;
+
+      let best = 0;
+      let bestD = Infinity;
+      for (let ci = 0; ci < countryCities.length; ci++) {
+        const c = countryCities[ci];
+        const dx = x - c.positionX;
+        const dy = y - c.positionY;
+        const d = dx * dx + dy * dy;
+        if (d < bestD) {
+          bestD = d;
+          best = ci;
+        }
+      }
+      label[idx(ix, iy)] = best;
+    }
+  }
+
+  // Internal border segments (rendered once for both cities)
+  const verticalByX = new Map<string, Array<[number, number]>>();
+  const horizontalByY = new Map<string, Array<[number, number]>>();
+
+  for (let iy = 0; iy < ny; iy++) {
+    const yCenter = originY + iy * resolution;
+    for (let ix = 0; ix < nx; ix++) {
+      const i = idx(ix, iy);
+      if (!inside[i]) continue;
+      const l = label[i];
+
+      // Right neighbor (unique border detection)
+      if (ix + 1 < nx) {
+        const ir = idx(ix + 1, iy);
+        if (inside[ir] && label[ir] !== l) {
+          const xEdge = originX + (ix + 0.5) * resolution;
+          const y0 = yCenter - resolution / 2;
+          const y1 = yCenter + resolution / 2;
+          const k = xEdge.toFixed(3);
+          const list = verticalByX.get(k) ?? [];
+          list.push([y0, y1]);
+          verticalByX.set(k, list);
+        }
+      }
+
+      // Bottom neighbor (unique border detection)
+      if (iy + 1 < ny) {
+        const ib = idx(ix, iy + 1);
+        if (inside[ib] && label[ib] !== l) {
+          const yEdge = originY + (iy + 0.5) * resolution;
+          const xCenter = originX + ix * resolution;
+          const x0 = xCenter - resolution / 2;
+          const x1 = xCenter + resolution / 2;
+          const k = yEdge.toFixed(3);
+          const list = horizontalByY.get(k) ?? [];
+          list.push([x0, x1]);
+          horizontalByY.set(k, list);
+        }
+      }
+    }
+  }
+
+  const internalParts: string[] = [];
+  for (const [xKey, intervals] of verticalByX.entries()) {
+    const x = Number.parseFloat(xKey);
+    const merged = mergeIntervals(intervals);
+    for (const [y0, y1] of merged) {
+      internalParts.push(`M ${x.toFixed(2)} ${y0.toFixed(2)} L ${x.toFixed(2)} ${y1.toFixed(2)}`);
+    }
+  }
+  for (const [yKey, intervals] of horizontalByY.entries()) {
+    const y = Number.parseFloat(yKey);
+    const merged = mergeIntervals(intervals);
+    for (const [x0, x1] of merged) {
+      internalParts.push(`M ${x0.toFixed(2)} ${y.toFixed(2)} L ${x1.toFixed(2)} ${y.toFixed(2)}`);
+    }
+  }
+
+  // City polygons built from pixel edges (shared coordinates => no seams)
+  const adjacencyByCity: Array<Map<string, string[]>> = Array.from({ length: countryCities.length }, () => new Map());
+  const addEdge = (ci: number, from: Pt, to: Pt) => {
+    const fromK = keyPt(from.x, from.y);
+    const toK = keyPt(to.x, to.y);
+    const adj = adjacencyByCity[ci];
+    const list = adj.get(fromK) ?? [];
+    list.push(toK);
+    adj.set(fromK, list);
+  };
+
+  const isInside = (ix: number, iy: number): boolean => ix >= 0 && ix < nx && iy >= 0 && iy < ny && inside[idx(ix, iy)] === 1;
+  const getLabel = (ix: number, iy: number): number => label[idx(ix, iy)];
+
+  for (let iy = 0; iy < ny; iy++) {
+    const y = originY + iy * resolution;
+    for (let ix = 0; ix < nx; ix++) {
+      const i = idx(ix, iy);
+      if (!inside[i]) continue;
+      const ci = label[i];
+      const x = originX + ix * resolution;
+      const h = resolution / 2;
+
+      // Neighbor checks: when neighbor is different/outside => boundary edge for this city
+      const upDiff = !isInside(ix, iy - 1) || getLabel(ix, iy - 1) !== ci;
+      const downDiff = !isInside(ix, iy + 1) || getLabel(ix, iy + 1) !== ci;
+      const leftDiff = !isInside(ix - 1, iy) || getLabel(ix - 1, iy) !== ci;
+      const rightDiff = !isInside(ix + 1, iy) || getLabel(ix + 1, iy) !== ci;
+
+      // Top edge (inside is below) => left -> right
+      if (upDiff) addEdge(ci, { x: x - h, y: y - h }, { x: x + h, y: y - h });
+      // Right edge (inside is left) => top -> bottom
+      if (rightDiff) addEdge(ci, { x: x + h, y: y - h }, { x: x + h, y: y + h });
+      // Bottom edge (inside is above) => right -> left
+      if (downDiff) addEdge(ci, { x: x + h, y: y + h }, { x: x - h, y: y + h });
+      // Left edge (inside is right) => bottom -> top
+      if (leftDiff) addEdge(ci, { x: x - h, y: y + h }, { x: x - h, y: y - h });
+    }
+  }
+
+  const cityPathById = new Map<string, string>();
+  for (let ci = 0; ci < countryCities.length; ci++) {
+    // Clone adjacency for tracing (we destructively pop edges)
+    const cloned = new Map<string, string[]>();
+    for (const [k, v] of adjacencyByCity[ci].entries()) cloned.set(k, [...v]);
+    const loop = traceLoopsFromAdjacency(cloned);
+    if (loop.length < 3) continue;
+    const d =
+      loop.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ") + " Z";
+    cityPathById.set(countryCities[ci].id, d);
+  }
+
+  return { cityPathById, internalBordersPath: internalParts.join(" ") };
+}
 
 export function Map({ countries, cities = [] }: { countries: Country[]; cities?: City[] }) {
   const selectedCountryId = useGameStore((s) => s.selectedCountryId);
@@ -19,6 +323,26 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
 
   // Generate connected territories once
   const territoryPaths = useMemo(() => TerritoryGenerator.generateTerritories(countries), [countries]);
+
+  // Derive shared city shapes + a single internal border overlay per country.
+  // This eliminates the "two dashed lines + seam" artifact by ensuring shared edges are identical.
+  const derivedCityGeometry = useMemo(() => {
+    const cityPathById = new Map<string, string>();
+    const borderParts: string[] = [];
+
+    for (const country of countries) {
+      const territoryPath = territoryPaths.get(country.id);
+      if (!territoryPath) continue;
+      const countryCities = cities.filter((c) => c.countryId === country.id);
+      if (countryCities.length === 0) continue;
+
+      const { cityPathById: byId, internalBordersPath } = buildSharedCityTilingForCountry(countryCities, territoryPath);
+      for (const [id, d] of byId.entries()) cityPathById.set(id, d);
+      if (internalBordersPath) borderParts.push(internalBordersPath);
+    }
+
+    return { cityPathById, internalBordersPath: borderParts.join(" ") };
+  }, [countries, cities, territoryPaths]);
 
   // Calculate viewBox based on zoom level (centered zoom)
   const baseViewBox = { width: 100, height: 80 };
@@ -153,17 +477,16 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
           
           const isHovered = city.id === hoveredCityId;
           const isCountrySelected = country.id === selectedCountryId;
+          const cityPath = derivedCityGeometry.cityPathById.get(city.id) ?? city.borderPath;
 
           return (
             <g key={city.id}>
               {/* City area - clickable and hoverable */}
               <path
-                d={city.borderPath}
+                d={cityPath}
                 fill={isHovered ? country.color : "transparent"}
                 fillOpacity={isHovered ? 0.15 : 0}
-                stroke="#fff"
-                strokeWidth="0.2"
-                strokeDasharray="1 1"
+                stroke="none"
                 opacity={isHovered ? 0.9 : isCountrySelected ? 0.5 : 0.3}
                 className="cursor-pointer transition-all duration-200"
                 onMouseEnter={() => setHoveredCityId(city.id)}
@@ -261,6 +584,19 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
             </g>
           );
         })}
+
+        {/* City internal borders - rendered ONCE for mutual borders */}
+        {derivedCityGeometry.internalBordersPath && (
+          <path
+            d={derivedCityGeometry.internalBordersPath}
+            fill="none"
+            stroke="#fff"
+            strokeWidth="0.2"
+            strokeDasharray="1 1"
+            opacity={selectedCountryId ? 0.5 : 0.35}
+            className="pointer-events-none"
+          />
+        )}
       </svg>
 
       {/* Zoom Controls - Bottom of Map */}
