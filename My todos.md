@@ -6,6 +6,7 @@
 - Find out what other stages are left in the full implementation of Military and cities plan
 - AI countries should do deals between each-other (we should have a plan somewhere on this)
 - Does LLM take into account country's current budget, diplomatic relations, their war status while suggesting a strategy at turn end? 
+- AI countries don't follow LLM's strategy advices.
 
 
 - Resource usage (actions should use resources and each resource should at least have one use case)
