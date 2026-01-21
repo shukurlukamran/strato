@@ -423,8 +423,12 @@ export function Map({
   const [zoomLevel, setZoomLevel] = useState(1); // 1 = normal, >1 = zoomed in, <1 = zoomed out
   const mapContainerRef = useRef<HTMLDivElement>(null);
 
-  // Generate connected territories once
-  const territoryPaths = useMemo(() => TerritoryGenerator.generateTerritories(countries), [countries]);
+  // Generate territories based on city ownership
+  // This ensures captured cities are within their country's borders
+  const territoryPaths = useMemo(
+    () => TerritoryGenerator.generateTerritoriesFromCities(countries, cities),
+    [countries, cities]
+  );
 
   // Derive shared city shapes + a single internal border overlay per country.
   // This eliminates the "two dashed lines + seam" artifact by ensuring shared edges are identical.
@@ -603,7 +607,8 @@ export function Map({
           
           const isHovered = city.id === hoveredCityId;
           const isCountrySelected = country.id === selectedCountryId;
-          const cityPath = derivedCityGeometry.cityPathById.get(city.id) ?? city.borderPath;
+          // Always use the stored border path to keep city size and location fixed
+          const cityPath = city.borderPath;
           const isAttackable = derivedCityGeometry.attackableCityIds.has(city.id);
 
           return (

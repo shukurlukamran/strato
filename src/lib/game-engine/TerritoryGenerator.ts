@@ -1,4 +1,5 @@
 import type { Country } from "@/types/country";
+import type { City } from "@/types/city";
 
 interface Point {
   x: number;
@@ -119,5 +120,81 @@ export class TerritoryGenerator {
       const angleB = Math.atan2(b.y - center.positionY, b.x - center.positionX);
       return angleA - angleB;
     });
+  }
+
+  /**
+   * Generate territories based on city ownership
+   * Each country's territory includes all areas closest to their cities
+   * This ensures captured cities are within their new country's borders
+   */
+  static generateTerritoriesFromCities(countries: Country[], cities: City[]): Map<string, string> {
+    const cells = new Map<string, string>();
+    
+    // Group cities by country
+    const citiesByCountry = new Map<string, City[]>();
+    for (const country of countries) {
+      citiesByCountry.set(country.id, []);
+    }
+    for (const city of cities) {
+      const countryCities = citiesByCountry.get(city.countryId);
+      if (countryCities) {
+        countryCities.push(city);
+      }
+    }
+    
+    // For each country, find all points that are closest to any of its cities
+    const countryRegions = new Map<string, Point[]>();
+    
+    // Initialize regions
+    for (const country of countries) {
+      countryRegions.set(country.id, []);
+    }
+    
+    // Assign each grid point to the country whose city is nearest
+    for (let y = 0; y < this.MAP_HEIGHT; y += this.RESOLUTION) {
+      for (let x = 0; x < this.MAP_WIDTH; x += this.RESOLUTION) {
+        let minDist = Infinity;
+        let closestCountryId: string | null = null;
+        
+        // Check distance to all cities of all countries
+        for (const [countryId, countryCities] of citiesByCountry.entries()) {
+          for (const city of countryCities) {
+            const dx = x - city.positionX;
+            const dy = y - city.positionY;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < minDist) {
+              minDist = dist;
+              closestCountryId = countryId;
+            }
+          }
+        }
+        
+        if (closestCountryId) {
+          countryRegions.get(closestCountryId)!.push({ x, y });
+        }
+      }
+    }
+    
+    // Create paths for each country using boundary tracing
+    for (const [countryId, points] of countryRegions.entries()) {
+      if (points.length === 0) continue;
+      
+      // Find boundary points (points on the edge of the region)
+      const boundary = this.findBoundary(points);
+      if (boundary.length < 3) continue;
+      
+      // Sort boundary points to form a closed path
+      const country = countries.find(c => c.id === countryId)!;
+      const sortedBoundary = this.sortBoundaryPoints(boundary, country);
+      
+      // Create SVG path
+      const pathStr = sortedBoundary
+        .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
+        .join(" ") + " Z";
+      
+      cells.set(countryId, pathStr);
+    }
+    
+    return cells;
   }
 }
