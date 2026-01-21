@@ -7,6 +7,7 @@
 - AI countries should do deals between each-other (we should have a plan somewhere on this)
 - Does LLM take into account country's current budget, diplomatic relations, their war status while suggesting a strategy at turn end? 
 - AI countries don't follow LLM's strategy advices.
+- Optimize LLM on End turn to be faster.
 
 
 - Resource usage (actions should use resources and each resource should at least have one use case)
