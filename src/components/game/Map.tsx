@@ -73,7 +73,7 @@ function simplifyAxisAlignedLoop(points: Pt[]): Pt[] {
   return simplified;
 }
 
-function traceLoopsFromAdjacency(adjacency: Map<string, string[]>): Pt[] {
+function traceLoopsFromAdjacency(adjacency: globalThis.Map<string, string[]>): Pt[] {
   const loops: Pt[][] = [];
   const maxSteps = 200000;
 
@@ -155,10 +155,10 @@ function buildSharedCityTilingForCountry(
   countryCities: City[],
   territoryPath: string,
   resolution = 0.6,
-): { cityPathById: Map<string, string>; internalBordersPath: string } {
+): { cityPathById: globalThis.Map<string, string>; internalBordersPath: string } {
   const poly = parsePathToPolygon(territoryPath);
   if (poly.length < 3 || countryCities.length === 0) {
-    return { cityPathById: new Map(), internalBordersPath: "" };
+    return { cityPathById: new globalThis.Map(), internalBordersPath: "" };
   }
 
   const { minX, minY, maxX, maxY } = boundsOf(poly);
@@ -199,8 +199,8 @@ function buildSharedCityTilingForCountry(
   }
 
   // Internal border segments (rendered once for both cities)
-  const verticalByX = new Map<string, Array<[number, number]>>();
-  const horizontalByY = new Map<string, Array<[number, number]>>();
+  const verticalByX = new globalThis.Map<string, Array<[number, number]>>();
+  const horizontalByY = new globalThis.Map<string, Array<[number, number]>>();
 
   for (let iy = 0; iy < ny; iy++) {
     const yCenter = originY + iy * resolution;
@@ -257,7 +257,10 @@ function buildSharedCityTilingForCountry(
   }
 
   // City polygons built from pixel edges (shared coordinates => no seams)
-  const adjacencyByCity: Array<Map<string, string[]>> = Array.from({ length: countryCities.length }, () => new Map());
+  const adjacencyByCity: Array<globalThis.Map<string, string[]>> = Array.from(
+    { length: countryCities.length },
+    () => new globalThis.Map(),
+  );
   const addEdge = (ci: number, from: Pt, to: Pt) => {
     const fromK = keyPt(from.x, from.y);
     const toK = keyPt(to.x, to.y);
@@ -296,10 +299,10 @@ function buildSharedCityTilingForCountry(
     }
   }
 
-  const cityPathById = new Map<string, string>();
+  const cityPathById = new globalThis.Map<string, string>();
   for (let ci = 0; ci < countryCities.length; ci++) {
     // Clone adjacency for tracing (we destructively pop edges)
-    const cloned = new Map<string, string[]>();
+    const cloned = new globalThis.Map<string, string[]>();
     for (const [k, v] of adjacencyByCity[ci].entries()) cloned.set(k, [...v]);
     const loop = traceLoopsFromAdjacency(cloned);
     if (loop.length < 3) continue;
@@ -327,7 +330,7 @@ export function Map({ countries, cities = [] }: { countries: Country[]; cities?:
   // Derive shared city shapes + a single internal border overlay per country.
   // This eliminates the "two dashed lines + seam" artifact by ensuring shared edges are identical.
   const derivedCityGeometry = useMemo(() => {
-    const cityPathById = new Map<string, string>();
+    const cityPathById = new globalThis.Map<string, string>();
     const borderParts: string[] = [];
 
     for (const country of countries) {
