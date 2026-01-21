@@ -1,53 +1,10 @@
 (DO NOT TOUCH THIS FILE. THIS FILE IS FOR MY PERSONAL NOTES.)
 
-# ✅ Military Actions & Cities System - COMPLETE PLAN AVAILABLE
+- Some cities aren't attackable even though they are neighbor.
+- When a city is captured, other cities neighboring it becomes unattackable.
+- City transfer mechanism in Deal Chat (analyze and see what can be exchanged or agreed with the current state of the game but doesn't exist in the deal chat's implementation capabilities)
+- Find out what other stages are left in the full implementation of Military and cities plan
 
-See **MILITARY_AND_CITIES_PLAN.md** for the comprehensive implementation plan.
-
-## Summary of Decisions Made:
-
-### Cities System
-- **6-15 cities per country** based on territory size
-- Cities contain **proportional resources and population** that sum to country totals
-- **Voronoi-based generation** with varied sizes and organic shapes
-- **Click-to-show tooltip** with city details and attack button
-- Cities can be **captured in combat** or **traded in deals**
-
-### Military Actions
-- **Attack neighboring cities only** (share border)
-- **Strength allocation slider** (10-100% of military)
-- **End-of-turn resolution** (not live combat)
-- **Combat formula**: Strength ratio + randomness + defender bonus (20%)
-- **Both sides lose troops**: Winner loses 20-40%, loser loses 40-80%
-- **Costs**: 100 budget + 10 per strength point allocated
-
-### AI Decisions
-- **AI vs Player Defense**: Uses LLM (doesn't know attacker's allocation - FAIR)
-- **AI vs Player Attack**: Uses LLM for strategic decisions
-- **AI vs AI Combat**: Uses rule-based system (faster, cheaper)
-- **Defense factors**: City value, military strength, strategic importance, personality
-
-### Map Updates
-- Dynamic city border visualization
-- **Color changes when cities are captured**
-- Cities shown with borders inside country territories
-- Visual indicators for cities under attack
-
-### History Logging
-- All attacks logged with full details
-- Combat results: winner, losses, city transfers
-- Country eliminations tracked
-
-### Technical Implementation
-- 8 phases planned (see full document)
-- Database schema designed
-- Code structure outlined with TypeScript examples
-- Balance considerations documented
-
-## Next Steps:
-1. Review the full plan in **MILITARY_AND_CITIES_PLAN.md**
-2. Approve/adjust any decisions
-3. Begin Phase 1: Cities Foundation implementation
 
 - Resource usage (actions should use resources and each resource should at least have one use case)
 - Prevent cheating in the chat deals (you can get money for technology level now, but tech level isn't actually transferred, for example)
