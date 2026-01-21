@@ -25,9 +25,10 @@ export class ActionResolver {
 
     const prev = state.data.countryStatsByCountryId[action.countryId];
     const cost = (action.actionData as any)?.cost || 0;
+    const immediate = (action.actionData as any)?.immediate === true;
     
     // Check if country has enough budget
-    if (prev.budget < cost) {
+    if (!immediate && prev.budget < cost) {
       return { ...action, status: "failed" };
     }
 
@@ -39,7 +40,7 @@ export class ActionResolver {
       next = {
         ...next,
         technologyLevel: next.technologyLevel + 1,
-        budget: Math.max(0, next.budget - cost),
+        budget: immediate ? next.budget : Math.max(0, next.budget - cost),
       };
     } else if (action.actionType === "economic") {
       const subType = (action.actionData as any)?.subType;
@@ -49,7 +50,7 @@ export class ActionResolver {
         next = {
           ...next,
           infrastructureLevel: (next.infrastructureLevel || 0) + 1,
-          budget: Math.max(0, next.budget - cost),
+          budget: immediate ? next.budget : Math.max(0, next.budget - cost),
         };
       }
     } else if (action.actionType === "military") {
@@ -61,8 +62,11 @@ export class ActionResolver {
         next = {
           ...next,
           militaryStrength: next.militaryStrength + amount,
-          budget: Math.max(0, next.budget - cost),
+          budget: immediate ? next.budget : Math.max(0, next.budget - cost),
         };
+      } else if (subType === "attack") {
+        // Attack actions are resolved later (combat resolution phase).
+        // We intentionally do NOT modify stats here for MVP, and cost is deducted at submission time.
       }
     }
     

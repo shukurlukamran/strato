@@ -445,6 +445,10 @@ export default function GamePage() {
   }
 
   const playerCountry = countries.find((c) => c.isPlayerControlled);
+  const attackerCountry = playerCountry ?? null;
+  const attackerStats = attackerCountry ? statsByCountryId[attackerCountry.id] ?? null : null;
+  const defenderCountry = attackTargetCity ? countries.find((c) => c.id === attackTargetCity.countryId) ?? null : null;
+  const defenderStats = defenderCountry ? statsByCountryId[defenderCountry.id] ?? null : null;
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
@@ -672,6 +676,20 @@ export default function GamePage() {
           </div>
         </div>
       </div>
+
+      {/* Attack Modal (Phase 3) */}
+      {attackTargetCity && attackerCountry && attackerStats && defenderCountry && defenderStats && (
+        <AttackModal
+          gameId={gameId}
+          attackerCountry={attackerCountry}
+          attackerStats={attackerStats}
+          targetCity={attackTargetCity}
+          defenderCountry={defenderCountry}
+          defenderStats={defenderStats}
+          onClose={() => setAttackTargetCity(null)}
+          onSubmitted={() => void refreshGameData()}
+        />
+      )}
     </div>
   );
 }

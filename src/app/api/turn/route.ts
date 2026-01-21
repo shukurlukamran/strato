@@ -338,6 +338,19 @@ export async function POST(req: Request) {
   const processor = new TurnProcessor();
   const result = processor.processTurn(state);
 
+  // MVP bridge: clear "under attack" flags for attacks that were processed this turn.
+  // Full combat resolution (wins/losses/city transfer) comes in Phase 5.
+  const processedAttackCityIds = result.executedActions
+    .filter((a) => a.actionType === "military" && (a.actionData as any)?.subType === "attack")
+    .map((a) => (a.actionData as any)?.targetCityId)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+
+  if (processedAttackCityIds.length > 0) {
+    // Unique list
+    const uniqueIds = [...new Set(processedAttackCityIds)];
+    await supabase.from("cities").update({ is_under_attack: false }).in("id", uniqueIds);
+  }
+
   // Helper function to generate action summary message
   function generateActionMessage(action: any, countryName: string): { type: string; message: string; data: any } | null {
     let actionMessage = "";

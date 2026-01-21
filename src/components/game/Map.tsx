@@ -311,13 +311,24 @@ function buildSharedCityTilingForCountry(
     () => new globalThis.Set<string>(),
   );
 
-  const recordNeighborCountry = (cityIndex: number, sampleX: number, sampleY: number) => {
-    // Outside map → no neighbor
-    if (sampleX < 0 || sampleX > mapWidth || sampleY < 0 || sampleY > mapHeight) return;
-    const neighborId = nearestCountryId(sampleX, sampleY);
-    if (!neighborId) return;
-    if (neighborId === ownCountryId) return;
-    neighborCountryIdsByCityIndex[cityIndex].add(neighborId);
+  const h = resolution / 2;
+  const eps = Math.max(0.01, resolution * 0.06);
+  const outBase = h + eps;
+
+  const recordNeighborCountryAlong = (cityIndex: number, originX: number, originY: number, dirX: number, dirY: number) => {
+    // Try progressively further samples to robustly cross the Voronoi bisector.
+    // This fixes edge-cases where stepping just outside the polygon still lands in the same nearest-country region.
+    const multipliers = [1, 2, 3, 4];
+    for (const m of multipliers) {
+      const sampleX = originX + dirX * outBase * m;
+      const sampleY = originY + dirY * outBase * m;
+      if (sampleX < 0 || sampleX > mapWidth || sampleY < 0 || sampleY > mapHeight) continue;
+      const neighborId = nearestCountryId(sampleX, sampleY);
+      if (!neighborId) continue;
+      if (neighborId === ownCountryId) continue;
+      neighborCountryIdsByCityIndex[cityIndex].add(neighborId);
+      break;
+    }
   };
 
   for (let iy = 0; iy < ny; iy++) {
@@ -327,9 +338,6 @@ function buildSharedCityTilingForCountry(
       if (!inside[i]) continue;
       const ci = label[i];
       const x = originX + ix * resolution;
-      const h = resolution / 2;
-      const eps = Math.max(0.01, resolution * 0.06);
-      const out = h + eps;
 
       // Neighbor checks: when neighbor is different/outside => boundary edge for this city
       const upInside = isInside(ix, iy - 1);
@@ -348,18 +356,18 @@ function buildSharedCityTilingForCountry(
 
       // If this is a COUNTRY boundary edge (neighbor cell is outside the territory),
       // sample just outside the edge to determine which other country lies beyond.
-      if (!upInside) recordNeighborCountry(ci, x, y - out);
-      if (!downInside) recordNeighborCountry(ci, x, y + out);
-      if (!leftInside) recordNeighborCountry(ci, x - out, y);
-      if (!rightInside) recordNeighborCountry(ci, x + out, y);
+      if (!upInside) recordNeighborCountryAlong(ci, x, y, 0, -1);
+      if (!downInside) recordNeighborCountryAlong(ci, x, y, 0, 1);
+      if (!leftInside) recordNeighborCountryAlong(ci, x, y, -1, 0);
+      if (!rightInside) recordNeighborCountryAlong(ci, x, y, 1, 0);
 
       // IMPORTANT: diagonal borders can be missed if we only sample N/S/E/W.
       // If a territory boundary passes diagonally, a pixel can have all 4-cardinal neighbors inside,
       // but a diagonal neighbor outside. Sampling diagonals fixes "border city not attackable" cases.
-      if (!upLeftInside) recordNeighborCountry(ci, x - out, y - out);
-      if (!upRightInside) recordNeighborCountry(ci, x + out, y - out);
-      if (!downLeftInside) recordNeighborCountry(ci, x - out, y + out);
-      if (!downRightInside) recordNeighborCountry(ci, x + out, y + out);
+      if (!upLeftInside) recordNeighborCountryAlong(ci, x, y, -1, -1);
+      if (!upRightInside) recordNeighborCountryAlong(ci, x, y, 1, -1);
+      if (!downLeftInside) recordNeighborCountryAlong(ci, x, y, -1, 1);
+      if (!downRightInside) recordNeighborCountryAlong(ci, x, y, 1, 1);
 
       // Top edge (inside is below) => left -> right
       if (upDiff) addEdge(ci, { x: x - h, y: y - h }, { x: x + h, y: y - h });
