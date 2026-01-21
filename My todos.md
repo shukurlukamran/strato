@@ -4,6 +4,7 @@
 - When a city is captured, other cities neighboring it becomes unattackable.
 - City transfer mechanism in Deal Chat (analyze and see what can be exchanged or agreed with the current state of the game but doesn't exist in the deal chat's implementation capabilities)
 - Find out what other stages are left in the full implementation of Military and cities plan
+- AI countries should do deals between each-other (we should have a plan somewhere on this)
 
 
 - Resource usage (actions should use resources and each resource should at least have one use case)
