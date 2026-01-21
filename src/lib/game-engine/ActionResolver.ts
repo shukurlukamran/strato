@@ -2,6 +2,8 @@ import type { GameAction } from "@/types/actions";
 import type { CountryStats } from "@/types/country";
 import { GameState } from "@/lib/game-engine/GameState";
 import { ECONOMIC_BALANCE } from "./EconomicBalance";
+import { CombatResolver } from "./CombatResolver";
+import { CityTransfer } from "./CityTransfer";
 
 export class ActionResolver {
   /**
@@ -18,6 +20,10 @@ export class ActionResolver {
     return Math.floor(600 * Math.pow(1.3, currentLevel)); // Slightly cheaper
   }
 
+  /**
+   * Resolve an action (including combat for attack actions)
+   * Returns the updated action with results
+   */
   resolve(state: GameState, action: GameAction): GameAction {
     if (!state.data.countryStatsByCountryId[action.countryId]) {
       return { ...action, status: "failed" };

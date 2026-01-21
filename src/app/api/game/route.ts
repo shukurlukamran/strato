@@ -4,6 +4,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { CountryInitializer } from "@/lib/game-engine/CountryInitializer";
 import { CityGenerator } from "@/lib/game-engine/CityGenerator";
 import { TerritoryGenerator } from "@/lib/game-engine/TerritoryGenerator";
+import { ResourceProduction } from "@/lib/game-engine/ResourceProduction";
 import type { Country, CountryStats } from "@/types/country";
 
 const CreateGameSchema = z.object({
@@ -212,10 +213,20 @@ export async function POST(req: Request) {
         createdAt: now,
       };
       
+      // Calculate per-turn production for this country (NOT the stockpile)
+      const production = ResourceProduction.calculateProduction(country, countryStats);
+      const perTurnProduction: Record<string, number> = {};
+      for (const res of production.resources) {
+        if (res.amount > 0) {
+          perTurnProduction[res.resourceId] = res.amount;
+        }
+      }
+      
       const cities = CityGenerator.generateCitiesForCountry(
         country,
         countryStats,
-        territoryPath
+        territoryPath,
+        perTurnProduction // Pass per-turn production instead of stockpile
       );
       
       allCities.push(...cities.map(city => ({

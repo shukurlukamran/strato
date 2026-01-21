@@ -38,12 +38,12 @@ export function CityTooltip({ city, country, canAttack, onAttack, onClose, posit
 
   return (
     <div 
-      className="fixed z-50 w-80 max-h-[90vh] overflow-y-auto rounded-lg border border-slate-700 bg-slate-800/95 shadow-2xl backdrop-blur-sm"
+      className="fixed z-50 w-80 max-h-[80vh] overflow-y-auto rounded-lg border border-slate-700 bg-slate-800/95 shadow-2xl backdrop-blur-sm"
       style={position ? { 
         left: `${position.x}px`, 
         top: `${position.y}px`,
-        transform: 'translate(-50%, -120%)',
-        maxWidth: '90vw',
+        transform: 'translate(-50%, calc(-100% - 20px))', // Position above with 20px gap
+        maxWidth: 'min(90vw, 320px)',
       } : undefined}
     >
       {/* Header */}

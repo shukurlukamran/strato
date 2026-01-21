@@ -24,11 +24,13 @@ export class CityGenerator {
   
   /**
    * Generate cities for a country
+   * @param perTurnProduction - The country's per-turn resource production (NOT stockpile)
    */
   static generateCitiesForCountry(
     country: Country,
     stats: CountryStats,
-    territoryPath: string
+    territoryPath: string,
+    perTurnProduction?: Record<string, number>
   ): Omit<City, 'id' | 'createdAt'>[] {
     // 1. Calculate number of cities based on territory area
     const numCities = this.calculateCityCount(territoryPath);
@@ -48,8 +50,10 @@ export class CityGenerator {
     const sizes = this.generateCitySizes(numCities);
     
     // 5. Distribute resources and population
+    // Use per-turn production if provided, otherwise fall back to stockpile (for backward compatibility)
+    const resourcesToDistribute = perTurnProduction || stats.resources;
     const distributions = this.distributeResources(
-      stats.resources,
+      resourcesToDistribute,
       stats.population,
       sizes
     );

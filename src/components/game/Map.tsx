@@ -654,19 +654,18 @@ export function Map({
                       let screenX = svgRect.left + (city.positionX - viewBox.x) * scaleX;
                       let screenY = svgRect.top + (city.positionY - viewBox.y) * scaleY;
                       
-                      // Tooltip dimensions
+                      // Tooltip dimensions (max-height: 80vh = 0.8 * window.innerHeight)
                       const tooltipWidth = 320;
-                      const tooltipHeight = 300;
+                      const tooltipMaxHeight = window.innerHeight * 0.8;
                       const margin = 20;
                       
-                      // The tooltip uses transform: translate(-50%, -120%) by default
-                      // This means it's centered horizontally and positioned above the point
+                      // The tooltip uses transform: translate(-50%, calc(-100% - 20px))
+                      // This centers it horizontally and positions it 20px above the point
                       
-                      // Calculate where the tooltip edges will be with the default transform
+                      // Calculate where the tooltip edges will be
                       const tooltipLeft = screenX - tooltipWidth / 2;
                       const tooltipRight = screenX + tooltipWidth / 2;
-                      const tooltipTop = screenY - tooltipHeight * 1.2; // -120% transform
-                      const tooltipBottom = screenY - tooltipHeight * 0.2;
+                      const tooltipTop = screenY - tooltipMaxHeight - 20; // Above with 20px gap
                       
                       // Adjust horizontally if needed
                       if (tooltipLeft < margin) {
@@ -679,9 +678,8 @@ export function Map({
                       
                       // Adjust vertically if needed
                       if (tooltipTop < margin) {
-                        // Too close to top - position below instead
-                        // Adjust screenY so that with -120% transform, tooltip appears below
-                        screenY = screenY + tooltipHeight + margin;
+                        // Too close to top - shift down to fit on screen
+                        screenY = tooltipMaxHeight + margin + 20;
                       }
                       
                       setTooltipPosition({ x: screenX, y: screenY });
