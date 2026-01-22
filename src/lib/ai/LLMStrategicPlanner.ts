@@ -424,19 +424,39 @@ Be strategic, realistic, and consider long-term implications.`;
       if (parsed.diplomacy && typeof parsed.diplomacy === 'object') {
         const uuidRegex =
           /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const uuidInStringRegex =
+          /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
         let warnedAboutNonIdKeys = false;
         for (const [country, stance] of Object.entries(parsed.diplomacy)) {
           if (["friendly", "neutral", "hostile"].includes(stance as string)) {
             // Prefer country IDs as keys (see prompt rules). If the model returns names,
             // we still keep them (best-effort) but log a warning for observability.
-            if (!uuidRegex.test(country) && !warnedAboutNonIdKeys) {
-              console.warn(
-                "[LLM Planner] Diplomacy keys should be country IDs; received non-UUID key(s). Example:",
-                country
-              );
-              warnedAboutNonIdKeys = true;
+            let key = country.trim();
+            if (!uuidRegex.test(key)) {
+              // Common model failure modes:
+              // - Trailing punctuation/characters: "<uuid>,", "<uuid>d"
+              // - Embedded IDs: "France (<uuid>)"
+              const match = key.match(uuidInStringRegex);
+              if (match?.[1]) {
+                const recovered = match[1];
+                if (!warnedAboutNonIdKeys && recovered !== key) {
+                  console.warn(
+                    "[LLM Planner] Normalized diplomacy key to UUID:",
+                    { original: country, normalized: recovered }
+                  );
+                  warnedAboutNonIdKeys = true;
+                }
+                key = recovered;
+              } else if (!warnedAboutNonIdKeys) {
+                console.warn(
+                  "[LLM Planner] Diplomacy keys should be country IDs; received non-UUID key(s). Example:",
+                  country
+                );
+                warnedAboutNonIdKeys = true;
+              }
             }
-            diplomaticStance[country] = stance as "friendly" | "neutral" | "hostile";
+
+            diplomaticStance[key] = stance as "friendly" | "neutral" | "hostile";
           }
         }
       }
