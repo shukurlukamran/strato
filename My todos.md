@@ -13,6 +13,7 @@
 - War should affect diplomatic stance
 - When attacking a city, in the slider, player can only max choose its current military amount, not the military strength (i guess tech, etc. boosts are applied in the combat resolution but if it is the case, it should be shown in the slider window too for clarity). It should be military strength. If you can't use your military strength while attacking or defending, what is the point of improving it with tech, etc.? The same logic should apply to AI countries and LLM attack and defense military allocation logic too. Also, check combat resolution logic to make sure it also aligns with this new method of calculation.
 - Pulsing red border or persistent indicator for isUnderAttack for cities
+- Include possible attack ideas and defense caution to LLM's strategic advices
 
 
 - Resource usage (actions should use resources and each resource should at least have one use case)
