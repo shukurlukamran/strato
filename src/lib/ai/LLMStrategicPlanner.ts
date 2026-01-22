@@ -96,7 +96,8 @@ PROFILES:
 
 export class LLMStrategicPlanner {
   private apiKey: string | null = null;
-  private apiUrl: string = "https://api.perplexity.ai/chat/completions";
+  private apiUrl: string = "https://api.groq.com/openai/v1/chat/completions";
+  private modelName: string = "llama-3.3-70b-versatile"; // Groq's best general model
   private costTracking: LLMCostTracking;
   private lastAnalysisCache: Map<string, LLMStrategicAnalysis> = new Map();
   
@@ -111,12 +112,12 @@ export class LLMStrategicPlanner {
   }
   
   constructor() {
-    this.apiKey = process.env.PERPLEXITY_API_KEY || null;
+    this.apiKey = process.env.GROQ_API_KEY || null;
     if (!this.apiKey) {
       console.warn("[LLM Planner] No API key found. LLM strategic planning will be disabled.");
-      console.warn("[LLM Planner] Set PERPLEXITY_API_KEY environment variable.");
+      console.warn("[LLM Planner] Set GROQ_API_KEY environment variable.");
     } else {
-      console.log("[LLM Planner] Using Perplexity Sonar standard for strategic planning");
+      console.log(`[LLM Planner] Using Groq ${this.modelName} for strategic planning`);
     }
     
     this.costTracking = {
@@ -166,7 +167,7 @@ export class LLMStrategicPlanner {
       // Build batch prompt with all countries
       const batchPrompt = this.buildBatchStrategicPrompt(state, countries);
       
-      // Single API call for all countries
+      // Single API call for all countries (Groq format - OpenAI-compatible)
       const response = await fetch(this.apiUrl, {
         method: "POST",
         headers: {
@@ -174,11 +175,11 @@ export class LLMStrategicPlanner {
           "Authorization": `Bearer ${this.apiKey}`
         },
         body: JSON.stringify({
-          model: "sonar",
+          model: this.modelName,
           messages: [
             {
               role: "system",
-              content: "You are a strategic AI advisor analyzing multiple nations in a turn-based strategy game. Provide strategic recommendations for EACH country in JSON array format."
+              content: "You are a strategic AI advisor analyzing multiple nations in a turn-based strategy game. Provide strategic recommendations for EACH country in valid JSON array format. Return ONLY the JSON array, no markdown, no explanations."
             },
             {
               role: "user",
@@ -186,26 +187,27 @@ export class LLMStrategicPlanner {
             }
           ],
           temperature: 0.3,
-          top_p: 0.7,
-          max_tokens: 4000  // More tokens needed for multiple countries
+          top_p: 0.95,
+          max_tokens: 8000,  // More tokens for multiple countries
+          response_format: { type: "json_object" }  // Force JSON output
         })
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`[LLM Planner] Perplexity API error: ${response.status} - ${errorText}`);
+        console.error(`[LLM Planner] Groq API error: ${response.status} - ${errorText}`);
         return results;
       }
 
       const data = await response.json();
       const responseText = data.choices?.[0]?.message?.content || "";
       
-      // Track costs
+      // Track costs (Groq pricing: ~$0.20 per 1M input tokens, ~$0.20 per 1M output tokens)
       const usage = data.usage || {};
       const inputTokens = usage.prompt_tokens || batchPrompt.length / 4;
       const outputTokens = usage.completion_tokens || responseText.length / 4;
-      const inputCost = (inputTokens / 1_000_000) * 1.0;
-      const outputCost = (outputTokens / 1_000_000) * 1.0;
+      const inputCost = (inputTokens / 1_000_000) * 0.20;  // Groq input pricing
+      const outputCost = (outputTokens / 1_000_000) * 0.20;  // Groq output pricing
       
       this.costTracking.totalCalls++;
       this.costTracking.totalInputTokens += inputTokens;
@@ -281,12 +283,12 @@ export class LLMStrategicPlanner {
     
     try {
       const startTime = Date.now();
-      console.log(`[LLM Planner] 🤖 Calling Perplexity Sonar for strategic analysis (Turn ${state.turn})`);
+      console.log(`[LLM Planner] 🤖 Calling Groq for strategic analysis (Turn ${state.turn})`);
       
       // Build context-rich prompt
       const prompt = this.buildStrategicPrompt(state, countryId, stats);
       
-      // Call Perplexity API (optimized: temperature 0.3 for faster generation)
+      // Call Groq API (OpenAI-compatible format)
       const response = await fetch(this.apiUrl, {
         method: "POST",
         headers: {
@@ -294,11 +296,11 @@ export class LLMStrategicPlanner {
           "Authorization": `Bearer ${this.apiKey}`
         },
         body: JSON.stringify({
-          model: "sonar",
+          model: this.modelName,
           messages: [
             {
               role: "system",
-              content: "You are a strategic AI advisor for a nation in a turn-based strategy game. Analyze the situation and provide strategic recommendations in JSON format only."
+              content: "You are a strategic AI advisor for a nation in a turn-based strategy game. Analyze the situation and provide strategic recommendations in valid JSON format only. Return ONLY the JSON object, no markdown, no explanations."
             },
             {
               role: "user",
@@ -306,26 +308,27 @@ export class LLMStrategicPlanner {
             }
           ],
           temperature: 0.3,  // Lower = faster, more deterministic
-          top_p: 0.7,        // Lower = faster sampling
-          max_tokens: 1500   // Reduced from 2000
+          top_p: 0.95,
+          max_tokens: 2000,
+          response_format: { type: "json_object" }  // Force JSON output
         })
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`[LLM Planner] Perplexity API error: ${response.status} - ${errorText}`);
+        console.error(`[LLM Planner] Groq API error: ${response.status} - ${errorText}`);
         return null;
       }
 
       const data = await response.json();
       const responseText = data.choices?.[0]?.message?.content || "";
       
-      // Track costs (estimate based on Perplexity Sonar pricing)
+      // Track costs (Groq pricing: ~$0.20 per 1M tokens for input/output)
       const usage = data.usage || {};
       const inputTokens = usage.prompt_tokens || prompt.length / 4;
       const outputTokens = usage.completion_tokens || responseText.length / 4;
-      const inputCost = (inputTokens / 1_000_000) * 1.0; // $1 per 1M input tokens
-      const outputCost = (outputTokens / 1_000_000) * 1.0; // $1 per 1M output tokens
+      const inputCost = (inputTokens / 1_000_000) * 0.20; // Groq input pricing
+      const outputCost = (outputTokens / 1_000_000) * 0.20; // Groq output pricing
       
       this.costTracking.totalCalls++;
       this.costTracking.totalInputTokens += inputTokens;
@@ -334,7 +337,7 @@ export class LLMStrategicPlanner {
       this.costTracking.lastCallTimestamp = new Date().toISOString();
       
       const duration = Date.now() - startTime;
-      console.log(`[LLM Planner] ✓ Analysis complete in ${duration}ms`);
+      console.log(`[LLM Planner] ✓ Analysis complete in ${duration}ms (Groq ${this.modelName})`);
       console.log(`[LLM Planner] 💰 Cost: $${(inputCost + outputCost).toFixed(6)} (Input: ${inputTokens.toFixed(0)} tokens, Output: ${outputTokens.toFixed(0)} tokens)`);
       console.log(`[LLM Planner] 💰 Total session cost: $${this.costTracking.estimatedCost.toFixed(4)} (${this.costTracking.totalCalls} calls)`);
       
@@ -402,7 +405,7 @@ export class LLMStrategicPlanner {
       
       return analysis;
     } catch (error) {
-      console.error("[LLM Planner] Error calling Perplexity:", error);
+      console.error("[LLM Planner] Error calling Groq:", error);
       if (error instanceof Error) {
         console.error("[LLM Planner] Error details:", error.message);
       }
@@ -699,23 +702,25 @@ Plan ${this.LLM_CALL_FREQUENCY} turns (2-3 actions/turn). Use "when" to pace.
 COUNTRIES TO ANALYZE:
 ${countryPrompts}
 
-Return JSON ARRAY with one analysis per country:
-[
-  {
-    "countryId": "${countries[0].countryId}",
-    "focus": "economy"|"military"|"research"|"balanced",
-    "rationale": "Why (max 100 chars)",
-    "threats": "Key threats",
-    "opportunities": "Key opportunities",
-    "action_plan": [
-      {"id":"tech_l2","instruction":"Tech→L2","priority":1,"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
-      {"id":"infra_l2","instruction":"Infra→L2","priority":2,"when":{"budget_gte":1000},"execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}},
-      {"id":"recruit_45","instruction":"Recruit→45","priority":3,"when":{"tech_level_gte":2},"stop_when":{"military_strength_gte":45},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}}
-    ],
-    "diplomacy":{"neighbor_id":"neutral"},
-    "confidence":0.9
-  }
-]
+Return JSON OBJECT with "countries" array containing one analysis per country:
+{
+  "countries": [
+    {
+      "countryId": "${countries[0].countryId}",
+      "focus": "economy"|"military"|"research"|"balanced",
+      "rationale": "Why (max 100 chars)",
+      "threats": "Key threats",
+      "opportunities": "Key opportunities",
+      "action_plan": [
+        {"id":"tech_l2","instruction":"Tech→L2","priority":1,"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
+        {"id":"infra_l2","instruction":"Infra→L2","priority":2,"when":{"budget_gte":1000},"execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}},
+        {"id":"recruit_45","instruction":"Recruit→45","priority":3,"when":{"tech_level_gte":2},"stop_when":{"military_strength_gte":45},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}}
+      ],
+      "diplomacy":{"neighbor_id":"neutral"},
+      "confidence":0.9
+    }
+  ]
+}
 
 RULES: 6-8 steps, ALL executable (tech/infra/recruit/attack), use "when" for pacing, NO passive steps`;
   }
@@ -743,11 +748,14 @@ RULES: 6-8 steps, ALL executable (tech/infra/recruit/attack), use "when" for pac
       }
       cleanedResponse = cleanedResponse.trim();
       
-      // Parse JSON array
-      const parsedArray = JSON.parse(cleanedResponse);
+      // Parse JSON (Groq returns wrapped object format)
+      const parsedObject = JSON.parse(cleanedResponse);
+      
+      // Extract countries array from wrapper object
+      const parsedArray = parsedObject.countries || parsedObject;
       
       if (!Array.isArray(parsedArray)) {
-        console.error("[LLM Planner] Expected JSON array for batch response");
+        console.error("[LLM Planner] Expected countries array in batch response, got:", typeof parsedArray);
         return results;
       }
       
