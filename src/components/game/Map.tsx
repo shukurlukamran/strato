@@ -157,6 +157,7 @@ function mergeIntervals(intervals: Array<[number, number]>, eps = 1e-6): Array<[
 function buildSharedCityTilingForCountry(
   countryCities: City[],
   allCountries: Country[],
+  allCities: City[],
   ownCountryId: string,
   territoryPath: string,
   resolution = CITY_TILING_RESOLUTION,
@@ -190,18 +191,23 @@ function buildSharedCityTilingForCountry(
   const mapWidth = 100;
   const mapHeight = 80;
 
+  // FIXED: Use city positions instead of country centers for border detection
+  // This ensures border detection aligns with territory generation (which uses cities)
   const nearestCountryId = (x: number, y: number): string | null => {
     let bestId: string | null = null;
     let bestD = Infinity;
-    for (const c of allCountries) {
-      const dx = x - c.positionX;
-      const dy = y - c.positionY;
+    
+    // Check distance to all cities to find which country owns this point
+    for (const city of allCities) {
+      const dx = x - city.positionX;
+      const dy = y - city.positionY;
       const d = dx * dx + dy * dy;
       if (d < bestD) {
         bestD = d;
-        bestId = c.id;
+        bestId = city.countryId;
       }
     }
+    
     return bestId;
   };
 
@@ -444,7 +450,7 @@ export function Map({
       if (countryCities.length === 0) continue;
 
       const { cityPathById: byId, internalBordersPath, borderNeighborCountryIdsByCityId: byCityNeighbor } =
-        buildSharedCityTilingForCountry(countryCities, countries, country.id, territoryPath);
+        buildSharedCityTilingForCountry(countryCities, countries, cities, country.id, territoryPath);
       for (const [id, d] of byId.entries()) cityPathById.set(id, d);
       for (const [cityId, neighborSet] of byCityNeighbor.entries()) borderNeighborCountryIdsByCityId.set(cityId, neighborSet);
       if (internalBordersPath) borderParts.push(internalBordersPath);

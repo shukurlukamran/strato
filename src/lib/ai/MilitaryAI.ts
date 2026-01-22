@@ -5,6 +5,7 @@ import type { City } from "@/types/city";
 import { RuleBasedAI } from "./RuleBasedAI";
 import { DefaultPersonality, type AIPersonality } from "./Personality";
 import { calculateCityValue } from "@/types/city";
+import { MilitaryCalculator } from "@/lib/game-engine/MilitaryCalculator";
 
 /**
  * Military AI Decision Maker
@@ -114,11 +115,12 @@ export class MilitaryAI {
 
     if (neighboringCities.length === 0) return null;
 
-    // Check if we have minimum military strength and budget
+    // Check if we have minimum effective military strength and budget
+    const effectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(stats);
     const minMilitaryStrength = 50;
     const minBudget = 200; // Base attack cost + some buffer
     
-    if (stats.militaryStrength < minMilitaryStrength || remainingBudget < minBudget) {
+    if (effectiveStrength < minMilitaryStrength || remainingBudget < minBudget) {
       return null; // Not strong enough or can't afford to attack
     }
 
@@ -206,13 +208,17 @@ export class MilitaryAI {
     intent: StrategyIntent,
     remainingBudget: number
   ): GameAction | null {
+    // Calculate effective strength for attacker
+    const attackerEffectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(stats);
+    
     // Evaluate each potential target (works for both AI and player cities)
     const targets = neighboringCities.map(city => {
       const defenderStats = state.countryStatsByCountryId[city.countryId];
       if (!defenderStats) return null;
 
+      const defenderEffectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(defenderStats);
       const cityValue = calculateCityValue(city);
-      const strengthRatio = stats.militaryStrength / defenderStats.militaryStrength;
+      const strengthRatio = attackerEffectiveStrength / defenderEffectiveStrength;
       const techAdvantage = stats.technologyLevel - defenderStats.technologyLevel;
       
       // Calculate attack score (higher = better target)
@@ -259,12 +265,12 @@ export class MilitaryAI {
     // Only attack if we have reasonable chance (strength ratio > 0.8)
     if (bestTarget.strengthRatio < 0.8) return null;
 
-    // Decide allocation (30-70% of military strength)
+    // Decide allocation (30-70% of EFFECTIVE military strength)
     const adjustedPersonality = this.adjustPersonalityForIntent(intent);
     const baseAllocation = 0.3 + (adjustedPersonality.aggression * 0.4);
-    const allocatedStrength = Math.floor(stats.militaryStrength * baseAllocation);
-    const minAllocation = Math.floor(stats.militaryStrength * 0.3);
-    const maxAllocation = Math.floor(stats.militaryStrength * 0.7);
+    const allocatedStrength = Math.floor(attackerEffectiveStrength * baseAllocation);
+    const minAllocation = Math.floor(attackerEffectiveStrength * 0.3);
+    const maxAllocation = Math.floor(attackerEffectiveStrength * 0.7);
     const finalAllocation = Math.max(minAllocation, Math.min(maxAllocation, allocatedStrength));
 
     // Calculate cost
@@ -376,10 +382,12 @@ export class MilitaryAI {
     stats: any
   ): string {
     const country = state.countries.find(c => c.id === countryId);
+    const effectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(stats);
     
     const cityDescriptions = targetCities.map((city, index) => {
       const owner = state.countries.find(c => c.id === city.countryId);
       const ownerStats = state.countryStatsByCountryId[city.countryId];
+      const ownerEffectiveStrength = ownerStats ? MilitaryCalculator.calculateEffectiveMilitaryStrength(ownerStats) : 0;
       const cityValue = calculateCityValue(city);
       const resourceList = Object.entries(city.perTurnResources)
         .map(([resource, amount]) => `${resource}: ${amount}/turn`)
@@ -390,17 +398,17 @@ ${index + 1}. ${city.name} (Owner: ${owner?.name || "Unknown"})
    - Population: ${city.population.toLocaleString()}
    - Resources: ${resourceList || "None"}
    - Strategic Value: ${cityValue} points
-   - Owner Military: ${ownerStats?.militaryStrength || 0}
+   - Owner Military: ${ownerEffectiveStrength} (effective strength with tech bonuses)
    - Owner Tech Level: ${ownerStats?.technologyLevel || 0}`;
     }).join("\n");
 
     return `You are a military strategist deciding whether to attack an enemy city.
 
 YOUR COUNTRY: ${country?.name || "Unknown"}
-- Total Military Strength: ${stats.militaryStrength}
+- Total Military Strength: ${effectiveStrength} (effective strength with tech bonuses)
 - Technology Level: ${stats.technologyLevel}
 - Budget: $${stats.budget.toLocaleString()}
-- Available for Attack: ${Math.floor(stats.militaryStrength * 0.3)} - ${Math.floor(stats.militaryStrength * 0.7)} strength
+- Available for Attack: ${Math.floor(effectiveStrength * 0.3)} - ${Math.floor(effectiveStrength * 0.7)} strength
 
 POTENTIAL TARGETS:
 ${cityDescriptions}
@@ -456,7 +464,9 @@ Your decision:`;
       if (!city) return null;
 
       const percentage = Math.max(30, Math.min(70, decision.allocation_percent || 50));
-      const allocatedStrength = Math.floor(stats.militaryStrength * (percentage / 100));
+      // Use effective strength for allocation
+      const effectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(stats);
+      const allocatedStrength = Math.floor(effectiveStrength * (percentage / 100));
 
       return { city, allocatedStrength };
     } catch (error) {

@@ -60,10 +60,12 @@ export class DefenseAI {
     defenderStats: CountryStats,
     attackerStats: CountryStats
   ): number {
-    const totalDefenderStrength = defenderStats.militaryStrength;
+    // Use effective strength (includes tech bonuses)
+    const defenderEffectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(defenderStats);
+    const attackerEffectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(attackerStats);
     
-    if (totalDefenderStrength < 10) {
-      return totalDefenderStrength; // Use everything if very weak
+    if (defenderEffectiveStrength < 10) {
+      return defenderEffectiveStrength; // Use everything if very weak
     }
     
     // Calculate city value relative to total country value
@@ -73,8 +75,8 @@ export class DefenseAI {
     // Base allocation based on city importance (20-70%)
     let baseAllocation = 0.2 + (cityPopulationRatio * 0.5);
     
-    // Adjust based on attacker's total strength
-    const strengthRatio = attackerStats.militaryStrength / defenderStats.militaryStrength;
+    // Adjust based on attacker's total strength (using effective strength)
+    const strengthRatio = attackerEffectiveStrength / defenderEffectiveStrength;
     
     if (strengthRatio > 2.0) {
       // Attacker is much stronger - commit more to defend
@@ -97,7 +99,7 @@ export class DefenseAI {
     // Clamp to reasonable range (30-80%)
     const finalAllocation = Math.max(0.3, Math.min(0.8, baseAllocation));
     
-    return Math.floor(totalDefenderStrength * finalAllocation);
+    return Math.floor(defenderEffectiveStrength * finalAllocation);
   }
 
   /**
@@ -116,10 +118,11 @@ export class DefenseAI {
       const response = await this.callLLM(prompt);
       const percentage = this.parseDefensePercentage(response);
       
-      // Convert percentage to actual strength
-      const allocatedStrength = Math.floor(defenderStats.militaryStrength * (percentage / 100));
+      // Convert percentage to actual effective strength
+      const defenderEffectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(defenderStats);
+      const allocatedStrength = Math.floor(defenderEffectiveStrength * (percentage / 100));
       
-      console.log(`[DefenseAI LLM] Defending ${city.name}: ${percentage}% (${allocatedStrength} strength)`);
+      console.log(`[DefenseAI LLM] Defending ${city.name}: ${percentage}% (${allocatedStrength} effective strength)`);
       
       return allocatedStrength;
     } catch (error) {
@@ -140,6 +143,9 @@ export class DefenseAI {
     const defenderCountry = state.countries.find(c => c.id === city.countryId);
     const attackerCountry = state.countries.find(c => c.id === attackerStats.countryId);
     
+    const defenderEffectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(defenderStats);
+    const attackerEffectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(attackerStats);
+    
     const resourceList = Object.entries(city.perTurnResources)
       .map(([resource, amount]) => `${resource}: ${amount}/turn`)
       .join(", ");
@@ -147,7 +153,7 @@ export class DefenseAI {
     return `You are defending your city from an enemy attack. You must decide what percentage of your military to commit to defense.
 
 YOUR COUNTRY: ${defenderCountry?.name || "Unknown"}
-- Total Military Strength: ${defenderStats.militaryStrength}
+- Total Military Strength: ${defenderEffectiveStrength} (effective strength with tech bonuses)
 - Technology Level: ${defenderStats.technologyLevel}
 - Budget: $${defenderStats.budget.toLocaleString()}
 - Population: ${defenderStats.population.toLocaleString()}
@@ -158,7 +164,7 @@ CITY UNDER ATTACK: ${city.name}
 - Strategic Value: ${this.calculateCityValue(city).toFixed(0)} points
 
 ATTACKER: ${attackerCountry?.name || "Unknown"}
-- Total Military Strength: ${attackerStats.militaryStrength}
+- Total Military Strength: ${attackerEffectiveStrength} (effective strength with tech bonuses)
 - Technology Level: ${attackerStats.technologyLevel}
 - Note: You do NOT know how much strength they allocated for this attack
 

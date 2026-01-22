@@ -344,13 +344,16 @@ export function CountryCard({
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={handleProposeDeal}
-          className="w-full rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:from-blue-500 hover:to-blue-600 hover:shadow-xl active:scale-95"
-        >
-          Propose Deal
-        </button>
+        {/* Only show Propose Deal button for other countries, not player's own country */}
+        {!country.isPlayerControlled && (
+          <button
+            type="button"
+            onClick={handleProposeDeal}
+            className="w-full rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-all hover:from-blue-500 hover:to-blue-600 hover:shadow-xl active:scale-95"
+          >
+            Propose Deal
+          </button>
+        )}
       </div>
 
       {showChat && typeof window !== "undefined" && createPortal(

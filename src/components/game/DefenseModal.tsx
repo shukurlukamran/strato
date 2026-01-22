@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { City } from "@/types/city";
 import type { Country, CountryStats } from "@/types/country";
+import { MilitaryCalculator } from "@/lib/game-engine/MilitaryCalculator";
 
 interface DefenseModalProps {
   gameId: string;
@@ -29,15 +30,22 @@ export function DefenseModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Calculate effective military strength (includes tech bonuses)
+  const effectiveMilitaryStrength = useMemo(() => {
+    return MilitaryCalculator.calculateEffectiveMilitaryStrength(defenderStats);
+  }, [defenderStats]);
+
   const allocatedStrength = useMemo(() => {
-    const base = Math.floor(defenderStats.militaryStrength * (percent / 100));
-    return Math.max(1, Math.min(defenderStats.militaryStrength, base));
-  }, [defenderStats.militaryStrength, percent]);
+    const base = Math.floor(effectiveMilitaryStrength * (percent / 100));
+    return Math.max(1, Math.min(effectiveMilitaryStrength, base));
+  }, [effectiveMilitaryStrength, percent]);
 
   // Estimate success probability (defender doesn't know attacker's allocation)
   // This is just an estimate based on total military strength
   const estimatedSuccessChance = useMemo(() => {
-    const strengthRatio = defenderStats.militaryStrength / attackerStats.militaryStrength;
+    const defenderEffective = MilitaryCalculator.calculateEffectiveMilitaryStrength(defenderStats);
+    const attackerEffective = MilitaryCalculator.calculateEffectiveMilitaryStrength(attackerStats);
+    const strengthRatio = defenderEffective / attackerEffective;
     // Defender has 20% terrain advantage
     const adjustedRatio = strengthRatio * 1.2;
     
@@ -48,7 +56,7 @@ export function DefenseModal({
     if (adjustedRatio >= 0.8) return 45;
     if (adjustedRatio >= 0.6) return 35;
     return 25;
-  }, [defenderStats.militaryStrength, attackerStats.militaryStrength]);
+  }, [defenderStats, attackerStats]);
 
   const submitDefense = async () => {
     if (submitting) return;
@@ -117,13 +125,27 @@ export function DefenseModal({
             <div className="rounded border border-white/10 bg-slate-800/50 p-3">
               <div className="text-xs text-white/60">Defender (You)</div>
               <div className="mt-1 font-semibold text-white">{defenderCountry.name}</div>
-              <div className="mt-1 text-xs text-white/70">Military: {defenderStats.militaryStrength}</div>
+              <div className="mt-1 text-xs text-white/70">
+                Military: {effectiveMilitaryStrength}
+                {defenderStats.technologyLevel > 0 && (
+                  <span className="ml-1 text-green-400">
+                    (+{MilitaryCalculator.getTechMilitaryBonus(defenderStats.technologyLevel).toFixed(0)}%)
+                  </span>
+                )}
+              </div>
               <div className="mt-1 text-xs text-white/70">City: {defendingCity.name}</div>
             </div>
             <div className="rounded border border-white/10 bg-slate-800/50 p-3">
               <div className="text-xs text-white/60">Attacker</div>
               <div className="mt-1 font-semibold text-white">{attackerCountry.name}</div>
-              <div className="mt-1 text-xs text-white/70">Total Military: {attackerStats.militaryStrength}</div>
+              <div className="mt-1 text-xs text-white/70">
+                Total Military: {MilitaryCalculator.calculateEffectiveMilitaryStrength(attackerStats)}
+                {attackerStats.technologyLevel > 0 && (
+                  <span className="ml-1 text-green-400">
+                    (+{MilitaryCalculator.getTechMilitaryBonus(attackerStats.technologyLevel).toFixed(0)}%)
+                  </span>
+                )}
+              </div>
               <div className="mt-1 text-xs text-white/50 italic">
                 Allocation: Unknown
               </div>

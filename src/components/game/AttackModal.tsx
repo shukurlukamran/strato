@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { City } from "@/types/city";
 import type { Country, CountryStats } from "@/types/country";
+import { MilitaryCalculator } from "@/lib/game-engine/MilitaryCalculator";
 
 interface AttackModalProps {
   gameId: string;
@@ -29,10 +30,15 @@ export function AttackModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Calculate effective military strength (includes tech bonuses)
+  const effectiveMilitaryStrength = useMemo(() => {
+    return MilitaryCalculator.calculateEffectiveMilitaryStrength(attackerStats);
+  }, [attackerStats]);
+
   const allocatedStrength = useMemo(() => {
-    const base = Math.floor(attackerStats.militaryStrength * (percent / 100));
-    return Math.max(1, Math.min(attackerStats.militaryStrength, base));
-  }, [attackerStats.militaryStrength, percent]);
+    const base = Math.floor(effectiveMilitaryStrength * (percent / 100));
+    return Math.max(1, Math.min(effectiveMilitaryStrength, base));
+  }, [effectiveMilitaryStrength, percent]);
 
   const cost = useMemo(() => {
     // Phase 3 (from plan): 100 + (10 per strength point allocated)
@@ -98,13 +104,27 @@ export function AttackModal({
             <div className="rounded border border-white/10 bg-slate-800/50 p-3">
               <div className="text-xs text-white/60">Attacker</div>
               <div className="mt-1 font-semibold text-white">{attackerCountry.name}</div>
-              <div className="mt-1 text-xs text-white/70">Military: {attackerStats.militaryStrength}</div>
+              <div className="mt-1 text-xs text-white/70">
+                Military: {effectiveMilitaryStrength}
+                {attackerStats.technologyLevel > 0 && (
+                  <span className="ml-1 text-green-400">
+                    (+{MilitaryCalculator.getTechMilitaryBonus(attackerStats.technologyLevel).toFixed(0)}%)
+                  </span>
+                )}
+              </div>
               <div className="mt-1 text-xs text-white/70">Budget: ${Number(attackerStats.budget).toLocaleString()}</div>
             </div>
             <div className="rounded border border-white/10 bg-slate-800/50 p-3">
               <div className="text-xs text-white/60">Defender</div>
               <div className="mt-1 font-semibold text-white">{defenderCountry.name}</div>
-              <div className="mt-1 text-xs text-white/70">Military: {defenderStats.militaryStrength}</div>
+              <div className="mt-1 text-xs text-white/70">
+                Military: {MilitaryCalculator.calculateEffectiveMilitaryStrength(defenderStats)}
+                {defenderStats.technologyLevel > 0 && (
+                  <span className="ml-1 text-green-400">
+                    (+{MilitaryCalculator.getTechMilitaryBonus(defenderStats.technologyLevel).toFixed(0)}%)
+                  </span>
+                )}
+              </div>
               <div className="mt-1 text-xs text-white/70">City: {targetCity.name}</div>
             </div>
           </div>
