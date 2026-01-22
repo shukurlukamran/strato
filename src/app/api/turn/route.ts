@@ -542,78 +542,65 @@ export async function POST(req: Request) {
                     }
                   });
                 }
-              }
             }
-            
+
             // Calculate tech modifiers for transparency (20% per tech level)
             const attackerTechBonus = (attackerStats.technologyLevel || 0) * 0.20; // 20% per level
             const defenderTechBonus = (defenderStats.technologyLevel || 0) * 0.20;
             const defenseTerrainBonus = 0.2; // 20% defender advantage
             
-            // Create history event for successful capture with detailed combat breakdown
-            const attackEffective = Math.floor(actionData.allocatedStrength * (1 + attackerTechBonus));
-            const defenseEffective = Math.floor(combatResult.defenderAllocation * (1 + defenderTechBonus + defenseTerrainBonus));
-            
-            combatEvents.push({
-              type: "action.military.capture",
-              message: `⚔️ ${attackerCountry.name} captured ${city.name} from ${defenderCountry.name}!\n` +
-                `• Attack: ${actionData.allocatedStrength} (effective: ${attackEffective} with +${(attackerTechBonus * 100).toFixed(0)}% tech)\n` +
-                `• Defense: ${combatResult.defenderAllocation} (effective: ${defenseEffective} with +${(defenderTechBonus * 100).toFixed(0)}% tech + 20% terrain)\n` +
-                `• Losses: ${attackerCountry.name} -${combatResult.attackerLosses}, ${defenderCountry.name} -${combatResult.defenderLosses}`,
-              data: {
-                attackerId,
-                defenderId,
-                cityId: targetCityId,
-                cityName: city.name,
-                attackerAllocation: actionData.allocatedStrength,
-                defenderAllocation: combatResult.defenderAllocation,
-                attackerEffective: attackEffective,
-                defenderEffective: defenseEffective,
-                attackerLosses: combatResult.attackerLosses,
-                defenderLosses: combatResult.defenderLosses,
-                captured: true
-              }
-            });
-          } else {
-            // Defense successful - just clear attack flag
-            await supabase
-              .from("cities")
-              .update({ is_under_attack: false })
-              .eq("id", targetCityId);
-            
-            // Calculate tech modifiers for transparency (20% per tech level)
-            const attackerTechBonus = (attackerStats.technologyLevel || 0) * 0.20; // 20% per level
-            const defenderTechBonus = (defenderStats.technologyLevel || 0) * 0.20;
-            const defenseTerrainBonus = 0.2; // 20% defender advantage
-            
-            // Create history event for failed capture with detailed combat breakdown
-            const attackEffective = Math.floor(actionData.allocatedStrength * (1 + attackerTechBonus));
-            const defenseEffective = Math.floor(combatResult.defenderAllocation * (1 + defenderTechBonus + defenseTerrainBonus));
-            const strengthRatio = (attackEffective / defenseEffective).toFixed(2);
-            
-            combatEvents.push({
-              type: "action.military.defense",
-              message: `🛡️ ${defenderCountry.name} defended ${city.name} against ${attackerCountry.name}!\n` +
-                `• Attack: ${actionData.allocatedStrength} (effective: ${attackEffective} with +${(attackerTechBonus * 100).toFixed(0)}% tech)\n` +
-                `• Defense: ${combatResult.defenderAllocation} (effective: ${defenseEffective} with +${(defenderTechBonus * 100).toFixed(0)}% tech + 20% terrain)\n` +
-                `• Ratio: ${strengthRatio}:1 (defender advantage prevailed)\n` +
-                `• Losses: ${attackerCountry.name} -${combatResult.attackerLosses}, ${defenderCountry.name} -${combatResult.defenderLosses}`,
-              data: {
-                attackerId,
-                defenderId,
-                cityId: targetCityId,
-                cityName: city.name,
-                attackerAllocation: actionData.allocatedStrength,
-                defenderAllocation: combatResult.defenderAllocation,
-                attackerEffective: attackEffective,
-                defenderEffective: defenseEffective,
-                strengthRatio: parseFloat(strengthRatio),
-                attackerLosses: combatResult.attackerLosses,
-                defenderLosses: combatResult.defenderLosses,
-                captured: false
-              }
-            });
+            if (combatResult.attackerWins) {
+              const attackEffective = Math.floor(actionData.allocatedStrength * (1 + attackerTechBonus));
+              const defenseEffective = Math.floor(combatResult.defenderAllocation * (1 + defenderTechBonus + defenseTerrainBonus));
+              combatEvents.push({
+                type: "action.military.capture",
+                message: `⚔️ ${attackerCountry.name} captured ${city.name} from ${defenderCountry.name}!\n` +
+                  `• Attack: ${actionData.allocatedStrength} (effective: ${attackEffective} with +${(attackerTechBonus * 100).toFixed(0)}% tech)\n` +
+                  `• Defense: ${combatResult.defenderAllocation} (effective: ${defenseEffective} with +${(defenderTechBonus * 100).toFixed(0)}% tech + 20% terrain)\n` +
+                  `• Losses: ${attackerCountry.name} -${combatResult.attackerLosses}, ${defenderCountry.name} -${combatResult.defenderLosses}`,
+                data: {
+                  attackerId,
+                  defenderId,
+                  cityId: targetCityId,
+                  cityName: city.name,
+                  attackerAllocation: actionData.allocatedStrength,
+                  defenderAllocation: combatResult.defenderAllocation,
+                  attackerEffective: attackEffective,
+                  defenderEffective: defenseEffective,
+                  attackerLosses: combatResult.attackerLosses,
+                  defenderLosses: combatResult.defenderLosses,
+                  captured: true
+                }
+              });
+            } else {
+              const attackEffective = Math.floor(actionData.allocatedStrength * (1 + attackerTechBonus));
+              const defenseEffective = Math.floor(combatResult.defenderAllocation * (1 + defenderTechBonus + defenseTerrainBonus));
+              const strengthRatio = (attackEffective / defenseEffective).toFixed(2);
+              combatEvents.push({
+                type: "action.military.defense",
+                message: `🛡️ ${defenderCountry.name} defended ${city.name} against ${attackerCountry.name}!\n` +
+                  `• Attack: ${actionData.allocatedStrength} (effective: ${attackEffective} with +${(attackerTechBonus * 100).toFixed(0)}% tech)\n` +
+                  `• Defense: ${combatResult.defenderAllocation} (effective: ${defenseEffective} with +${(defenderTechBonus * 100).toFixed(0)}% tech + 20% terrain)\n` +
+                  `• Ratio: ${strengthRatio}:1 (defender advantage prevailed)\n` +
+                  `• Losses: ${attackerCountry.name} -${combatResult.attackerLosses}, ${defenderCountry.name} -${combatResult.defenderLosses}`,
+                data: {
+                  attackerId,
+                  defenderId,
+                  cityId: targetCityId,
+                  cityName: city.name,
+                  attackerAllocation: actionData.allocatedStrength,
+                  defenderAllocation: combatResult.defenderAllocation,
+                  attackerEffective: attackEffective,
+                  defenderEffective: defenseEffective,
+                  strengthRatio: parseFloat(strengthRatio),
+                  attackerLosses: combatResult.attackerLosses,
+                  defenderLosses: combatResult.defenderLosses,
+                  captured: false
+                }
+              });
+            }
           }
+
         }
       } else {
         // City not found - just clear the attack flag if it exists
