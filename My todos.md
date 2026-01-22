@@ -1,9 +1,6 @@
 (DO NOT TOUCH THIS FILE. THIS FILE IS FOR MY PERSONAL NOTES.)
 
-- History log says: "⚔️⚔️ Aurum captured Timbuktu from Dravon! • Attack: 45 (effective: 81 with +80% tech) • Defense: 4 (effective: 5 with +20% tech + 20% terrain) • Losses: Aurum -11, Dravon -1"
 
-The reality is that Aurum attacked with 45 strength not with 45 military units. I don't know if history log is wrong or the combat resolution calculation is also wrong.
-- This is another problematic calculation from history log: "🛡️🛡️ Dravon defended Dravon against Aurum! • Attack: 90 (effective: 144 with +60% tech) • Defense: 52 (effective: 72 with +20% tech + 20% terrain) • Ratio: 2.00:1 (defender advantage prevailed) • Losses: Aurum -55, Dravon -18"
 - As seen from this log (jan 23 02:16:41), Player (Aurum) was attacked but its defense was automatically chosen by system, and player didn't decide defense strength. 
 
 - Resource usage (actions should use resources and each resource should at least have one use case)

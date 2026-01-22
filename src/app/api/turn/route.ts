@@ -622,6 +622,11 @@ export async function POST(req: Request) {
               const attackStrength = actionData.allocatedStrength;
               const defenseStrength = combatResult.defenderAllocation;
               
+              // CRITICAL FIX: Show the ACTUAL ratio used in combat (with terrain bonus applied)
+              const TERRAIN_BONUS = 1.2;
+              const adjustedDefenseStrength = defenseStrength * TERRAIN_BONUS;
+              const actualCombatRatio = (attackStrength / adjustedDefenseStrength).toFixed(2);
+              
               // Check if defender is player and didn't submit defense
               const hasPlayerDefense = actionData.defenseAllocation !== undefined && actionData.defenseAllocation !== null;
               const autoDefenseNote = (defenderCountry.isPlayerControlled && !hasPlayerDefense) 
@@ -633,6 +638,7 @@ export async function POST(req: Request) {
                 message: `⚔️⚔️ ${attackerCountry.name} captured ${city.name} from ${defenderCountry.name}!\n` +
                   `• Attack: ${attackStrength} (effective strength with +${(attackerTechBonus * 100).toFixed(0)}% tech)\n` +
                   `• Defense: ${defenseStrength} (effective strength with +${(defenderTechBonus * 100).toFixed(0)}% tech + 20% terrain)\n` +
+                  `• Combat Ratio: ${actualCombatRatio}:1\n` +
                   `• Losses: ${attackerCountry.name} -${combatResult.attackerLosses}, ${defenderCountry.name} -${combatResult.defenderLosses}${autoDefenseNote}`,
                 data: {
                   attackerId,
@@ -642,7 +648,7 @@ export async function POST(req: Request) {
                   attackerAllocation: attackStrength,
                   defenderAllocation: defenseStrength,
                   attackerEffective: attackStrength,
-                  defenderEffective: defenseStrength,
+                  defenderEffective: adjustedDefenseStrength,
                   attackerLosses: combatResult.attackerLosses,
                   defenderLosses: combatResult.defenderLosses,
                   captured: true
@@ -673,8 +679,11 @@ export async function POST(req: Request) {
               const attackStrength = actionData.allocatedStrength;
               const defenseStrength = combatResult.defenderAllocation;
               
-              // Ratio for display (note: CombatResolver applies additional 20% terrain bonus internally)
-              const strengthRatio = (attackStrength / defenseStrength).toFixed(2);
+              // CRITICAL FIX: Show the ACTUAL ratio used in combat (with terrain bonus applied)
+              // CombatResolver applies 20% terrain bonus: adjustedDefender = defenseStrength * 1.2
+              const TERRAIN_BONUS = 1.2;
+              const adjustedDefenseStrength = defenseStrength * TERRAIN_BONUS;
+              const actualCombatRatio = (attackStrength / adjustedDefenseStrength).toFixed(2);
               
               // Check if defender is player and didn't submit defense
               const hasPlayerDefense = actionData.defenseAllocation !== undefined && actionData.defenseAllocation !== null;
@@ -687,7 +696,7 @@ export async function POST(req: Request) {
                 message: `🛡️🛡️ ${defenderCountry.name} defended ${city.name} against ${attackerCountry.name}!\n` +
                   `• Attack: ${attackStrength} (effective strength with +${(attackerTechBonus * 100).toFixed(0)}% tech)\n` +
                   `• Defense: ${defenseStrength} (effective strength with +${(defenderTechBonus * 100).toFixed(0)}% tech + 20% terrain)\n` +
-                  `• Ratio: ${strengthRatio}:1 (defender advantage prevailed)\n` +
+                  `• Combat Ratio: ${actualCombatRatio}:1 (defender prevailed despite odds)\n` +
                   `• Losses: ${attackerCountry.name} -${combatResult.attackerLosses}, ${defenderCountry.name} -${combatResult.defenderLosses}${autoDefenseNote}`,
                 data: {
                   attackerId,
@@ -697,8 +706,8 @@ export async function POST(req: Request) {
                   attackerAllocation: attackStrength,
                   defenderAllocation: defenseStrength,
                   attackerEffective: attackStrength,
-                  defenderEffective: defenseStrength,
-                  strengthRatio: parseFloat(strengthRatio),
+                  defenderEffective: adjustedDefenseStrength,
+                  strengthRatio: parseFloat(actualCombatRatio),
                   attackerLosses: combatResult.attackerLosses,
                   defenderLosses: combatResult.defenderLosses,
                   captured: false
