@@ -1,6 +1,5 @@
 (DO NOT TOUCH THIS FILE. THIS FILE IS FOR MY PERSONAL NOTES.)
 
-- Come up with a plan on what and how should affect diplomatic relations between countries. For example, War should affect diplomatic relations between countries and also war initiator should lost some diplomatic score in the eyes of other countries. 
 - AI countries don't follow LLM's strategy advices. LLM gives strategy advices and plan every 5 turn and countries are expected to follow this advice for the next 5 turns. We still need to have rule-based logic as a fallback but LLM's advice should be followed mainly if it exists.
 
 - Optimize LLM on End turn to be faster.
