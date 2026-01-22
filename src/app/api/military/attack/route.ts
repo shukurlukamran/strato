@@ -52,7 +52,8 @@ export async function POST(req: Request) {
   if (attackerCities.length === 0) return NextResponse.json({ error: "Attacker has no cities" }, { status: 400 });
 
   // Check if target city is within attack range of at least one attacker city
-  const attackRange = 10; // Same as AI logic
+  // INCREASED from 10 to 15 to better match visual territory borders
+  const attackRange = 15;
   let isNeighbor = false;
   for (const attackerCity of attackerCities) {
     const distance = Math.sqrt(
@@ -70,10 +71,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Target city is not adjacent to your territory" }, { status: 400 });
   }
 
-  // Attacker stats (current turn)
+  // Attacker stats (current turn) - fetch full stats including technology level
   const statsRes = await supabase
     .from("country_stats")
-    .select("id, budget, military_strength")
+    .select("id, budget, military_strength, technology_level")
     .eq("country_id", attackerCountryId)
     .eq("turn", turn)
     .limit(1);
@@ -82,10 +83,18 @@ export async function POST(req: Request) {
 
   const stats = statsRes.data[0];
   const currentBudget = Number(stats.budget);
-  const currentStrength = Number(stats.military_strength);
+  
+  // FIXED: Calculate effective strength (includes tech bonuses) for validation
+  // This matches what the AttackModal uses for the slider
+  const rawStrength = Number(stats.military_strength);
+  const techLevel = Number(stats.technology_level) || 0;
+  const techEffectiveness = 1 + (techLevel * 0.20); // 20% per tech level
+  const effectiveStrength = Math.floor(rawStrength * techEffectiveness);
 
-  if (allocatedStrength > currentStrength) {
-    return NextResponse.json({ error: "Allocated strength exceeds current military strength" }, { status: 400 });
+  if (allocatedStrength > effectiveStrength) {
+    return NextResponse.json({ 
+      error: `Allocated strength (${allocatedStrength}) exceeds effective military strength (${effectiveStrength})` 
+    }, { status: 400 });
   }
 
   // Phase 3 cost model

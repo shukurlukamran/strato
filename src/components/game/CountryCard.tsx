@@ -338,6 +338,49 @@ export function CountryCard({
               <div className="text-xs text-white/60">{government}</div>
               <ResourceProfileBadge profile={stats.resourceProfile} />
             </div>
+            {/* Diplomatic Relations - only show for non-player countries */}
+            {!country.isPlayerControlled && playerCountryId && (
+              <div className="mt-2 flex items-center gap-2">
+                {(() => {
+                  // Get the player's stats to check their diplomatic relations
+                  const playerStats = playerCountryId ? stats : null;
+                  // Get the relation score from the selected country's perspective towards the player
+                  const relationScore = stats.diplomaticRelations?.[playerCountryId] ?? 50;
+                  
+                  // Determine status based on score
+                  let statusText = "Neutral";
+                  let statusColor = "text-gray-400";
+                  let statusIcon = "●";
+                  
+                  if (relationScore >= 70) {
+                    statusText = "Friendly";
+                    statusColor = "text-green-400";
+                    statusIcon = "●";
+                  } else if (relationScore >= 50) {
+                    statusText = "Neutral";
+                    statusColor = "text-gray-400";
+                    statusIcon = "●";
+                  } else if (relationScore >= 30) {
+                    statusText = "Cold";
+                    statusColor = "text-yellow-400";
+                    statusIcon = "●";
+                  } else {
+                    statusText = "Hostile";
+                    statusColor = "text-red-400";
+                    statusIcon = "●";
+                  }
+                  
+                  return (
+                    <>
+                      <span className={`text-xs ${statusColor}`}>{statusIcon}</span>
+                      <span className="text-xs text-white/70">
+                        Relations: <span className={statusColor}>{statusText}</span> ({relationScore}/100)
+                      </span>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
           </div>
           {country.isPlayerControlled && (
             <span className="text-xl text-yellow-400">⚜</span>

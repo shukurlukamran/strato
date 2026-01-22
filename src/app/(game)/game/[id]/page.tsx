@@ -16,6 +16,7 @@ import { AttackModal } from "@/components/game/AttackModal";
 import { DefenseModal } from "@/components/game/DefenseModal";
 import { AllProfilesInfo } from "@/components/game/AllProfilesInfo";
 import { HistoryLog } from "@/components/game/HistoryLog";
+import { DiplomaticRelationsModal } from "@/components/game/DiplomaticRelationsModal";
 import { useGameStore } from "@/lib/store/gameStore";
 
 type ApiGame = { id: string; name: string; current_turn: number; status: string; player_country_id: string };
@@ -67,6 +68,7 @@ export default function GamePage() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [showSidebar, setShowSidebar] = useState(true);
   const [showHistoryLog, setShowHistoryLog] = useState(true);
+  const [showDiplomacyModal, setShowDiplomacyModal] = useState(false);
   const [endingTurn, setEndingTurn] = useState(false);
   const [turnProcessing, setTurnProcessing] = useState(false);
   const [attackTargetCity, setAttackTargetCity] = useState<City | null>(null);
@@ -559,6 +561,15 @@ export default function GamePage() {
           >
             {endingTurn ? "Ending..." : "End Turn"}
           </button>
+          <button
+            type="button"
+            onClick={() => setShowDiplomacyModal(true)}
+            className="inline-flex items-center gap-1 rounded-full bg-blue-600/80 px-3 py-1 text-xs font-medium text-white hover:bg-blue-600 transition-colors"
+            title="View all diplomatic relations"
+          >
+            <span>🤝</span>
+            <span>Diplomacy</span>
+          </button>
           <AllProfilesInfo />
           <TurnIndicator turn={turn} />
         </div>
@@ -768,6 +779,16 @@ export default function GamePage() {
             setDefenseAttackerStats(null);
           }}
           onSubmitted={() => void refreshGameData()}
+        />
+      )}
+
+      {/* Diplomatic Relations Modal */}
+      {showDiplomacyModal && (
+        <DiplomaticRelationsModal
+          countries={countries}
+          statsByCountryId={statsByCountryId}
+          playerCountryId={playerCountryId}
+          onClose={() => setShowDiplomacyModal(false)}
         />
       )}
     </div>

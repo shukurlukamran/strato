@@ -175,8 +175,8 @@ export class MilitaryAI {
     const enemyCities = cities.filter(c => c.countryId !== attackerCountryId && !c.isUnderAttack);
 
     // Find cities that are "neighbors" - must be close to at least one attacker city
-    // REDUCED from 15 to 10 to better match visual border detection
-    const attackRange = 10; // More restrictive distance threshold
+    // Attack range: 15 (matches player attack validation and better reflects visual borders)
+    const attackRange = 15;
     
     const neighboring: City[] = [];
     for (const enemyCity of enemyCities) {
