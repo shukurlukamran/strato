@@ -303,32 +303,65 @@ TOP RESOURCES: ${Object.entries(stats.resources).sort((a, b) => b[1] - a[1]).sli
 NEIGHBORS:
 ${neighbors}
 
-What should ${country.name} do for the next ${this.LLM_CALL_FREQUENCY} turns?
+Create a ${this.LLM_CALL_FREQUENCY}-turn plan for ${country.name}.
 
-RESPOND WITH ONLY THIS JSON (no markdown, no text):
+CRITICAL: Countries can do 2-3 actions/turn. Use "when" conditions to pace steps across ${this.LLM_CALL_FREQUENCY} turns. Add budget gates so steps execute sequentially, not all at once.
+
+RESPOND WITH ONLY THIS JSON:
 {
   "focus": "economy"|"military"|"research"|"balanced",
-  "rationale": "Why this focus? (max 150 chars)",
-  "threats": "Specific threats with numbers",
-  "opportunities": "Specific opportunities with numbers",
+  "rationale": "Why? (max 120 chars)",
+  "threats": "Threats with numbers",
+  "opportunities": "Opportunities with numbers",
+  "constraints": [
+    {
+      "id": "avoid_spending_turn3",
+      "instruction": "If bankruptcy imminent, avoid expensive upgrades turn 3-4",
+      "effects": { "prohibit": ["research", "infrastructure"] }
+    }
+  ],
   "action_plan": [
     {
-      "id": "upgrade_tech_l3",
-      "instruction": "Upgrade Technology to Level 3",
+      "id": "upgrade_tech_l2",
+      "instruction": "Upgrade Technology to Level 2",
       "priority": 1,
-      "execution": { "actionType": "research", "actionData": { "targetLevel": 3 } }
+      "execution": { "actionType": "research", "actionData": { "targetLevel": 2 } }
     },
     {
       "id": "upgrade_infra_l2",
       "instruction": "Upgrade Infrastructure to Level 2",
       "priority": 2,
+      "when": { "budget_gte": 1000 },
       "execution": { "actionType": "economic", "actionData": { "subType": "infrastructure", "targetLevel": 2 } }
     },
     {
-      "id": "recruit_to_50",
-      "instruction": "Recruit to 50 strength",
+      "id": "recruit_to_45",
+      "instruction": "Recruit to 45 strength",
       "priority": 3,
-      "stop_when": { "military_strength_gte": 50 },
+      "when": { "tech_level_gte": 2 },
+      "stop_when": { "military_strength_gte": 45 },
+      "execution": { "actionType": "military", "actionData": { "subType": "recruit", "amount": 10 } }
+    },
+    {
+      "id": "upgrade_tech_l3",
+      "instruction": "Upgrade Technology to Level 3",
+      "priority": 4,
+      "when": { "budget_gte": 1500, "tech_level_gte": 2 },
+      "execution": { "actionType": "research", "actionData": { "targetLevel": 3 } }
+    },
+    {
+      "id": "upgrade_infra_l3",
+      "instruction": "Upgrade Infrastructure to Level 3",
+      "priority": 5,
+      "when": { "budget_gte": 1200 },
+      "execution": { "actionType": "economic", "actionData": { "subType": "infrastructure", "targetLevel": 3 } }
+    },
+    {
+      "id": "recruit_to_55",
+      "instruction": "Recruit to 55 strength",
+      "priority": 6,
+      "when": { "tech_level_gte": 3, "budget_gte": 800 },
+      "stop_when": { "military_strength_gte": 55 },
       "execution": { "actionType": "military", "actionData": { "subType": "recruit", "amount": 10 } }
     }
   ],
@@ -345,12 +378,14 @@ RESPOND WITH ONLY THIS JSON (no markdown, no text):
 }
 
 RULES:
-1. ONLY create EXECUTABLE steps (tech/infra upgrades, recruit, attack)
-2. NO passive steps (maintain, monitor, avoid, delay)
-3. ALL steps MUST have "execution" field with correct format
-4. Use exact examples above for format
-5. diplomacy keys = neighbor IDs (in parentheses)
-6. 3-5 steps max, prioritized by urgency`;
+1. Create 6-8 EXECUTABLE steps (tech/infra upgrade, recruit, attack ONLY)
+2. NO passive steps (maintain, monitor, avoid, delay, ensure, assess, continuously)
+3. ALL steps MUST have "execution" field with exact format from examples
+4. Use "when" to sequence steps across ${this.LLM_CALL_FREQUENCY} turns (budget_gte, tech_level_gte, military_strength_gte)
+5. Use "stop_when" for repeatable actions (recruit/attack)
+6. Set "constraints" only if critical (bankruptcy, war)
+7. Priority = execution order (1=first, 8=last)
+8. Spread actions: Countries do 2-3 actions/turn, so plan for ${this.LLM_CALL_FREQUENCY}×2 = ${this.LLM_CALL_FREQUENCY * 2} total actions minimum`;
   }
   
   /**
