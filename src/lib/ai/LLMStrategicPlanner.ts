@@ -95,7 +95,7 @@ PROFILES:
 `;
 
 export class LLMStrategicPlanner {
-  private apiKey: string = "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";
+  private apiKey: string | null = null;
   private apiUrl: string = "https://api.perplexity.ai/chat/completions";
   private costTracking: LLMCostTracking;
   private lastAnalysisCache: Map<string, LLMStrategicAnalysis> = new Map();
@@ -111,8 +111,10 @@ export class LLMStrategicPlanner {
   }
   
   constructor() {
+    this.apiKey = process.env.PERPLEXITY_API_KEY || null;
     if (!this.apiKey) {
       console.warn("[LLM Planner] No API key found. LLM strategic planning will be disabled.");
+      console.warn("[LLM Planner] Set PERPLEXITY_API_KEY environment variable.");
     } else {
       console.log("[LLM Planner] Using Perplexity Sonar standard for strategic planning");
     }
