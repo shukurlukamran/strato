@@ -2,6 +2,7 @@
 
 - Come up with a plan on what and how should affect diplomatic relations between countries. For example, War should affect diplomatic relations between countries and also war initiator should lost some diplomatic score in the eyes of other countries. 
 - AI countries don't follow LLM's strategy advices. LLM gives strategy advices and plan every 5 turn and countries are expected to follow this advice for the next 5 turns. We still need to have rule-based logic as a fallback but LLM's advice should be followed mainly if it exists.
+- Show Diplomatic relations with the country open on the left country info panel under its name. Also, somewhere on the UI, have a place where players can see diplomatic relations of all countries towards one another.
 
 - Optimize LLM on End turn to be faster.
 - Resource usage (actions should use resources and each resource should at least have one use case)
