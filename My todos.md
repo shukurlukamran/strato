@@ -1,14 +1,11 @@
 (DO NOT TOUCH THIS FILE. THIS FILE IS FOR MY PERSONAL NOTES.)
 
-- When a city is captured, many other cities neighboring it becomes unattackable.
 - War should affect diplomatic stance
 - AI countries don't follow LLM's strategy advices.
 - Optimize LLM on End turn to be faster.
-- When attacking a city, in the slider, player can only max choose its current military amount, not the military strength (i guess tech, etc. boosts are applied in the combat resolution but if it is the case, it should be shown in the slider window too for clarity). It should be military strength. If you can't use your military strength while attacking or defending, what is the point of improving it with tech, etc.? The same logic should apply to AI countries and LLM attack and defense military allocation logic too. Also, check combat resolution logic to make sure it also aligns with this new method of calculation.
 - Resource usage (actions should use resources and each resource should at least have one use case)
 - Prevent cheating in the chat deals (you can get money for technology level now, but tech level isn't actually transferred, for example)
 - Prevent abuse in the LLM chat (It shouldn't be possible to use it for anything unrelated to game - we also need to have some hard limits to prevent spamming, but this limit shouldn't interrupt gameplay. And negotiations may even cost some small money in the game to slightly discourage people to overuse it unnecessarily - Come up with a rational fair plan)
-- Player shouldn't be able to see the "Propose Deal" button for their own country, it should only be shown for other countries.
 - Borders are sometimes messed up, especially when cities are captured. Sometimes there are some blank areas that doesn't belong to any country. We need to make these super defined with almost no place for error. 
 
 - City transfer mechanism in Deal Chat (analyze and see what can be exchanged or agreed with the current state of the game but doesn't exist in the deal chat's implementation capabilities)
