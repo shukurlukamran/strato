@@ -83,48 +83,17 @@ export interface LLMCostTracking {
  * UPDATED: Economic redesign - Tech and Infra have distinct roles
  */
 const CACHED_GAME_RULES = `
-GAME MECHANICS (v2.0 - Redesign):
+EXECUTABLE ACTIONS (only these can be done):
+1. TECHNOLOGY UPGRADE: Boosts production (1.25x→3.0x) & military (+20%/level). Cost: 800×1.35^level×profile
+2. INFRASTRUCTURE UPGRADE: Boosts tax (+12%/level) & capacity (200k+50k×level). Cost: 700×1.30^level×profile
+3. RECRUIT MILITARY: Add strength. Cost: 50/point
+4. ATTACK CITY: Conquer enemies (risky)
 
-TECHNOLOGY (Production & Military):
-- Resource Production: Base × techMultiplier × profileModifiers
-- Tech Multipliers: L0=1.0x, L1=1.25x, L2=1.6x, L3=2.0x, L4=2.5x, L5=3.0x
-- Military Effectiveness: +20% per level (Level 3 = 60% stronger army)
-- Military Cost: -5% per level (max -25%)
-- Upgrade Cost: 800 × 1.35^level × profileMod (varies by profile)
-
-INFRASTRUCTURE (Capacity & Admin):
-- Tax Collection: +12% per level (ONLY infra affects tax, NOT tech!)
-- Population Capacity: 200k + (50k × level). OVERCROWDING if exceeded = -50% growth, -20% tax
-- Trade Capacity: 2 + level (max deals per turn)
-- Trade Efficiency: +10% per level
-- Maintenance: 35 per level per turn
-- Upgrade Cost: 700 × 1.30^level × profileMod
-
-BUDGET:
-- Tax: Population/10k × 12 × infraBonus × capacityPenalty × profileMod
-- Military Upkeep: 0.8 per strength
-- Maintenance: 1% of treasury
-
-PROFILE COST MODIFIERS:
-- Tech Hub: 0.75x tech, 0.90x military (cheap tech & army)
-- Industrial: 0.80x infra, 1.10x trade (cheap infrastructure)
-- Coastal Hub: 0.85x infra, 1.25x trade (trade powerhouse)
-- Agriculture/Mining: 1.15x tech (expensive, focus resources)
-- Precious Metals: 1.20x everything (wealthy but inefficient)
-
-KEY CHANGES:
-- Tech NO LONGER affects tax! Only production & military
-- Infra NO LONGER affects production! Only capacity & admin
-- Population caps force infra investment
-- Profiles significantly affect upgrade costs
-- Military tech bonus makes Level 3+ armies much stronger
-
-STRATEGIC PRIORITIES:
-- Tech Hub: Rush tech for production & military advantage
-- Industrial/Coastal: Build infra for trade & capacity
-- Resource Nations: Export resources to afford expensive upgrades
-- Watch population capacity! Overcrowding hurts growth & economy
-- Military power scales with tech - Level 3+ makes big difference
+PROFILES:
+- Tech Hub: 0.75x tech, 0.90x military
+- Industrial: 0.80x infra
+- Coastal: 0.85x infra
+- Others: 1.0-1.2x
 `;
 
 export class LLMStrategicPlanner {
@@ -320,99 +289,68 @@ export class LLMStrategicPlanner {
     
     return `${CACHED_GAME_RULES}
 
-STRATEGIC ANALYSIS REQUEST:
+STRATEGIC ADVISOR FOR: ${country.name} (Turn ${state.turn})
 
-You are the strategic advisor for ${country.name}, an AI-controlled nation in a turn-based strategy game.
-Analyze the current situation and provide high-level strategic guidance.
+STATS:
+Pop: ${stats.population.toLocaleString()} | Budget: $${stats.budget.toLocaleString()} | Tech: L${stats.technologyLevel} | Infra: L${stats.infrastructureLevel || 0} | Mil: ${stats.militaryStrength}
+Profile: ${stats.resourceProfile?.name || "Balanced"}
 
-CURRENT SITUATION (Turn ${state.turn}):
+ECONOMY:
+Income: $${economicAnalysis.netIncome}/turn | ${economicAnalysis.isUnderDefended ? 'UNDER-DEFENDED' : 'Defended OK'} | ${economicAnalysis.turnsUntilBankrupt !== null ? `Bankruptcy: ${economicAnalysis.turnsUntilBankrupt}t` : 'Stable'}
 
-YOUR NATION: ${country.name}
-- Population: ${stats.population.toLocaleString()}
-- Budget: $${stats.budget.toLocaleString()}
-- Technology: Level ${stats.technologyLevel}/5
-- Infrastructure: Level ${stats.infrastructureLevel || 0}/10
-- Military: ${stats.militaryStrength} strength
-- Resource Profile: ${stats.resourceProfile?.name || "Balanced Nation"}
-
-ECONOMIC HEALTH:
-- Net Income: $${economicAnalysis.netIncome}/turn
-- Food Balance: ${economicAnalysis.foodBalance > 0 ? '+' : ''}${economicAnalysis.foodBalance} (${economicAnalysis.foodBalance > 0 ? 'surplus' : 'deficit'})
-- Research ROI: ${economicAnalysis.researchROI} turns
-- Infrastructure ROI: ${economicAnalysis.infrastructureROI} turns
-- Military Status: ${economicAnalysis.isUnderDefended ? 'UNDER-DEFENDED' : 'adequate'} (deficit: ${economicAnalysis.militaryDeficit})
-
-RESOURCES:
-${Object.entries(stats.resources).map(([resource, amount]) => `- ${resource}: ${amount}`).join('\n')}
+TOP RESOURCES: ${Object.entries(stats.resources).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([r, amt]) => `${r}:${amt}`).join(' | ')}
 
 NEIGHBORS:
 ${neighbors}
 
-THREAT ASSESSMENT:
-- Bankruptcy risk: ${economicAnalysis.turnsUntilBankrupt !== null ? `HIGH (${economicAnalysis.turnsUntilBankrupt} turns)` : 'Low'}
-- Food crisis: ${economicAnalysis.foodTurnsRemaining !== null ? `HIGH (${economicAnalysis.foodTurnsRemaining} turns)` : 'None'}
-- Military threat: ${economicAnalysis.isUnderDefended ? 'MEDIUM-HIGH' : 'Low'}
-- Average neighbor strength: ${economicAnalysis.averageNeighborStrength}
+What should ${country.name} do for the next ${this.LLM_CALL_FREQUENCY} turns?
 
-STRATEGIC QUESTION:
-Given this situation, what should ${country.name}'s strategic focus be for the next ${this.LLM_CALL_FREQUENCY} turns?
-
-IMPORTANT: You must respond with ONLY valid JSON in the following exact format (no markdown, no extra text):
-
+RESPOND WITH ONLY THIS JSON (no markdown, no text):
 {
-  "focus": "economy" | "military" | "diplomacy" | "research" | "balanced",
-  "rationale": "One concise sentence explaining your strategic choice (max 150 characters)",
-  "threats": "Specific threats this country faces (e.g., 'Neighbor military 180 vs our 60, food shortage in 3 turns')",
-  "opportunities": "Specific opportunities to exploit (e.g., 'Excellent Research ROI of 15 turns, abundant iron resources')",
-  "constraints": [
-    {
-      "id": "no_spending_if_deficit",
-      "instruction": "Optional. If needed, express prohibitions like 'Avoid recruitment and tech upgrades for 5 turns'.",
-      "effects": { "prohibit": ["recruit", "research", "infrastructure", "attack"] }
-    }
-  ],
+  "focus": "economy"|"military"|"research"|"balanced",
+  "rationale": "Why this focus? (max 150 chars)",
+  "threats": "Specific threats with numbers",
+  "opportunities": "Specific opportunities with numbers",
   "action_plan": [
     {
-      "id": "unique_step_id_1",
-      "instruction": "Free-text strategic advice (NOT limited). Example: 'Recruit to reach 55 strength, then pause.'",
+      "id": "upgrade_tech_l3",
+      "instruction": "Upgrade Technology to Level 3",
       "priority": 1,
-      "when": { "tech_level_gte": 3 },
-      "stop_when": { "military_strength_gte": 55 },
-      "execution": {
-        "actionType": "military",
-        "actionData": { "subType": "recruit", "amount": 10 }
-      }
+      "execution": { "actionType": "research", "actionData": { "targetLevel": 3 } }
+    },
+    {
+      "id": "upgrade_infra_l2",
+      "instruction": "Upgrade Infrastructure to Level 2",
+      "priority": 2,
+      "execution": { "actionType": "economic", "actionData": { "subType": "infrastructure", "targetLevel": 2 } }
+    },
+    {
+      "id": "recruit_to_50",
+      "instruction": "Recruit to 50 strength",
+      "priority": 3,
+      "stop_when": { "military_strength_gte": 50 },
+      "execution": { "actionType": "military", "actionData": { "subType": "recruit", "amount": 10 } }
     }
   ],
-  "diplomacy": {
-${neighbors
+  "diplomacy": {${neighbors
   .split('\n')
   .filter(n => n.trim())
   .map(n => {
-    // Neighbor lines are formatted as: "- <Name> (<id>): ..."
     const match = n.match(/- .*\\(([^)]+)\\):/);
-    return match ? `    "${match[1].trim()}": "neutral"` : '';
+    return match ? `"${match[1].trim()}":"neutral"` : '';
   })
   .filter(Boolean)
-  .join(',\n')}
-  },
-  "confidence": 0.85
+  .join(',')}},
+  "confidence": 0.9
 }
 
-CRITICAL RULES:
-1. Return ONLY the JSON object (no markdown code blocks, no extra text)
-2. "action_plan" must contain 3-5 SPECIFIC, prioritized steps. Each step MUST have a stable unique "id".
-3. Steps are NOT restricted. If a step is not directly executable by the game engine, set "execution": null and keep the "instruction".
-3. "diplomacy" must include ALL neighbors listed above with stance: "friendly", "neutral", or "hostile"
-4. IMPORTANT: keys in "diplomacy" MUST be the NEIGHBOR COUNTRY IDs (the values inside parentheses), NOT country names
-5. "threats" and "opportunities" must be SPECIFIC with numbers and details
-6. "rationale" must be under 150 characters
-7. All text fields must be complete (not truncated)
-8. If you include "effects.prohibit", use short tokens like: recruit, research, infrastructure, attack. (But you may still describe nuanced exceptions in "instruction".)
-9. If a step's instruction uses conditional words like "after/once/when/if/following", you MUST provide a machine-readable "when".
-10. If a step is a target (e.g. "reach X strength" or "upgrade to Level Y"), you SHOULD provide "stop_when" so it can be checked off correctly.
-
-Be strategic, realistic, and consider long-term implications.`;
+RULES:
+1. ONLY create EXECUTABLE steps (tech/infra upgrades, recruit, attack)
+2. NO passive steps (maintain, monitor, avoid, delay)
+3. ALL steps MUST have "execution" field with correct format
+4. Use exact examples above for format
+5. diplomacy keys = neighbor IDs (in parentheses)
+6. 3-5 steps max, prioritized by urgency`;
   }
   
   /**
