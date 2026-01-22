@@ -2,6 +2,10 @@
 
 - AI countries don't follow LLM's strategy advices. LLM gives strategy advices and plan every 5 turn and countries are expected to follow this advice for the next 5 turns. We still need to have rule-based logic as a fallback but LLM's advice should be followed mainly if it exists.
 
+We already build some kind of cached plan that persists LLM plan for the next turns but it still doens't work at all. Make sure this cached plan includes action steps given by LLM and this plan is prioritized by countries. Or build it in another way if this isn't a good way to do it.
+- Diplomatic Stance in Vercel logs shows different than Diplomatic relations shown on the UI. UI one is correct. Check to see if there's any mismatch between these. We also wanna make sure to send correct diplomatic relations to LLM strategy planner.
+- In Diplomacy window, Other countries show "Cold" relation with Player country and that is correct, but the Player's country section shows neutral with those countries which in incorrect. There's some kind of inconsistency here.
+
 - Optimize LLM on End turn to be faster.
 - Resource usage (actions should use resources and each resource should at least have one use case)
 - Prevent cheating in the chat deals (you can get money for technology level now, but tech level isn't actually transferred, for example)
