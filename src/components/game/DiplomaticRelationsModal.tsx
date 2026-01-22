@@ -95,8 +95,21 @@ export function DiplomaticRelationsModal({
                       {sortedCountries
                         .filter((otherCountry) => otherCountry.id !== country.id)
                         .map((otherCountry) => {
-                          const relationScore =
-                            stats.diplomaticRelations?.[otherCountry.id] ?? 50;
+                          /**
+                           * IMPORTANT: Diplomatic relations are directional (A->B).
+                           *
+                           * The diplomacy window shows a per-country panel. For AI countries,
+                           * "Relations with X" means "this country -> X".
+                           *
+                           * For the Player country panel, users expect to see "how others view the player"
+                           * (since that’s what appears in each other country’s panel when you look at the player row).
+                           * Otherwise, missing player->other entries default to 50 and show "Neutral", creating
+                           * an apparent mismatch when other->player is "Cold/Hostile".
+                           */
+                          const otherStats = statsByCountryId[otherCountry.id];
+                          const relationScore = country.isPlayerControlled
+                            ? (otherStats?.diplomaticRelations?.[country.id] ?? 50) // other -> player
+                            : (stats.diplomaticRelations?.[otherCountry.id] ?? 50); // country -> other
                           const status = getRelationStatus(relationScore);
                           const bgColor = getRelationBgColor(relationScore);
 

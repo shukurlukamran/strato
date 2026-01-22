@@ -11,6 +11,7 @@ import type { CountryStats } from "@/types/country";
 import type { StrategyIntent } from "./StrategicPlanner";
 import { RuleBasedAI } from "./RuleBasedAI";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getDiplomaticScore } from "@/lib/game-engine/DiplomaticRelations";
 
 export interface LLMStrategicAnalysis {
   strategicFocus: "economy" | "military" | "diplomacy" | "research" | "balanced";
@@ -198,10 +199,32 @@ export class LLMStrategicPlanner {
       // Enhanced logging for development
       const country = state.countries.find(c => c.id === countryId);
       const countryName = country?.name || countryId;
+      const neighborDistance = 200;
+      const currentNeighborRelations = country
+        ? state.countries
+            .filter((c) => c.id !== countryId)
+            .map((other) => {
+              const dx = country.positionX - other.positionX;
+              const dy = country.positionY - other.positionY;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+              return { other, distance };
+            })
+            .filter(({ distance }) => distance < neighborDistance)
+            .map(({ other }) => {
+              const otherStats = state.countryStatsByCountryId[other.id];
+              const ourToThem = getDiplomaticScore(stats.diplomaticRelations, other.id);
+              const theirToUs = getDiplomaticScore(otherStats?.diplomaticRelations, countryId);
+              return `${other.name} (${other.id}): our→them ${ourToThem}/100, them→us ${theirToUs}/100`;
+            })
+        : [];
       console.log(`\n${'='.repeat(80)}`);
       console.log(`🤖 LLM STRATEGIC DECISION - Turn ${state.turn}`);
       console.log(`${'='.repeat(80)}`);
       console.log(`Country: ${countryName} (${countryId})`);
+      if (currentNeighborRelations.length > 0) {
+        console.log(`Current Diplomatic Relations (neighbors):`);
+        currentNeighborRelations.forEach((line) => console.log(`  - ${line}`));
+      }
       console.log(`Focus: ${analysis.strategicFocus.toUpperCase()}`);
       console.log(`Rationale: ${analysis.rationale}`);
       console.log(`Threats: ${analysis.threatAssessment}`);
@@ -210,7 +233,9 @@ export class LLMStrategicPlanner {
       analysis.recommendedActions.forEach((action, i) => {
         console.log(`  ${i + 1}. ${action}`);
       });
-      console.log(`Diplomatic Stance:`, analysis.diplomaticStance);
+      // Note: diplomaticStance is the LLM's recommended posture, which may differ from the game's
+      // current diplomatic relation scores shown in the UI. We log both to avoid confusion.
+      console.log(`LLM Diplomatic Stance (recommended):`, analysis.diplomaticStance);
       console.log(`Confidence: ${(analysis.confidenceScore * 100).toFixed(0)}%`);
       console.log(`Plan Valid Until: Turn ${state.turn + this.LLM_CALL_FREQUENCY - 1}`);
       console.log(`${'='.repeat(80)}\n`);
@@ -246,7 +271,7 @@ export class LLMStrategicPlanner {
     const economicAnalysis = RuleBasedAI.analyzeEconomicSituation(state, countryId, stats);
     
     // Get neighbor information
-    const neighbors = this.getNeighborsSummary(state, countryId);
+    const neighbors = this.getNeighborsSummary(state, countryId, stats);
     
     return `${CACHED_GAME_RULES}
 
@@ -302,10 +327,16 @@ IMPORTANT: You must respond with ONLY valid JSON in the following exact format (
     "Specific action 5 (optional)"
   ],
   "diplomacy": {
-${neighbors.split('\n').filter(n => n.trim()).map(n => {
-  const match = n.match(/- ([^:]+):/);
-  return match ? `    "${match[1].trim()}": "neutral"` : '';
-}).filter(Boolean).join(',\n')}
+${neighbors
+  .split('\n')
+  .filter(n => n.trim())
+  .map(n => {
+    // Neighbor lines are formatted as: "- <Name> (<id>): ..."
+    const match = n.match(/- .*\\(([^)]+)\\):/);
+    return match ? `    "${match[1].trim()}": "neutral"` : '';
+  })
+  .filter(Boolean)
+  .join(',\n')}
   },
   "confidence": 0.85
 }
@@ -314,9 +345,10 @@ CRITICAL RULES:
 1. Return ONLY the JSON object (no markdown code blocks, no extra text)
 2. "actions" must contain 3-5 SPECIFIC, actionable items (NOT "Continue balanced development")
 3. "diplomacy" must include ALL neighbors listed above with stance: "friendly", "neutral", or "hostile"
-4. "threats" and "opportunities" must be SPECIFIC with numbers and details
-5. "rationale" must be under 150 characters
-6. All text fields must be complete (not truncated)
+4. IMPORTANT: keys in "diplomacy" MUST be the NEIGHBOR COUNTRY IDs (the values inside parentheses), NOT country names
+5. "threats" and "opportunities" must be SPECIFIC with numbers and details
+6. "rationale" must be under 150 characters
+7. All text fields must be complete (not truncated)
 
 Be strategic, realistic, and consider long-term implications.`;
   }
@@ -324,7 +356,7 @@ Be strategic, realistic, and consider long-term implications.`;
   /**
    * Get summary of neighboring countries
    */
-  private getNeighborsSummary(state: GameStateSnapshot, countryId: string): string {
+  private getNeighborsSummary(state: GameStateSnapshot, countryId: string, stats: CountryStats): string {
     const country = state.countries.find(c => c.id === countryId);
     if (!country) return "None";
     
@@ -342,8 +374,11 @@ Be strategic, realistic, and consider long-term implications.`;
       if (distance < neighborDistance) {
         const otherStats = state.countryStatsByCountryId[otherCountry.id];
         if (otherStats) {
+          // IMPORTANT: Include real diplomatic relations so the LLM doesn't assume "neutral" incorrectly.
+          const ourToThem = getDiplomaticScore(stats.diplomaticRelations, otherCountry.id);
+          const theirToUs = getDiplomaticScore(otherStats.diplomaticRelations, countryId);
           neighbors.push(
-            `- ${otherCountry.name}: Military ${otherStats.militaryStrength}, Tech ${otherStats.technologyLevel}, Budget $${otherStats.budget.toLocaleString()}`
+            `- ${otherCountry.name} (${otherCountry.id}): Relations our→them ${ourToThem}/100, them→us ${theirToUs}/100, Military ${otherStats.militaryStrength}, Tech ${otherStats.technologyLevel}, Budget $${otherStats.budget.toLocaleString()}`
           );
         }
       }
@@ -387,8 +422,20 @@ Be strategic, realistic, and consider long-term implications.`;
       
       const diplomaticStance: Record<string, "friendly" | "neutral" | "hostile"> = {};
       if (parsed.diplomacy && typeof parsed.diplomacy === 'object') {
+        const uuidRegex =
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        let warnedAboutNonIdKeys = false;
         for (const [country, stance] of Object.entries(parsed.diplomacy)) {
           if (["friendly", "neutral", "hostile"].includes(stance as string)) {
+            // Prefer country IDs as keys (see prompt rules). If the model returns names,
+            // we still keep them (best-effort) but log a warning for observability.
+            if (!uuidRegex.test(country) && !warnedAboutNonIdKeys) {
+              console.warn(
+                "[LLM Planner] Diplomacy keys should be country IDs; received non-UUID key(s). Example:",
+                country
+              );
+              warnedAboutNonIdKeys = true;
+            }
             diplomaticStance[country] = stance as "friendly" | "neutral" | "hostile";
           }
         }
