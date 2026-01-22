@@ -31,3 +31,5 @@
 Analyze root causes of these, understand what is happening, and then implement fixes. 
 
 Make sure everything we build is aligned with LLM in both Deals chat and End turn decisions and anywhere else it may be used, and also with Supabase database.
+
+CRITICAL: Also, let me know which model is currently in use for building this task - I need this to be able to adjust the code properly while editing manually.
