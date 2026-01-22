@@ -23,6 +23,7 @@
 - Player can hire an advisor by clicking "Hire Advisor" button that can tell them what they can improve (the advisor will be the same logic with LLM for AI countries). It should work immediately without needing to end the turn. Advisor can be hired only once each turn.
 - Countries are able to sell their resources to black market at cheaper rates than they would be able to get via trading with other countries.
 - AI countries may have dictators who thinks of themselves more than the country, and potential revolutions, protests, anger of people, etc
+- AI countries can do more than one action a turn, don't force it but make sure the system allows for it when it makes sense to do so.
 -------
 
 Analyze root causes of these, understand what is happening, and then implement fixes. 
