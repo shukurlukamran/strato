@@ -15,6 +15,11 @@ export interface StrategyIntent {
     turnAnalyzed: number;
     validUntilTurn: number;
     recommendedActions: string[];
+    /**
+     * Steps already executed during this plan window (best-effort).
+     * Used to prevent repeating "do X additional" directives every turn.
+     */
+    executedSteps?: string[];
     diplomaticStance: Record<string, "friendly" | "neutral" | "hostile">;
     confidenceScore: number; // 0-1
   };
@@ -79,6 +84,18 @@ export class StrategicPlanner {
         ? freshLLMAnalysis
         : await this.llmPlanner.getActiveStrategicPlan(countryId, state.turn, state.gameId);
 
+      // Best-effort: determine which recommended steps already executed for this plan,
+      // to prevent repeating "do X additional" every single turn.
+      let executedSteps: string[] = [];
+      if (activePlan) {
+        const executed = await this.llmPlanner.getExecutedLLMStepsForPlan(
+          state.gameId,
+          countryId,
+          activePlan.turnAnalyzed
+        );
+        executedSteps = Array.from(executed);
+      }
+
       if (activePlan && !freshLLMAnalysis) {
         const planAge = state.turn - activePlan.turnAnalyzed;
         console.log(`[Strategic Planner] Country ${countryId}: Using cached LLM plan from turn ${activePlan.turnAnalyzed} (${planAge} turns ago)`);
@@ -89,7 +106,8 @@ export class StrategicPlanner {
         freshLLMAnalysis,
         ruleBasedIntent,
         state.turn,
-        activePlan ?? null
+        activePlan ?? null,
+        executedSteps
       );
     }
     

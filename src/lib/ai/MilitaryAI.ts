@@ -49,19 +49,22 @@ export class MilitaryAI {
     // PRIORITY: Follow LLM action steps (when present) before pure rule-based heuristics.
     const llmDirectives = this.extractLLMMilitaryDirectives(
       intent.llmPlan?.recommendedActions ?? [],
-      analysis
+      analysis,
+      stats.militaryStrength,
+      intent.llmPlan?.executedSteps ?? []
     );
 
     const criticalDefenseNeed = analysis.isUnderDefended && analysis.militaryDeficit > 20;
+    const hasLLMPlan = !!intent.llmPlan;
+    // If an LLM plan exists, do NOT "freestyle recruit" every turn.
+    // Recruit only when the LLM says so, or in critical defense emergencies.
     const allowRecruitment =
-      intent.focus === "military" ||
-      intent.focus === "balanced" ||
       criticalDefenseNeed ||
-      llmDirectives.recruit !== null;
+      llmDirectives.recruit !== null ||
+      (!hasLLMPlan && (intent.focus === "military" || intent.focus === "balanced"));
     const allowAttacks =
-      intent.focus === "military" ||
-      intent.focus === "balanced" ||
-      llmDirectives.forceAttack;
+      llmDirectives.forceAttack ||
+      (!hasLLMPlan && (intent.focus === "military" || intent.focus === "balanced"));
 
     // DECISION: Military recruitment
     const recruitAmount = allowRecruitment
@@ -77,7 +80,7 @@ export class MilitaryAI {
           a.turn === state.turn &&
           a.status === "pending" &&
           a.actionType === "military" &&
-          (a.actionData as any)?.subType === "recruit"
+          (a.actionData as Record<string, unknown>)?.subType === "recruit"
       );
       const finalRecruitAmount = alreadyHasRecruit ? 0 : Math.max(0, Math.floor(recruitAmount));
       const recruitCost = finalRecruitAmount * costPerStrength;
@@ -116,7 +119,7 @@ export class MilitaryAI {
         llmDirectives.attackRawStep
       );
       if (attackAction) {
-        const attackCost = (attackAction.actionData as any).cost || 0;
+        const attackCost = Number((attackAction.actionData as Record<string, unknown>)?.cost ?? 0);
         if (attackCost <= remainingBudget) {
           actions.push(attackAction);
           remainingBudget -= attackCost;
@@ -169,7 +172,7 @@ export class MilitaryAI {
     const hasPendingAttack = state.pendingActions.some(
       a => a.countryId === countryId && 
            a.actionType === "military" && 
-           (a.actionData as any)?.subType === "attack"
+           (a.actionData as Record<string, unknown>)?.subType === "attack"
     );
     if (hasPendingAttack) return null; // One attack per turn
 
@@ -200,8 +203,8 @@ export class MilitaryAI {
         forcedByLLM
       );
       if (action && forcedByLLM && llmAttackStep) {
-        (action.actionData as any).llmStep = llmAttackStep;
-        (action.actionData as any).llmPlanTurn = intent.llmPlan?.turnAnalyzed;
+        (action.actionData as Record<string, unknown>).llmStep = llmAttackStep;
+        (action.actionData as Record<string, unknown>).llmPlanTurn = intent.llmPlan?.turnAnalyzed;
       }
       return action;
     }
@@ -618,13 +621,16 @@ Your decision:`;
 
   private extractLLMMilitaryDirectives(
     rawSteps: string[],
-    analysis: ReturnType<typeof RuleBasedAI.analyzeEconomicSituation>
+    analysis: ReturnType<typeof RuleBasedAI.analyzeEconomicSituation>,
+    currentMilitaryStrength: number,
+    executedSteps: string[]
   ): {
     recruit: { amount: number; rawStep: string } | null;
     forceAttack: boolean;
     attackRawStep: string | null;
   } {
     const steps = Array.isArray(rawSteps) ? rawSteps : [];
+    const executed = new Set((executedSteps ?? []).map((s) => String(s ?? "").trim()).filter(Boolean));
 
     let recruit: { amount: number; rawStep: string } | null = null;
     let forceAttack = false;
@@ -635,11 +641,34 @@ Your decision:`;
       if (!step) continue;
 
       if (!recruit && this.looksLikeRecruitStep(step)) {
-        const parsed = this.extractFirstNumber(step);
-        const fallback =
-          analysis.militaryDeficit > 0 ? Math.min(25, Math.max(5, Math.ceil(analysis.militaryDeficit / 2))) : 10;
-        const amount = Math.max(0, Math.min(50, parsed ?? fallback));
-        recruit = { amount, rawStep: step };
+        // Case A: "reach X strength" (target-based) -> recruit only what's needed, stop once reached.
+        const target = this.extractTargetStrength(step);
+        if (target !== null) {
+          if (currentMilitaryStrength >= target) {
+            // Completed: move on to next advice
+            continue;
+          }
+          const needed = Math.max(0, target - currentMilitaryStrength);
+          const amount = Math.max(0, Math.min(50, needed));
+          if (amount > 0) {
+            recruit = { amount, rawStep: step };
+          }
+        } else {
+          // Case B: "recruit N additional" (amount-based, usually one-time per plan)
+          const parsed = this.extractFirstNumber(step);
+          const fallback =
+            analysis.militaryDeficit > 0 ? Math.min(25, Math.max(5, Math.ceil(analysis.militaryDeficit / 2))) : 10;
+          const isOneTime = /\b(additional|extra|more)\b/i.test(step);
+
+          if (isOneTime && executed.has(step)) {
+            continue; // already executed once for this plan
+          }
+
+          const amount = Math.max(0, Math.min(50, parsed ?? fallback));
+          if (amount > 0) {
+            recruit = { amount, rawStep: step };
+          }
+        }
       }
 
       if (!forceAttack && this.looksLikeAttackStep(step)) {
@@ -667,6 +696,23 @@ Your decision:`;
     const n = Number(match[1]);
     if (!Number.isFinite(n)) return null;
     return Math.floor(n);
+  }
+
+  private extractTargetStrength(step: string): number | null {
+    // Example formats:
+    // - "Recruit military units to reach 55 strength"
+    // - "Build up to 80 military strength"
+    const reach = step.match(/\b(?:reach|to)\s+(\d{1,3})\s*(?:military\s+)?strength\b/i);
+    if (reach?.[1]) {
+      const n = Number(reach[1]);
+      if (Number.isFinite(n)) return Math.floor(n);
+    }
+    const upTo = step.match(/\bup\s+to\s+(\d{1,3})\s*(?:military\s+)?strength\b/i);
+    if (upTo?.[1]) {
+      const n = Number(upTo[1]);
+      if (Number.isFinite(n)) return Math.floor(n);
+    }
+    return null;
   }
 
   /**

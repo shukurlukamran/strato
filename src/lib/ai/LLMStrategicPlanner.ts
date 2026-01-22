@@ -543,7 +543,8 @@ Be strategic, realistic, and consider long-term implications.`;
     llmAnalysis: LLMStrategicAnalysis | null,
     ruleBasedIntent: StrategyIntent,
     currentTurn: number,
-    activePlan: LLMStrategicAnalysis | null
+    activePlan: LLMStrategicAnalysis | null,
+    executedSteps: string[] = []
   ): StrategyIntent {
     const guidingAnalysis = llmAnalysis || activePlan;
     
@@ -568,10 +569,48 @@ Be strategic, realistic, and consider long-term implications.`;
         turnAnalyzed: guidingAnalysis.turnAnalyzed,
         validUntilTurn,
         recommendedActions: guidingAnalysis.recommendedActions ?? [],
+        executedSteps,
         diplomaticStance: guidingAnalysis.diplomaticStance ?? {},
         confidenceScore: guidingAnalysis.confidenceScore ?? 0.7,
       },
     };
+  }
+
+  /**
+   * Best-effort: fetch which LLM steps were already executed for this plan turn.
+   * Uses the `actions.action_data.llmPlanTurn` + `actions.action_data.llmStep` metadata we attach
+   * when creating AI actions.
+   */
+  async getExecutedLLMStepsForPlan(
+    gameId: string,
+    countryId: string,
+    planTurnAnalyzed: number
+  ): Promise<Set<string>> {
+    try {
+      const supabase = getSupabaseServerClient();
+      const res = await supabase
+        .from("actions")
+        .select("action_data,status")
+        .eq("game_id", gameId)
+        .eq("country_id", countryId)
+        .in("status", ["pending", "executed"])
+        // Postgres jsonb path query: action_data->>'llmPlanTurn'
+        .eq("action_data->>llmPlanTurn", String(planTurnAnalyzed))
+        .limit(200);
+
+      if (res.error || !res.data) return new Set();
+
+      const steps = new Set<string>();
+      for (const row of res.data as Array<{ action_data: unknown }>) {
+        const data = row.action_data as Record<string, unknown> | null;
+        const step = typeof data?.llmStep === "string" ? data.llmStep.trim() : "";
+        if (step) steps.add(step);
+      }
+      return steps;
+    } catch (error) {
+      console.warn("[LLM Planner] Failed to fetch executed LLM steps:", error);
+      return new Set();
+    }
   }
 
   async getActiveStrategicPlan(
