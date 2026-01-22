@@ -6,6 +6,7 @@ import { RuleBasedAI } from "./RuleBasedAI";
 import { DefaultPersonality, type AIPersonality } from "./Personality";
 import { calculateCityValue } from "@/types/city";
 import { MilitaryCalculator } from "@/lib/game-engine/MilitaryCalculator";
+import { extractLLMBans, extractNumberRange, isOneTimeStep } from "@/lib/ai/LLMPlanInterpreter";
 
 /**
  * Military AI Decision Maker
@@ -54,12 +55,14 @@ export class MilitaryAI {
       intent.llmPlan?.executedSteps ?? []
     );
 
+    const bans = extractLLMBans(intent.llmPlan?.recommendedActions ?? []);
+
     const criticalDefenseNeed = analysis.isUnderDefended && analysis.militaryDeficit > 20;
     const hasLLMPlan = !!intent.llmPlan;
     // If an LLM plan exists, do NOT "freestyle recruit" every turn.
     // Recruit only when the LLM says so, or in critical defense emergencies.
     const allowRecruitment =
-      criticalDefenseNeed ||
+      (!bans.banRecruitment && criticalDefenseNeed) ||
       llmDirectives.recruit !== null ||
       (!hasLLMPlan && (intent.focus === "military" || intent.focus === "balanced"));
     const allowAttacks =
@@ -71,7 +74,7 @@ export class MilitaryAI {
       ? (llmDirectives.recruit?.amount ?? RuleBasedAI.decideMilitaryRecruitment(stats, analysis, weights))
       : 0;
     
-    if (recruitAmount > 0) {
+    if (!bans.banRecruitment && recruitAmount > 0) {
       // Use STANDARDIZED cost: 50 budget per strength point (same as player)
       const costPerStrength = 50; // ECONOMIC_BALANCE.MILITARY.COST_PER_STRENGTH_POINT
       const alreadyHasRecruit = state.pendingActions.some(
@@ -655,12 +658,13 @@ Your decision:`;
           }
         } else {
           // Case B: "recruit N additional" (amount-based, usually one-time per plan)
-          const parsed = this.extractFirstNumber(step);
+          const range = extractNumberRange(step);
+          const parsed = range ? range.min : this.extractFirstNumber(step);
           const fallback =
             analysis.militaryDeficit > 0 ? Math.min(25, Math.max(5, Math.ceil(analysis.militaryDeficit / 2))) : 10;
-          const isOneTime = /\b(additional|extra|more)\b/i.test(step);
+          const oneTime = isOneTimeStep(step);
 
-          if (isOneTime && executed.has(step)) {
+          if (oneTime && executed.has(step)) {
             continue; // already executed once for this plan
           }
 
