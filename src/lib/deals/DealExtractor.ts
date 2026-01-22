@@ -317,6 +317,46 @@ If absolutely NO negotiation or deal discussion is happening, return: {"hasDeal"
 
 
   /**
+   * Simple pattern matching to detect if there's likely a deal without LLM
+   * Returns null if LLM is needed for proper extraction
+   */
+  private quickDealDetection(messages: ChatMessage[]): { hasDeal: boolean; confidence: number } {
+    const chatText = messages.map(m => m.messageText.toLowerCase()).join(' ');
+    
+    // No deal keywords at all - skip LLM
+    const dealKeywords = ['trade', 'deal', 'exchange', 'give', 'offer', 'alliance', 'agreement', 'pact'];
+    const hasDealKeywords = dealKeywords.some(kw => chatText.includes(kw));
+    
+    if (!hasDealKeywords) {
+      console.log('[DealExtractor] No deal keywords detected, skipping LLM call');
+      return { hasDeal: false, confidence: 0.9 };
+    }
+    
+    // Check for acceptance/confirmation keywords
+    const acceptanceKeywords = ['accept', 'agreed', 'deal', 'ok', 'sure', 'yes', 'sounds good', 'that works'];
+    const hasAcceptance = acceptanceKeywords.some(kw => chatText.includes(kw));
+    
+    // Check for rejection keywords
+    const rejectionKeywords = ['no', 'reject', 'decline', 'not interested', 'can\'t', 'won\'t', 'refuse'];
+    const hasRejection = rejectionKeywords.some(kw => chatText.includes(kw));
+    
+    // If explicit rejection, skip LLM
+    if (hasRejection && !hasAcceptance) {
+      console.log('[DealExtractor] Rejection detected, skipping LLM call');
+      return { hasDeal: false, confidence: 0.8 };
+    }
+    
+    // If just casual chat with deal keywords but no negotiation
+    if (messages.length < 2) {
+      console.log('[DealExtractor] Too few messages for deal negotiation, skipping LLM call');
+      return { hasDeal: false, confidence: 0.7 };
+    }
+    
+    // Likely has a deal - use LLM for proper extraction
+    return { hasDeal: true, confidence: 0.0 }; // 0 confidence means "use LLM"
+  }
+
+  /**
    * Extracts deal from chat conversation
    */
   async extractDealFromChat(
@@ -341,6 +381,14 @@ If absolutely NO negotiation or deal discussion is happening, return: {"hasDeal"
 
     if (context.chatMessages.length === 0) {
       console.log("DealExtractor: No messages in chat");
+      return null;
+    }
+    
+    // Quick pattern matching to avoid unnecessary LLM calls
+    const quickCheck = this.quickDealDetection(context.chatMessages);
+    if (!quickCheck.hasDeal && quickCheck.confidence > 0.6) {
+      // High confidence that there's no deal - skip LLM
+      console.log(`[DealExtractor] Quick detection: No deal (confidence: ${quickCheck.confidence}), saved API call`);
       return null;
     }
 

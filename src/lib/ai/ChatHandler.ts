@@ -302,7 +302,88 @@ Respond naturally and strategically.`;
     return messages;
   }
 
+  /**
+   * Rule-based response system for common messages (avoids LLM calls)
+   * Returns null if LLM is needed for complex response
+   */
+  private getRuleBasedResponse(messageText: string): string | null {
+    const lower = messageText.toLowerCase().trim();
+    
+    // Greetings
+    if (lower.match(/^(hi|hello|hey|greetings|good (morning|afternoon|evening))\.?$/)) {
+      const responses = [
+        "Greetings. How can I assist you?",
+        "Hello. What brings you to our diplomatic table?",
+        "Welcome. I'm listening.",
+        "Greetings. What matters do you wish to discuss?"
+      ];
+      return responses[Math.floor(Math.random() * responses.length)];
+    }
+    
+    // Simple affirmations
+    if (lower.match(/^(ok|okay|sure|fine|alright|sounds good|agreed|yes|yep|yeah)\.?$/)) {
+      const responses = [
+        "Understood.",
+        "Acknowledged.",
+        "Very well.",
+        "Noted."
+      ];
+      return responses[Math.floor(Math.random() * responses.length)];
+    }
+    
+    // Thanks
+    if (lower.match(/^(thanks|thank you|thx|ty|appreciated)\.?$/)) {
+      const responses = [
+        "You're welcome.",
+        "My pleasure.",
+        "Glad we could reach an understanding.",
+        "Anytime."
+      ];
+      return responses[Math.floor(Math.random() * responses.length)];
+    }
+    
+    // Goodbyes
+    if (lower.match(/^(bye|goodbye|see you|later|farewell|talk later)\.?$/)) {
+      const responses = [
+        "Farewell.",
+        "Until next time.",
+        "Goodbye.",
+        "Safe travels."
+      ];
+      return responses[Math.floor(Math.random() * responses.length)];
+    }
+    
+    // Simple questions that need LLM
+    // But we can provide basic responses for very simple queries
+    if (lower.match(/^(what|how|why|when|where)\s/)) {
+      return null; // Needs LLM for context-aware response
+    }
+    
+    // Deal/trade keywords - needs LLM for proper negotiation
+    if (lower.match(/(trade|deal|exchange|alliance|war|attack|military|resources?|budget)/)) {
+      return null; // Needs LLM for strategic response
+    }
+    
+    // Short messages (< 5 words) that aren't matched above might be simple
+    const wordCount = lower.split(/\s+/).length;
+    if (wordCount <= 2 && lower.length < 20) {
+      // Very short unmatched message - give generic acknowledgment
+      return "I understand. Please elaborate if you have specific proposals.";
+    }
+    
+    return null; // Needs LLM for complex response
+  }
+
   async respond(turn: ChatTurn): Promise<ChatResponse> {
+    // Try rule-based response first (avoids LLM call for simple messages)
+    const ruleBasedResponse = this.getRuleBasedResponse(turn.messageText);
+    if (ruleBasedResponse) {
+      console.log(`[ChatHandler] Using rule-based response (saved API call)`);
+      return {
+        messageText: ruleBasedResponse,
+      };
+    }
+    
     // If Gemini is not configured, use fallback
     if (!this.model) {
       console.error("ChatHandler: Gemini model not initialized. Check GOOGLE_GEMINI_API_KEY.");

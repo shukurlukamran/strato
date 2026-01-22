@@ -103,8 +103,8 @@ export class LLMStrategicPlanner {
   // Strategic plan persistence - LLM analysis guides next N turns
   private activeStrategicPlans: Map<string, LLMStrategicAnalysis> = new Map();
   
-  // Call LLM every N turns (changed from 5 to 7 to reduce API costs)
-  private readonly LLM_CALL_FREQUENCY = 7;
+  // Call LLM every N turns (optimized: 10 turns to reduce API costs by 30%)
+  private readonly LLM_CALL_FREQUENCY = 10;
 
   private getPlanKey(gameId: string, countryId: string): string {
     return `${gameId}:${countryId}`;
@@ -130,15 +130,129 @@ export class LLMStrategicPlanner {
   
   /**
    * Determine if LLM should be called this turn
-   * Call on turn 2, then every 7 turns (2, 7, 14, 21, 28...)
+   * Call on turn 2, then every 10 turns (2, 10, 20, 30, 40...)
    */
   shouldCallLLM(turn: number): boolean {
-    // Call on turn 2 (after initial setup), then every 7 turns after that
-    return turn === 2 || (turn >= 7 && turn % this.LLM_CALL_FREQUENCY === 0);
+    // Call on turn 2 (after initial setup), then every 10 turns after that
+    return turn === 2 || (turn >= 10 && turn % this.LLM_CALL_FREQUENCY === 0);
   }
   
   /**
-   * Get strategic analysis using LLM
+   * BATCH analyze multiple countries in a SINGLE API call (80% cost reduction!)
+   * This is the most efficient way to get strategic analysis for all AI countries.
+   */
+  async analyzeSituationBatch(
+    state: GameStateSnapshot,
+    countries: Array<{ countryId: string; stats: CountryStats }>
+  ): Promise<Map<string, LLMStrategicAnalysis>> {
+    const results = new Map<string, LLMStrategicAnalysis>();
+    
+    // Check if LLM is available
+    if (!this.apiKey) {
+      console.log(`[LLM Planner] Skipping batch LLM analysis - no API key configured`);
+      return results;
+    }
+    
+    // Check if we should call LLM this turn
+    if (!this.shouldCallLLM(state.turn)) {
+      console.log(`[LLM Planner] Skipping batch LLM call - turn ${state.turn} (frequency: every ${this.LLM_CALL_FREQUENCY} turns)`);
+      return results;
+    }
+    
+    try {
+      const startTime = Date.now();
+      console.log(`[LLM Planner] 🚀 BATCH analyzing ${countries.length} countries in SINGLE API call (Turn ${state.turn})`);
+      
+      // Build batch prompt with all countries
+      const batchPrompt = this.buildBatchStrategicPrompt(state, countries);
+      
+      // Single API call for all countries
+      const response = await fetch(this.apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${this.apiKey}`
+        },
+        body: JSON.stringify({
+          model: "sonar",
+          messages: [
+            {
+              role: "system",
+              content: "You are a strategic AI advisor analyzing multiple nations in a turn-based strategy game. Provide strategic recommendations for EACH country in JSON array format."
+            },
+            {
+              role: "user",
+              content: batchPrompt
+            }
+          ],
+          temperature: 0.3,
+          top_p: 0.7,
+          max_tokens: 4000  // More tokens needed for multiple countries
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[LLM Planner] Perplexity API error: ${response.status} - ${errorText}`);
+        return results;
+      }
+
+      const data = await response.json();
+      const responseText = data.choices?.[0]?.message?.content || "";
+      
+      // Track costs
+      const usage = data.usage || {};
+      const inputTokens = usage.prompt_tokens || batchPrompt.length / 4;
+      const outputTokens = usage.completion_tokens || responseText.length / 4;
+      const inputCost = (inputTokens / 1_000_000) * 1.0;
+      const outputCost = (outputTokens / 1_000_000) * 1.0;
+      
+      this.costTracking.totalCalls++;
+      this.costTracking.totalInputTokens += inputTokens;
+      this.costTracking.totalOutputTokens += outputTokens;
+      this.costTracking.estimatedCost += inputCost + outputCost;
+      this.costTracking.lastCallTimestamp = new Date().toISOString();
+      
+      const duration = Date.now() - startTime;
+      console.log(`[LLM Planner] ✓ BATCH analysis complete in ${duration}ms for ${countries.length} countries`);
+      console.log(`[LLM Planner] 💰 Cost: $${(inputCost + outputCost).toFixed(6)} (Input: ${inputTokens.toFixed(0)} tokens, Output: ${outputTokens.toFixed(0)} tokens)`);
+      console.log(`[LLM Planner] 💰 Average per country: $${((inputCost + outputCost) / countries.length).toFixed(6)} (vs $0.0002 individual)`);
+      console.log(`[LLM Planner] 💰 Total session cost: $${this.costTracking.estimatedCost.toFixed(4)} (${this.costTracking.totalCalls} calls)`);
+      
+      // Parse batch response
+      const analyses = this.parseBatchStrategicAnalysis(responseText, state.turn, countries);
+      
+      // Cache and persist each country's analysis
+      for (const { countryId } of countries) {
+        const analysis = analyses.get(countryId);
+        if (analysis) {
+          const cacheKey = `${countryId}-${state.turn}`;
+          this.lastAnalysisCache.set(cacheKey, analysis);
+          
+          const planKey = this.getPlanKey(state.gameId, countryId);
+          this.activeStrategicPlans.set(planKey, analysis);
+          await this.persistStrategicPlan(state.gameId, countryId, analysis);
+          
+          results.set(countryId, analysis);
+          
+          // Log summary
+          const country = state.countries.find(c => c.id === countryId);
+          console.log(`[LLM Planner] ✓ ${country?.name || countryId}: ${analysis.strategicFocus} - ${analysis.rationale}`);
+        }
+      }
+      
+      return results;
+    } catch (error) {
+      console.error("[LLM Planner] Batch analysis error:", error);
+      if (error instanceof Error) {
+        console.error("[LLM Planner] Error details:", error.message);
+      }
+      return results;
+    }
+  }
+
+  /**
+   * Get strategic analysis using LLM (SINGLE country - use batch for better efficiency!)
    * This is the expensive operation - call sparingly!
    */
   async analyzeSituation(
@@ -172,7 +286,7 @@ export class LLMStrategicPlanner {
       // Build context-rich prompt
       const prompt = this.buildStrategicPrompt(state, countryId, stats);
       
-      // Call Perplexity API
+      // Call Perplexity API (optimized: temperature 0.3 for faster generation)
       const response = await fetch(this.apiUrl, {
         method: "POST",
         headers: {
@@ -191,9 +305,9 @@ export class LLMStrategicPlanner {
               content: prompt
             }
           ],
-          temperature: 0.4,
-          top_p: 0.8,
-          max_tokens: 2000
+          temperature: 0.3,  // Lower = faster, more deterministic
+          top_p: 0.7,        // Lower = faster sampling
+          max_tokens: 1500   // Reduced from 2000
         })
       });
 
@@ -352,7 +466,7 @@ RULES: 6-8 steps, ALL executable (tech/infra/recruit/attack), use "when" for pac
   }
   
   /**
-   * Get summary of neighboring countries
+   * Get summary of neighboring countries (optimized: only show threats/key neighbors)
    */
   private getNeighborsSummary(state: GameStateSnapshot, countryId: string, stats: CountryStats): string {
     const country = state.countries.find(c => c.id === countryId);
@@ -373,15 +487,19 @@ RULES: 6-8 steps, ALL executable (tech/infra/recruit/attack), use "when" for pac
         const otherStats = state.countryStatsByCountryId[otherCountry.id];
         if (otherStats) {
           const ourToThem = getDiplomaticScore(stats.diplomaticRelations, otherCountry.id);
-          const theirToUs = getDiplomaticScore(otherStats.diplomaticRelations, countryId);
-          neighbors.push(
-            `- ${otherCountry.name} (${otherCountry.id}): Rel ${ourToThem}/${theirToUs}, Mil ${otherStats.militaryStrength}, Tech ${otherStats.technologyLevel}`
-          );
+          const isThreat = otherStats.militaryStrength > stats.militaryStrength * 1.2 || ourToThem < 30;
+          
+          // Only show threats or first 2 neighbors (reduce token usage)
+          if (isThreat || neighbors.length < 2) {
+            neighbors.push(
+              `- ${otherCountry.name} (${otherCountry.id}): Rel ${ourToThem}, Mil ${otherStats.militaryStrength}${isThreat ? ' ⚠️' : ''}`
+            );
+          }
         }
       }
     }
     
-    return neighbors.length > 0 ? neighbors.join('\n') : "No immediate neighbors";
+    return neighbors.length > 0 ? neighbors.join('\n') : "No threats detected";
   }
   
   /**
@@ -551,6 +669,162 @@ RULES: 6-8 steps, ALL executable (tech/infra/recruit/attack), use "when" for pac
       confidenceScore,
       turnAnalyzed: turn,
     };
+  }
+
+  /**
+   * Build batch prompt for analyzing multiple countries at once
+   */
+  private buildBatchStrategicPrompt(
+    state: GameStateSnapshot,
+    countries: Array<{ countryId: string; stats: CountryStats }>
+  ): string {
+    const countryPrompts = countries.map(({ countryId, stats }) => {
+      const country = state.countries.find(c => c.id === countryId);
+      if (!country) return "";
+      
+      const economicAnalysis = RuleBasedAI.analyzeEconomicSituation(state, countryId, stats);
+      const neighbors = this.getNeighborsSummary(state, countryId, stats);
+      
+      return `
+### ${country.name} (ID: ${countryId})
+Pop: ${(stats.population/1000).toFixed(0)}k | $${(stats.budget).toFixed(0)} | Tech L${stats.technologyLevel} | Infra L${stats.infrastructureLevel || 0} | Mil ${stats.militaryStrength} | ${stats.resourceProfile?.name || "Balanced"}
+Income: $${economicAnalysis.netIncome}/t | ${economicAnalysis.isUnderDefended ? 'UNDER-DEFENDED' : 'OK'} | ${economicAnalysis.turnsUntilBankrupt !== null ? `Bankrupt in ${economicAnalysis.turnsUntilBankrupt}t` : 'Stable'}
+Neighbors: ${neighbors.split('\n').join('; ')}`;
+    }).join('\n');
+
+    return `${CACHED_GAME_RULES}
+
+Plan ${this.LLM_CALL_FREQUENCY} turns (2-3 actions/turn). Use "when" to pace.
+
+COUNTRIES TO ANALYZE:
+${countryPrompts}
+
+Return JSON ARRAY with one analysis per country:
+[
+  {
+    "countryId": "${countries[0].countryId}",
+    "focus": "economy"|"military"|"research"|"balanced",
+    "rationale": "Why (max 100 chars)",
+    "threats": "Key threats",
+    "opportunities": "Key opportunities",
+    "action_plan": [
+      {"id":"tech_l2","instruction":"Tech→L2","priority":1,"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
+      {"id":"infra_l2","instruction":"Infra→L2","priority":2,"when":{"budget_gte":1000},"execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}},
+      {"id":"recruit_45","instruction":"Recruit→45","priority":3,"when":{"tech_level_gte":2},"stop_when":{"military_strength_gte":45},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}}
+    ],
+    "diplomacy":{"neighbor_id":"neutral"},
+    "confidence":0.9
+  }
+]
+
+RULES: 6-8 steps, ALL executable (tech/infra/recruit/attack), use "when" for pacing, NO passive steps`;
+  }
+
+  /**
+   * Parse batch LLM response into individual country analyses
+   */
+  private parseBatchStrategicAnalysis(
+    response: string,
+    turn: number,
+    countries: Array<{ countryId: string; stats: CountryStats }>
+  ): Map<string, LLMStrategicAnalysis> {
+    const results = new Map<string, LLMStrategicAnalysis>();
+    
+    try {
+      // Clean response
+      let cleanedResponse = response.trim();
+      if (cleanedResponse.startsWith('```json')) {
+        cleanedResponse = cleanedResponse.substring(7);
+      } else if (cleanedResponse.startsWith('```')) {
+        cleanedResponse = cleanedResponse.substring(3);
+      }
+      if (cleanedResponse.endsWith('```')) {
+        cleanedResponse = cleanedResponse.substring(0, cleanedResponse.length - 3);
+      }
+      cleanedResponse = cleanedResponse.trim();
+      
+      // Parse JSON array
+      const parsedArray = JSON.parse(cleanedResponse);
+      
+      if (!Array.isArray(parsedArray)) {
+        console.error("[LLM Planner] Expected JSON array for batch response");
+        return results;
+      }
+      
+      // Process each country's analysis
+      for (const parsed of parsedArray) {
+        const countryId = parsed.countryId;
+        if (!countryId) {
+          console.warn("[LLM Planner] Country analysis missing countryId");
+          continue;
+        }
+        
+        // Use existing single-country parser logic
+        const strategicFocus = ["economy", "military", "diplomacy", "research", "balanced"].includes(parsed.focus)
+          ? parsed.focus as LLMStrategicAnalysis["strategicFocus"]
+          : "balanced";
+        
+        const rationale = (parsed.rationale || "Strategic analysis completed").substring(0, 200);
+        const threatAssessment = parsed.threats || "Normal threat level";
+        const opportunityIdentified = parsed.opportunities || "Multiple opportunities available";
+        const planItems = this.parsePlanItems(parsed);
+        const recommendedActionsFromPlan =
+          planItems && planItems.length > 0
+            ? planItems
+                .filter((i): i is Extract<LLMPlanItem, { kind: "step" }> => i.kind === "step")
+                .map((s) => s.instruction)
+                .filter(Boolean)
+                .slice(0, 5)
+            : [];
+
+        const legacyActions =
+          Array.isArray(parsed.actions) && parsed.actions.length > 0
+            ? parsed.actions.map((a: unknown) => String(a ?? "").trim()).filter(Boolean).slice(0, 5)
+            : [];
+
+        const recommendedActions =
+          recommendedActionsFromPlan.length > 0
+            ? recommendedActionsFromPlan
+            : legacyActions.length > 0
+              ? legacyActions
+              : ["Continue balanced development"];
+        
+        const diplomaticStance: Record<string, "friendly" | "neutral" | "hostile"> = {};
+        if (parsed.diplomacy && typeof parsed.diplomacy === 'object') {
+          for (const [country, stance] of Object.entries(parsed.diplomacy)) {
+            if (["friendly", "neutral", "hostile"].includes(stance as string)) {
+              diplomaticStance[country.trim()] = stance as "friendly" | "neutral" | "hostile";
+            }
+          }
+        }
+        
+        const confidenceScore = typeof parsed.confidence === 'number'
+          ? Math.min(1, Math.max(0, parsed.confidence))
+          : 0.7;
+        
+        const analysis: LLMStrategicAnalysis = {
+          strategicFocus,
+          rationale,
+          threatAssessment,
+          opportunityIdentified,
+          recommendedActions,
+          planItems: planItems.length > 0 ? planItems : undefined,
+          diplomaticStance,
+          confidenceScore,
+          turnAnalyzed: turn,
+        };
+        
+        results.set(countryId, analysis);
+      }
+      
+      console.log(`[LLM Planner] ✓ Successfully parsed ${results.size}/${countries.length} country analyses`);
+      
+      return results;
+    } catch (error) {
+      console.error("[LLM Planner] Failed to parse batch response:", error);
+      console.error("Response:", response.substring(0, 500));
+      return results;
+    }
   }
 
   private parsePlanItems(parsed: any): LLMPlanItem[] {

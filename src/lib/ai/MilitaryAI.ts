@@ -200,20 +200,12 @@ export class MilitaryAI {
       return owner?.isPlayerControlled;
     });
 
-    // If the higher-level (strategy) LLM plan explicitly wants an attack, we should
-    // attempt it deterministically via rule-based logic (with slightly relaxed thresholds),
-    // not by calling another LLM that might refuse.
-    const useLLM = hasPlayerTarget && this.shouldUseLLMForAttack(state, countryId) && !forcedByLLM;
-
-    if (useLLM) {
-      return this.llmAttackDecision(state, countryId, neighboringCities, stats, remainingBudget);
-    } else {
-      // Use rule-based for AI vs AI OR AI vs Player on non-LLM turns
-      // Rule-based logic works for both player and AI cities
-      const forcedIntent = forcedByLLM ? { ...intent, focus: "military" as const } : intent;
-      const action = this.ruleBasedAttackDecision(
-        state,
-        countryId,
+    // Always use rule-based attack decisions (no LLM calls)
+    // Rule-based logic works for all scenarios and is cost-effective
+    const forcedIntent = forcedByLLM ? { ...intent, focus: "military" as const } : intent;
+    const action = this.ruleBasedAttackDecision(
+      state,
+      countryId,
         neighboringCities,
         stats,
         forcedIntent,

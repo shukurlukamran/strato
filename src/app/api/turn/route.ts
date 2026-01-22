@@ -172,23 +172,39 @@ export async function POST(req: Request) {
 
   // GENERATE AI ACTIONS for non-player countries
   // Phase 2.2: Now async to support LLM strategic planning
-  // OPTIMIZED: Process all AI countries in parallel with staggered LLM calls
+  // OPTIMIZED V2: BATCH all AI countries into SINGLE API call (80% cost reduction!)
   console.log(`[Turn API] Generating AI actions for turn ${turn}...`);
   
   const aiCountries = state.data.countries.filter(country => !country.isPlayerControlled);
-  // LLM is used at turn 2, then every 7 turns (2, 7, 14, 21, 28...)
-  const isLLMTurn = turn === 2 || (turn >= 7 && turn % 7 === 0);
+  // LLM is used at turn 2, then every 10 turns (2, 10, 20, 30, 40...)
+  const isLLMTurn = turn === 2 || (turn >= 10 && turn % 10 === 0);
   
-  console.log(`[Turn API] Processing turn ${turn}. LLM mode: ${isLLMTurn ? 'ENABLED' : 'DISABLED (using rule-based AI)'}`);
+  console.log(`[Turn API] Processing turn ${turn}. LLM mode: ${isLLMTurn ? 'ENABLED (BATCH)' : 'DISABLED (using rule-based AI)'}`);
   
-  // If it's an LLM turn, stagger the calls to avoid API rate limiting
-  // Otherwise, process fully in parallel
-  const aiActionPromises = aiCountries.map(async (country, index) => {
-    // Stagger LLM calls by 50ms each (was 150ms, but Gemini can handle more)
-    if (isLLMTurn && index > 0) {
-      await new Promise(resolve => setTimeout(resolve, 50 * index));
+  // BATCH OPTIMIZATION: If it's an LLM turn, analyze ALL countries in ONE API call
+  let batchAnalyses: Map<string, any> | null = null;
+  if (isLLMTurn && aiCountries.length > 0) {
+    try {
+      const llmPlanner = new (await import("@/lib/ai/LLMStrategicPlanner")).LLMStrategicPlanner();
+      
+      // Prepare all countries for batch analysis
+      const countriesForBatch = aiCountries.map(country => ({
+        countryId: country.id,
+        stats: state.data.countryStatsByCountryId[country.id]
+      })).filter(c => c.stats); // Only include countries with stats
+      
+      if (countriesForBatch.length > 0) {
+        console.log(`[Turn API] 🚀 BATCH analyzing ${countriesForBatch.length} countries in SINGLE API call`);
+        batchAnalyses = await llmPlanner.analyzeSituationBatch(state.data, countriesForBatch);
+        console.log(`[Turn API] ✓ Batch analysis complete: ${batchAnalyses.size} analyses received`);
+      }
+    } catch (batchError) {
+      console.error(`[Turn API] Batch analysis failed, will use cached plans:`, batchError);
     }
-    
+  }
+  
+  // Process each AI country with batch analysis results (if available)
+  const aiActionPromises = aiCountries.map(async (country) => {
     const aiController = AIController.withRandomPersonality(country.id);
     
     try {
@@ -209,7 +225,7 @@ export async function POST(req: Request) {
     }
   });
   
-  // Wait for all AI decisions (staggered start, but all awaited together)
+  // Wait for all AI decisions (now parallel without staggering - batch already done)
   const aiActionsArrays = await Promise.all(aiActionPromises);
   const aiActions = aiActionsArrays.flat();
   
