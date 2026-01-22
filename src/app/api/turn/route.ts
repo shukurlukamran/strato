@@ -542,16 +542,17 @@ export async function POST(req: Request) {
                     }
                   });
                 }
-            }
-
-            // Calculate tech modifiers for transparency (20% per tech level)
-            const attackerTechBonus = (attackerStats.technologyLevel || 0) * 0.20; // 20% per level
-            const defenderTechBonus = (defenderStats.technologyLevel || 0) * 0.20;
-            const defenseTerrainBonus = 0.2; // 20% defender advantage
-            
-            if (combatResult.attackerWins) {
+              }
+              
+              // Calculate tech modifiers for transparency (20% per tech level)
+              const attackerTechBonus = (attackerStats.technologyLevel || 0) * 0.20; // 20% per level
+              const defenderTechBonus = (defenderStats.technologyLevel || 0) * 0.20;
+              const defenseTerrainBonus = 0.2; // 20% defender advantage
+              
+              // Create history event for successful capture with detailed combat breakdown
               const attackEffective = Math.floor(actionData.allocatedStrength * (1 + attackerTechBonus));
               const defenseEffective = Math.floor(combatResult.defenderAllocation * (1 + defenderTechBonus + defenseTerrainBonus));
+              
               combatEvents.push({
                 type: "action.military.capture",
                 message: `⚔️ ${attackerCountry.name} captured ${city.name} from ${defenderCountry.name}!\n` +
@@ -572,10 +573,28 @@ export async function POST(req: Request) {
                   captured: true
                 }
               });
-            } else {
+            }
+          } else {
+            // Defense successful - just clear attack flag
+            await supabase
+              .from("cities")
+              .update({ is_under_attack: false })
+              .eq("id", targetCityId);
+            
+            // Calculate tech modifiers for transparency (20% per tech level)
+            const attackerStats = state.data.countryStatsByCountryId[attackerId];
+            const defenderStats = state.data.countryStatsByCountryId[defenderId];
+            
+            if (attackerStats && defenderStats) {
+              const attackerTechBonus = (attackerStats.technologyLevel || 0) * 0.20; // 20% per level
+              const defenderTechBonus = (defenderStats.technologyLevel || 0) * 0.20;
+              const defenseTerrainBonus = 0.2; // 20% defender advantage
+              
+              // Create history event for failed capture with detailed combat breakdown
               const attackEffective = Math.floor(actionData.allocatedStrength * (1 + attackerTechBonus));
               const defenseEffective = Math.floor(combatResult.defenderAllocation * (1 + defenderTechBonus + defenseTerrainBonus));
               const strengthRatio = (attackEffective / defenseEffective).toFixed(2);
+              
               combatEvents.push({
                 type: "action.military.defense",
                 message: `🛡️ ${defenderCountry.name} defended ${city.name} against ${attackerCountry.name}!\n` +
@@ -600,7 +619,6 @@ export async function POST(req: Request) {
               });
             }
           }
-
         }
       } else {
         // City not found - just clear the attack flag if it exists
