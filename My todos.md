@@ -2,6 +2,7 @@
 
 
 - As seen from this log (jan 23 02:16:41), Player (Aurum) was attacked but its defense was automatically chosen by system, and player didn't decide defense strength. 
+- LLM Strategic Advisor is so defensive, doesn't recommend attacking at all. Also, its general quality isn't really good.
 
 - Resource usage (actions should use resources and each resource should at least have one use case)
 - Prevent cheating in the chat deals (you can get money for technology level now, but tech level isn't actually transferred, for example)
