@@ -184,9 +184,9 @@ export async function POST(req: Request) {
   // If it's an LLM turn, stagger the calls to avoid API rate limiting
   // Otherwise, process fully in parallel
   const aiActionPromises = aiCountries.map(async (country, index) => {
-    // Stagger LLM calls by 150ms each to avoid overwhelming Gemini API
+    // Stagger LLM calls by 50ms each (was 150ms, but Gemini can handle more)
     if (isLLMTurn && index > 0) {
-      await new Promise(resolve => setTimeout(resolve, 150 * index));
+      await new Promise(resolve => setTimeout(resolve, 50 * index));
     }
     
     const aiController = AIController.withRandomPersonality(country.id);

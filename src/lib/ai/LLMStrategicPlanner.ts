@@ -120,7 +120,15 @@ export class LLMStrategicPlanner {
     } else {
       this.genAI = new GoogleGenerativeAI(apiKey);
       // Use Gemini 2.5 Flash for best cost/performance ratio
-      this.model = this.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+      // Lower temperature for faster, more deterministic responses
+      this.model = this.genAI.getGenerativeModel({ 
+        model: "gemini-2.5-flash",
+        generationConfig: {
+          temperature: 0.4,  // Lower = faster, more focused (default 1.0)
+          topP: 0.8,         // Lower = more deterministic
+          topK: 20,          // Lower = faster sampling
+        }
+      });
     }
     
     this.costTracking = {
@@ -289,83 +297,28 @@ export class LLMStrategicPlanner {
     
     return `${CACHED_GAME_RULES}
 
-STRATEGIC ADVISOR FOR: ${country.name} (Turn ${state.turn})
+${country.name} (T${state.turn}): Pop ${(stats.population/1000).toFixed(0)}k | $${(stats.budget).toFixed(0)} | Tech L${stats.technologyLevel} | Infra L${stats.infrastructureLevel || 0} | Mil ${stats.militaryStrength} | ${stats.resourceProfile?.name || "Balanced"}
+Income: $${economicAnalysis.netIncome}/t | ${economicAnalysis.isUnderDefended ? 'UNDER-DEFENDED' : 'OK'} | ${economicAnalysis.turnsUntilBankrupt !== null ? `Bankrupt in ${economicAnalysis.turnsUntilBankrupt}t` : 'Stable'}
 
-STATS:
-Pop: ${stats.population.toLocaleString()} | Budget: $${stats.budget.toLocaleString()} | Tech: L${stats.technologyLevel} | Infra: L${stats.infrastructureLevel || 0} | Mil: ${stats.militaryStrength}
-Profile: ${stats.resourceProfile?.name || "Balanced"}
+NEIGHBORS: ${neighbors}
 
-ECONOMY:
-Income: $${economicAnalysis.netIncome}/turn | ${economicAnalysis.isUnderDefended ? 'UNDER-DEFENDED' : 'Defended OK'} | ${economicAnalysis.turnsUntilBankrupt !== null ? `Bankruptcy: ${economicAnalysis.turnsUntilBankrupt}t` : 'Stable'}
+Plan ${this.LLM_CALL_FREQUENCY} turns (2-3 actions/turn). Use "when" to pace.
 
-TOP RESOURCES: ${Object.entries(stats.resources).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([r, amt]) => `${r}:${amt}`).join(' | ')}
-
-NEIGHBORS:
-${neighbors}
-
-Create a ${this.LLM_CALL_FREQUENCY}-turn plan for ${country.name}.
-
-CRITICAL: Countries can do 2-3 actions/turn. Use "when" conditions to pace steps across ${this.LLM_CALL_FREQUENCY} turns. Add budget gates so steps execute sequentially, not all at once.
-
-RESPOND WITH ONLY THIS JSON:
+JSON ONLY:
 {
   "focus": "economy"|"military"|"research"|"balanced",
-  "rationale": "Why? (max 120 chars)",
-  "threats": "Threats with numbers",
-  "opportunities": "Opportunities with numbers",
-  "constraints": [
-    {
-      "id": "avoid_spending_turn3",
-      "instruction": "If bankruptcy imminent, avoid expensive upgrades turn 3-4",
-      "effects": { "prohibit": ["research", "infrastructure"] }
-    }
-  ],
+  "rationale": "Why (max 100 chars)",
+  "threats": "Key threats",
+  "opportunities": "Key opportunities",
   "action_plan": [
-    {
-      "id": "upgrade_tech_l2",
-      "instruction": "Upgrade Technology to Level 2",
-      "priority": 1,
-      "execution": { "actionType": "research", "actionData": { "targetLevel": 2 } }
-    },
-    {
-      "id": "upgrade_infra_l2",
-      "instruction": "Upgrade Infrastructure to Level 2",
-      "priority": 2,
-      "when": { "budget_gte": 1000 },
-      "execution": { "actionType": "economic", "actionData": { "subType": "infrastructure", "targetLevel": 2 } }
-    },
-    {
-      "id": "recruit_to_45",
-      "instruction": "Recruit to 45 strength",
-      "priority": 3,
-      "when": { "tech_level_gte": 2 },
-      "stop_when": { "military_strength_gte": 45 },
-      "execution": { "actionType": "military", "actionData": { "subType": "recruit", "amount": 10 } }
-    },
-    {
-      "id": "upgrade_tech_l3",
-      "instruction": "Upgrade Technology to Level 3",
-      "priority": 4,
-      "when": { "budget_gte": 1500, "tech_level_gte": 2 },
-      "execution": { "actionType": "research", "actionData": { "targetLevel": 3 } }
-    },
-    {
-      "id": "upgrade_infra_l3",
-      "instruction": "Upgrade Infrastructure to Level 3",
-      "priority": 5,
-      "when": { "budget_gte": 1200 },
-      "execution": { "actionType": "economic", "actionData": { "subType": "infrastructure", "targetLevel": 3 } }
-    },
-    {
-      "id": "recruit_to_55",
-      "instruction": "Recruit to 55 strength",
-      "priority": 6,
-      "when": { "tech_level_gte": 3, "budget_gte": 800 },
-      "stop_when": { "military_strength_gte": 55 },
-      "execution": { "actionType": "military", "actionData": { "subType": "recruit", "amount": 10 } }
-    }
+    {"id":"tech_l2","instruction":"Tech→L2","priority":1,"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
+    {"id":"infra_l2","instruction":"Infra→L2","priority":2,"when":{"budget_gte":1000},"execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}},
+    {"id":"recruit_45","instruction":"Recruit→45","priority":3,"when":{"tech_level_gte":2},"stop_when":{"military_strength_gte":45},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}},
+    {"id":"tech_l3","instruction":"Tech→L3","priority":4,"when":{"budget_gte":1500,"tech_level_gte":2},"execution":{"actionType":"research","actionData":{"targetLevel":3}}},
+    {"id":"infra_l3","instruction":"Infra→L3","priority":5,"when":{"budget_gte":1200},"execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":3}}},
+    {"id":"recruit_55","instruction":"Recruit→55","priority":6,"when":{"tech_level_gte":3,"budget_gte":800},"stop_when":{"military_strength_gte":55},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}}
   ],
-  "diplomacy": {${neighbors
+  "diplomacy":{${neighbors
   .split('\n')
   .filter(n => n.trim())
   .map(n => {
@@ -374,18 +327,10 @@ RESPOND WITH ONLY THIS JSON:
   })
   .filter(Boolean)
   .join(',')}},
-  "confidence": 0.9
+  "confidence":0.9
 }
 
-RULES:
-1. Create 6-8 EXECUTABLE steps (tech/infra upgrade, recruit, attack ONLY)
-2. NO passive steps (maintain, monitor, avoid, delay, ensure, assess, continuously)
-3. ALL steps MUST have "execution" field with exact format from examples
-4. Use "when" to sequence steps across ${this.LLM_CALL_FREQUENCY} turns (budget_gte, tech_level_gte, military_strength_gte)
-5. Use "stop_when" for repeatable actions (recruit/attack)
-6. Set "constraints" only if critical (bankruptcy, war)
-7. Priority = execution order (1=first, 8=last)
-8. Spread actions: Countries do 2-3 actions/turn, so plan for ${this.LLM_CALL_FREQUENCY}×2 = ${this.LLM_CALL_FREQUENCY * 2} total actions minimum`;
+RULES: 6-8 steps, ALL executable (tech/infra/recruit/attack), use "when" for pacing, NO passive steps`;
   }
   
   /**
@@ -409,11 +354,10 @@ RULES:
       if (distance < neighborDistance) {
         const otherStats = state.countryStatsByCountryId[otherCountry.id];
         if (otherStats) {
-          // IMPORTANT: Include real diplomatic relations so the LLM doesn't assume "neutral" incorrectly.
           const ourToThem = getDiplomaticScore(stats.diplomaticRelations, otherCountry.id);
           const theirToUs = getDiplomaticScore(otherStats.diplomaticRelations, countryId);
           neighbors.push(
-            `- ${otherCountry.name} (${otherCountry.id}): Relations our→them ${ourToThem}/100, them→us ${theirToUs}/100, Military ${otherStats.militaryStrength}, Tech ${otherStats.technologyLevel}, Budget $${otherStats.budget.toLocaleString()}`
+            `- ${otherCountry.name} (${otherCountry.id}): Rel ${ourToThem}/${theirToUs}, Mil ${otherStats.militaryStrength}, Tech ${otherStats.technologyLevel}`
           );
         }
       }

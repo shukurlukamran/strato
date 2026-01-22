@@ -3,7 +3,6 @@
 - AI countries don't follow LLM's strategy advices. LLM gives strategy advices and plan every 5 turn and countries are expected to follow this advice for the next 5 turns. We still need to have rule-based logic as a fallback but LLM's advice should be followed mainly if it exists.
 
 We already build some kind of cached plan that persists LLM plan for the next turns but it still doens't work at all. Make sure this cached plan includes action steps given by LLM and this plan is prioritized by countries. Or build it in another way if this isn't a good way to do it.
-- AI countries can do more than one action a turn, don't force it but make sure the system allows for it when it makes sense to do so.
 - History log says: "⚔️⚔️ Aurum captured Timbuktu from Dravon! • Attack: 45 (effective: 81 with +80% tech) • Defense: 4 (effective: 5 with +20% tech + 20% terrain) • Losses: Aurum -11, Dravon -1"
 
 The reality is that Aurum attacked with 45 strength not with 45 military units. I don't know if history log is wrong or the combat resolution calculation is also wrong.
