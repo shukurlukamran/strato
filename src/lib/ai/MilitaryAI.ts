@@ -206,19 +206,18 @@ export class MilitaryAI {
     const action = this.ruleBasedAttackDecision(
       state,
       countryId,
-        neighboringCities,
-        stats,
-        forcedIntent,
-        remainingBudget,
-        forcedByLLM
-      );
-      if (action && forcedByLLM && llmAttackStep) {
-        if (llmStepId) (action.actionData as Record<string, unknown>).llmStepId = llmStepId;
-        (action.actionData as Record<string, unknown>).llmStep = llmAttackStep;
-        (action.actionData as Record<string, unknown>).llmPlanTurn = intent.llmPlan?.turnAnalyzed;
-      }
-      return action;
+      neighboringCities,
+      stats,
+      forcedIntent,
+      remainingBudget,
+      forcedByLLM
+    );
+    if (action && forcedByLLM && llmAttackStep) {
+      if (llmStepId) (action.actionData as Record<string, unknown>).llmStepId = llmStepId;
+      (action.actionData as Record<string, unknown>).llmStep = llmAttackStep;
+      (action.actionData as Record<string, unknown>).llmPlanTurn = intent.llmPlan?.turnAnalyzed;
     }
+    return action;
   }
 
   /**
