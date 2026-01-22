@@ -8,16 +8,18 @@ import { CityTransfer } from "./CityTransfer";
 export class ActionResolver {
   /**
    * Calculate research cost based on current technology level
+   * Uses ECONOMIC_BALANCE constants for consistency
    */
   static calculateResearchCost(currentLevel: number): number {
-    return Math.floor(500 * Math.pow(1.4, currentLevel)); // Lower base, steeper curve
+    return Math.floor(ECONOMIC_BALANCE.UPGRADES.TECH_BASE_COST * Math.pow(ECONOMIC_BALANCE.UPGRADES.TECH_COST_MULTIPLIER, currentLevel));
   }
 
   /**
    * Calculate infrastructure cost based on current infrastructure level
+   * Uses ECONOMIC_BALANCE constants for consistency
    */
   static calculateInfrastructureCost(currentLevel: number): number {
-    return Math.floor(600 * Math.pow(1.3, currentLevel)); // Slightly cheaper
+    return Math.floor(ECONOMIC_BALANCE.UPGRADES.INFRA_BASE_COST * Math.pow(ECONOMIC_BALANCE.UPGRADES.INFRA_COST_MULTIPLIER, currentLevel));
   }
 
   /**

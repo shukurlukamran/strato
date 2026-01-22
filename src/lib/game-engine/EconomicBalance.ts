@@ -12,9 +12,9 @@
 export const ECONOMIC_BALANCE = {
   // Budget Generation
   BUDGET: {
-    BASE_TAX_PER_CITIZEN: 12,          // Base tax income per population unit (10k pop) - REDUCED from 15
-    INFRASTRUCTURE_TAX_EFFICIENCY: 0.12, // +12% tax collection per infrastructure level - CHANGED from 0.15
-    TRADE_INCOME_MULTIPLIER: 0.10,     // 10% of total trade value per turn
+    BASE_TAX_PER_CITIZEN: 18,          // Base tax income per population unit (10k pop) - INCREASED for better cash flow
+    INFRASTRUCTURE_TAX_EFFICIENCY: 0.15, // +15% tax collection per infrastructure level - INCREASED for scaling
+    TRADE_INCOME_MULTIPLIER: 0.15,     // 15% of total trade value per turn - INCREASED
   },
   
   // Resource Production
@@ -28,8 +28,8 @@ export const ECONOMIC_BALANCE = {
   // Resource Consumption
   CONSUMPTION: {
     FOOD_PER_10K_POPULATION: 5,        // Food consumed per 10k pop
-    MAINTENANCE_COST_MULTIPLIER: 0.01, // 1% of budget for maintenance
-    MILITARY_UPKEEP_PER_STRENGTH: 0.8, // Budget cost per military strength point
+    MAINTENANCE_COST_MULTIPLIER: 0.005, // 0.5% of budget for maintenance - REDUCED from 1%
+    MILITARY_UPKEEP_PER_STRENGTH: 0.5, // Budget cost per military strength point - REDUCED from 0.8
   },
   
   // Technology Effects (Discrete multipliers for resource production)
@@ -70,9 +70,9 @@ export const ECONOMIC_BALANCE = {
   
   // Infrastructure
   INFRASTRUCTURE: {
-    BUILD_COST_BASE: 700,              // Base cost - CHANGED from 1000
-    BUILD_COST_MULTIPLIER: 1.30,       // Cost multiplier - CHANGED from 1.5
-    MAINTENANCE_COST_PER_LEVEL: 35,    // Budget cost per infrastructure level - CHANGED from 20
+    BUILD_COST_BASE: 600,              // Base cost - REDUCED for easier early game
+    BUILD_COST_MULTIPLIER: 1.25,       // Cost multiplier - REDUCED from 1.30 for smoother scaling
+    MAINTENANCE_COST_PER_LEVEL: 25,    // Budget cost per infrastructure level - REDUCED from 35
     
     // NEW: Trade capacity
     BASE_TRADE_CAPACITY: 2,            // Base number of deals per turn
@@ -82,17 +82,17 @@ export const ECONOMIC_BALANCE = {
   
   // Military
   MILITARY: {
-    COST_PER_STRENGTH_POINT: 50,       // Standard cost per military strength point
+    COST_PER_STRENGTH_POINT: 40,       // Standard cost per military strength point - REDUCED from 50
     RECRUIT_AMOUNT_STANDARD: 10,       // Standard recruitment amount per action
-    RECRUIT_COST_STANDARD: 500,        // Standard cost (50 * 10 = 500)
+    RECRUIT_COST_STANDARD: 400,        // Standard cost (40 * 10 = 400) - REDUCED from 500
   },
   
   // Upgrade Costs
   UPGRADES: {
-    TECH_BASE_COST: 800,               // Base cost for technology upgrade
-    TECH_COST_MULTIPLIER: 1.35,        // Cost increases per level
+    TECH_BASE_COST: 700,               // Base cost for technology upgrade - REDUCED from 800
+    TECH_COST_MULTIPLIER: 1.30,        // Cost increases per level - REDUCED from 1.35
     
-    INFRA_BASE_COST: 700,              // Base cost for infrastructure upgrade  
-    INFRA_COST_MULTIPLIER: 1.30,       // Cost increases per level
+    INFRA_BASE_COST: 600,              // Base cost for infrastructure upgrade - REDUCED from 700
+    INFRA_COST_MULTIPLIER: 1.25,       // Cost increases per level - REDUCED from 1.30
   }
 } as const;

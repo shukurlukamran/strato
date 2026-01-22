@@ -176,8 +176,8 @@ export async function POST(req: Request) {
   console.log(`[Turn API] Generating AI actions for turn ${turn}...`);
   
   const aiCountries = state.data.countries.filter(country => !country.isPlayerControlled);
-  // LLM is used at turn 2, then every 5 turns (2, 5, 10, 15, 20...)
-  const isLLMTurn = turn === 2 || (turn >= 5 && turn % 5 === 0);
+  // LLM is used at turn 2, then every 7 turns (2, 7, 14, 21, 28...)
+  const isLLMTurn = turn === 2 || (turn >= 7 && turn % 7 === 0);
   
   console.log(`[Turn API] Processing turn ${turn}. LLM mode: ${isLLMTurn ? 'ENABLED' : 'DISABLED (using rule-based AI)'}`);
   

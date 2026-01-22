@@ -614,7 +614,7 @@ Your decision:`;
 
   /**
    * Determine if LLM should be used for attack decisions
-   * Aligns with strategic planning schedule: turn 2, then every 5 turns (5, 10, 15, 20...)
+   * Aligns with strategic planning schedule: turn 2, then every 7 turns (7, 14, 21, 28...)
    * On non-LLM turns, uses rule-based logic for consistency and cost efficiency
    * Rule-based logic still works for attacking players, just without LLM intelligence
    */
@@ -624,8 +624,8 @@ Your decision:`;
   ): boolean {
     const turn = state.turn;
     // Use LLM on the same schedule as strategic planning
-    // Turn 2, then every 5 turns (5, 10, 15, 20, 25...)
-    const isLLMTurn = turn === 2 || (turn >= 5 && turn % 5 === 0);
+    // Turn 2, then every 7 turns (7, 14, 21, 28...)
+    const isLLMTurn = turn === 2 || (turn >= 7 && turn % 7 === 0);
     
     if (!isLLMTurn) {
       // On non-LLM turns, use rule-based logic

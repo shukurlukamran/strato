@@ -103,8 +103,8 @@ export class LLMStrategicPlanner {
   // Strategic plan persistence - LLM analysis guides next N turns
   private activeStrategicPlans: Map<string, LLMStrategicAnalysis> = new Map();
   
-  // Call LLM every N turns
-  private readonly LLM_CALL_FREQUENCY = 5;
+  // Call LLM every N turns (changed from 5 to 7 to reduce API costs)
+  private readonly LLM_CALL_FREQUENCY = 7;
 
   private getPlanKey(gameId: string, countryId: string): string {
     return `${gameId}:${countryId}`;
@@ -130,11 +130,11 @@ export class LLMStrategicPlanner {
   
   /**
    * Determine if LLM should be called this turn
-   * Call on turn 2, then every 5 turns (2, 5, 10, 15, 20...)
+   * Call on turn 2, then every 7 turns (2, 7, 14, 21, 28...)
    */
   shouldCallLLM(turn: number): boolean {
-    // Call on turn 2 (after initial setup), then every 5 turns after that
-    return turn === 2 || (turn >= 5 && turn % this.LLM_CALL_FREQUENCY === 0);
+    // Call on turn 2 (after initial setup), then every 7 turns after that
+    return turn === 2 || (turn >= 7 && turn % this.LLM_CALL_FREQUENCY === 0);
   }
   
   /**

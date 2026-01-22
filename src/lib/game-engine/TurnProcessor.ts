@@ -122,23 +122,19 @@ export class TurnProcessor {
     }
 
     // Determine defense allocation based on who's attacking whom:
-    // 1. Player attacks AI: AI uses LLM to decide defense
-    // 2. AI attacks AI: Both use rule-based logic
-    // 3. AI attacks Player: Player would have chosen defense in UI (stored in action)
+    // 1. AI defender: Uses sophisticated rule-based AI with randomization
+    // 2. Player defender: Uses player-chosen defense (stored in action)
     let defenderStrength: number;
     
     if (!defenderCountry.isPlayerControlled) {
-      // Defender is AI - use AI to decide defense allocation
-      const useLLM = attackerCountry.isPlayerControlled; // Use LLM if attacker is player
-      
-      console.log(`[Combat] ${attackerCountry.name} attacks ${defenderCountry.name}'s ${cityData.name}. Defense mode: ${useLLM ? 'LLM' : 'Rule-based'}`);
+      // Defender is AI - use sophisticated rule-based defense AI
+      console.log(`[Combat] ${attackerCountry.name} attacks ${defenderCountry.name}'s ${cityData.name}. Using AI defense allocation.`);
       
       defenderStrength = await DefenseAI.decideDefenseAllocation(
         state.data,
         defenderId,
         cityData,
-        attackerId,
-        useLLM
+        attackerId
       );
     } else {
       // Defender is Player - should have defense allocation in action data

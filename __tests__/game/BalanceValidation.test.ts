@@ -196,8 +196,8 @@ describe('Economic Balance Validation', () => {
   
   describe('Technology ROI', () => {
     it('Tech level 0→1 should break even within 50 turns', () => {
-      // Calculate tech upgrade cost
-      const techCost = Math.floor(500 * Math.pow(1.4, 0)); // 500 for level 0→1
+      // Calculate tech upgrade cost using ECONOMIC_BALANCE constants
+      const techCost = Math.floor(ECONOMIC_BALANCE.UPGRADES.TECH_BASE_COST * Math.pow(ECONOMIC_BALANCE.UPGRADES.TECH_COST_MULTIPLIER, 0));
       
       // Calculate revenue increase from tech
       const profile = CountryInitializer['getBalancedDefault']();
@@ -223,7 +223,7 @@ describe('Economic Balance Validation', () => {
     });
     
     it('Tech level 1→2 should break even within 75 turns', () => {
-      const techCost = Math.floor(500 * Math.pow(1.4, 1)); // 700 for level 1→2
+      const techCost = Math.floor(ECONOMIC_BALANCE.UPGRADES.TECH_BASE_COST * Math.pow(ECONOMIC_BALANCE.UPGRADES.TECH_COST_MULTIPLIER, 1));
       
       const profile = CountryInitializer['getBalancedDefault']();
       const baseStats = createCountryStats({ ...profile, technologyLevel: 1 });
@@ -250,7 +250,7 @@ describe('Economic Balance Validation', () => {
   
   describe('Infrastructure ROI', () => {
     it('Infrastructure 0→1 should break even within 40 turns', () => {
-      const infraCost = Math.floor(600 * Math.pow(1.3, 0)); // 600 for level 0→1
+      const infraCost = Math.floor(ECONOMIC_BALANCE.UPGRADES.INFRA_BASE_COST * Math.pow(ECONOMIC_BALANCE.UPGRADES.INFRA_COST_MULTIPLIER, 0));
       
       const profile = CountryInitializer['getBalancedDefault']();
       const baseStats = createCountryStats({ ...profile, infrastructureLevel: 0 });
