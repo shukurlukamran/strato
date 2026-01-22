@@ -10,6 +10,7 @@
 - Optimize LLM on End turn to be faster.
 - Bug: AI country defended successfully with 2.5x less army. How is this possible? Player attacked 2 cities at the same turn, both failed but only one should have failed, the other should have been captured because player army was 2.5x bigger. If it is because of some multipliers or defence advantages, they should be mentioned clearly in the History log as well to explain why the result happened so.
 - Bug: Deal Extractor struggles to understand that Player wants to sell something not buy
+- War should affect diplomatic stance
 
 
 - Resource usage (actions should use resources and each resource should at least have one use case)
