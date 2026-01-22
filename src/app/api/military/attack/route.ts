@@ -25,10 +25,10 @@ export async function POST(req: Request) {
 
   const turn = gameRes.data[0].current_turn as number;
 
-  // Load target city
+  // Load target city with position data
   const cityRes = await supabase
     .from("cities")
-    .select("id, game_id, country_id, is_under_attack")
+    .select("id, game_id, country_id, is_under_attack, position_x, position_y")
     .eq("id", targetCityId)
     .limit(1);
   if (cityRes.error) return NextResponse.json({ error: cityRes.error.message }, { status: 400 });
@@ -38,6 +38,37 @@ export async function POST(req: Request) {
   if (targetCity.game_id !== gameId) return NextResponse.json({ error: "City does not belong to this game" }, { status: 400 });
   if (targetCity.country_id === attackerCountryId) return NextResponse.json({ error: "Cannot attack your own city" }, { status: 400 });
   if (targetCity.is_under_attack) return NextResponse.json({ error: "City is already under attack" }, { status: 400 });
+
+  // Validate that target city is actually a neighbor (within attack range)
+  const allCitiesRes = await supabase
+    .from("cities")
+    .select("id, country_id, position_x, position_y")
+    .eq("game_id", gameId)
+    .eq("country_id", attackerCountryId);
+  
+  if (allCitiesRes.error) return NextResponse.json({ error: allCitiesRes.error.message }, { status: 400 });
+  
+  const attackerCities = allCitiesRes.data || [];
+  if (attackerCities.length === 0) return NextResponse.json({ error: "Attacker has no cities" }, { status: 400 });
+
+  // Check if target city is within attack range of at least one attacker city
+  const attackRange = 10; // Same as AI logic
+  let isNeighbor = false;
+  for (const attackerCity of attackerCities) {
+    const distance = Math.sqrt(
+      Math.pow(Number(attackerCity.position_x) - Number(targetCity.position_x), 2) +
+      Math.pow(Number(attackerCity.position_y) - Number(targetCity.position_y), 2)
+    );
+    
+    if (distance <= attackRange) {
+      isNeighbor = true;
+      break;
+    }
+  }
+
+  if (!isNeighbor) {
+    return NextResponse.json({ error: "Target city is not adjacent to your territory" }, { status: 400 });
+  }
 
   // Attacker stats (current turn)
   const statsRes = await supabase

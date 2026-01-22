@@ -269,7 +269,8 @@ export default function GamePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId]);
 
-  // Check for cities under attack that belong to player
+  // Check for cities under attack that belong to player - DETECTION ONLY
+  // Split into two effects to prevent dependency issues
   useEffect(() => {
     if (!playerCountryId || cities.length === 0 || countries.length === 0) return;
 
@@ -277,6 +278,7 @@ export default function GamePage() {
       c => c.countryId === playerCountryId && c.isUnderAttack
     );
 
+    // Only fetch attack info if there are cities under attack AND modal is not already open
     if (playerCitiesUnderAttack.length > 0 && !defenseCity) {
       // Find the first city under attack and fetch attacker info
       const cityUnderAttack = playerCitiesUnderAttack[0];
@@ -306,13 +308,24 @@ export default function GamePage() {
           }
         })
         .catch(err => console.error("Failed to fetch attack action:", err));
-    } else if (playerCitiesUnderAttack.length === 0 && defenseCity) {
-      // Clear defense modal if no cities are under attack
+    }
+  }, [cities, playerCountryId, countries, statsByCountryId, gameId, turn]);
+
+  // Cleanup defense modal when no cities are under attack - CLEANUP ONLY
+  useEffect(() => {
+    if (!playerCountryId || cities.length === 0) return;
+
+    const playerCitiesUnderAttack = cities.filter(
+      c => c.countryId === playerCountryId && c.isUnderAttack
+    );
+
+    // Clear defense modal if no cities are under attack but modal is open
+    if (playerCitiesUnderAttack.length === 0 && defenseCity) {
       setDefenseCity(null);
       setDefenseAttackerCountry(null);
       setDefenseAttackerStats(null);
     }
-  }, [cities, playerCountryId, countries, statsByCountryId, gameId, turn, defenseCity]);
+  }, [cities, playerCountryId, defenseCity]);
 
   // Automatically redirect to latest game if current game doesn't exist
   useEffect(() => {

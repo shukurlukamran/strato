@@ -446,12 +446,115 @@ export async function POST(req: Request) {
               
               console.log(`[Combat] City transfer complete: ${city.name} from ${defenderCountry.name} to ${attackerCountry.name}`);
               console.log(`[Combat] Attacker gained: ${city.population} population, ${Object.keys(city.per_turn_resources).length} resource types`);
+              
+              // CHECK FOR COUNTRY ELIMINATION
+              // Count remaining cities for the defender
+              const defenderCitiesRes = await supabase
+                .from("cities")
+                .select("id")
+                .eq("game_id", gameId)
+                .eq("country_id", defenderId);
+              
+              const remainingCities = (defenderCitiesRes.data || []).length;
+              
+              if (remainingCities === 0) {
+                console.log(`[Elimination] ${defenderCountry.name} has been eliminated!`);
+                
+                // Transfer remaining assets to victor
+                attackerStats.budget += defenderStats.budget;
+                attackerStats.militaryStrength += Math.floor(defenderStats.militaryStrength * 0.5); // Victor captures 50% of remaining military
+                attackerStats.militaryEquipment = {
+                  ...attackerStats.militaryEquipment,
+                  ...Object.fromEntries(
+                    Object.entries(defenderStats.militaryEquipment || {}).map(([k, v]) => [k, (attackerStats.militaryEquipment?.[k] || 0) + v])
+                  )
+                };
+                
+                // Transfer remaining resources
+                for (const [resource, amount] of Object.entries(defenderStats.resources)) {
+                  attackerStats.resources[resource] = (attackerStats.resources[resource] || 0) + amount;
+                }
+                
+                // Update attacker stats with captured assets
+                state.withUpdatedStats(attackerId, attackerStats);
+                
+                // Zero out defender stats (they're eliminated)
+                state.withUpdatedStats(defenderId, {
+                  ...defenderStats,
+                  budget: 0,
+                  militaryStrength: 0,
+                  population: 0,
+                  resources: {},
+                  militaryEquipment: {}
+                });
+                
+                // Create elimination event
+                combatEvents.push({
+                  type: "game.elimination",
+                  message: `💀 ${defenderCountry.name} has been eliminated by ${attackerCountry.name}! All remaining assets transferred to the victor.`,
+                  data: {
+                    eliminatedCountryId: defenderId,
+                    eliminatedCountryName: defenderCountry.name,
+                    victorCountryId: attackerId,
+                    victorCountryName: attackerCountry.name,
+                    assetsTransferred: {
+                      budget: defenderStats.budget,
+                      military: Math.floor(defenderStats.militaryStrength * 0.5),
+                      resources: Object.keys(defenderStats.resources).length
+                    }
+                  }
+                });
+                
+                // CHECK WIN CONDITION
+                // Count how many countries still have cities
+                const allCountriesWithCitiesRes = await supabase
+                  .from("cities")
+                  .select("country_id")
+                  .eq("game_id", gameId);
+                
+                const uniqueCountryIds = new Set((allCountriesWithCitiesRes.data || []).map(c => c.country_id));
+                
+                if (uniqueCountryIds.size === 1) {
+                  console.log(`[Victory] ${attackerCountry.name} is the last country standing! Game over.`);
+                  
+                  // Update game status to finished
+                  await supabase
+                    .from("games")
+                    .update({ 
+                      status: "finished",
+                      updated_at: new Date().toISOString()
+                    })
+                    .eq("id", gameId);
+                  
+                  // Create victory event
+                  combatEvents.push({
+                    type: "game.victory",
+                    message: `🎉 ${attackerCountry.name} has won the game by conquering all territories!`,
+                    data: {
+                      victorCountryId: attackerId,
+                      victorCountryName: attackerCountry.name,
+                      turn: turn
+                    }
+                  });
+                }
+              }
             }
             
-            // Create history event for successful capture
+            // Calculate tech modifiers for transparency (20% per tech level)
+            const attackerTechBonus = (attackerStats.technologyLevel || 0) * 0.20; // 20% per level
+            const defenderTechBonus = (defenderStats.technologyLevel || 0) * 0.20;
+            const defenseTerrainBonus = 0.2; // 20% defender advantage
+            
+            // Create history event for successful capture with detailed combat breakdown
+            const attackEffective = Math.floor(actionData.allocatedStrength * (1 + attackerTechBonus));
+            const defenseEffective = Math.floor(combatResult.defenderAllocation * (1 + defenderTechBonus + defenseTerrainBonus));
+            
             combatEvents.push({
               type: "action.military.capture",
-              message: `⚔️ ${attackerCountry.name} captured ${city.name} from ${defenderCountry.name}! Attack: ${actionData.allocatedStrength} vs Defense: ${combatResult.defenderAllocation}. Losses: ${attackerCountry.name} -${combatResult.attackerLosses}, ${defenderCountry.name} -${combatResult.defenderLosses}`,
+              message: `⚔️ ${attackerCountry.name} captured ${city.name} from ${defenderCountry.name}!\n` +
+                `• Attack: ${actionData.allocatedStrength} (effective: ${attackEffective} with +${(attackerTechBonus * 100).toFixed(0)}% tech)\n` +
+                `• Defense: ${combatResult.defenderAllocation} (effective: ${defenseEffective} with +${(defenderTechBonus * 100).toFixed(0)}% tech + 20% terrain)\n` +
+                `• Losses: ${attackerCountry.name} -${combatResult.attackerLosses}, ${defenderCountry.name} -${combatResult.defenderLosses}`,
               data: {
                 attackerId,
                 defenderId,
@@ -459,6 +562,8 @@ export async function POST(req: Request) {
                 cityName: city.name,
                 attackerAllocation: actionData.allocatedStrength,
                 defenderAllocation: combatResult.defenderAllocation,
+                attackerEffective: attackEffective,
+                defenderEffective: defenseEffective,
                 attackerLosses: combatResult.attackerLosses,
                 defenderLosses: combatResult.defenderLosses,
                 captured: true
@@ -471,10 +576,23 @@ export async function POST(req: Request) {
               .update({ is_under_attack: false })
               .eq("id", targetCityId);
             
-            // Create history event for failed capture
+            // Calculate tech modifiers for transparency (20% per tech level)
+            const attackerTechBonus = (attackerStats.technologyLevel || 0) * 0.20; // 20% per level
+            const defenderTechBonus = (defenderStats.technologyLevel || 0) * 0.20;
+            const defenseTerrainBonus = 0.2; // 20% defender advantage
+            
+            // Create history event for failed capture with detailed combat breakdown
+            const attackEffective = Math.floor(actionData.allocatedStrength * (1 + attackerTechBonus));
+            const defenseEffective = Math.floor(combatResult.defenderAllocation * (1 + defenderTechBonus + defenseTerrainBonus));
+            const strengthRatio = (attackEffective / defenseEffective).toFixed(2);
+            
             combatEvents.push({
               type: "action.military.defense",
-              message: `🛡️ ${defenderCountry.name} defended ${city.name} against ${attackerCountry.name}! Attack: ${actionData.allocatedStrength} vs Defense: ${combatResult.defenderAllocation}. Losses: ${attackerCountry.name} -${combatResult.attackerLosses}, ${defenderCountry.name} -${combatResult.defenderLosses}`,
+              message: `🛡️ ${defenderCountry.name} defended ${city.name} against ${attackerCountry.name}!\n` +
+                `• Attack: ${actionData.allocatedStrength} (effective: ${attackEffective} with +${(attackerTechBonus * 100).toFixed(0)}% tech)\n` +
+                `• Defense: ${combatResult.defenderAllocation} (effective: ${defenseEffective} with +${(defenderTechBonus * 100).toFixed(0)}% tech + 20% terrain)\n` +
+                `• Ratio: ${strengthRatio}:1 (defender advantage prevailed)\n` +
+                `• Losses: ${attackerCountry.name} -${combatResult.attackerLosses}, ${defenderCountry.name} -${combatResult.defenderLosses}`,
               data: {
                 attackerId,
                 defenderId,
@@ -482,6 +600,9 @@ export async function POST(req: Request) {
                 cityName: city.name,
                 attackerAllocation: actionData.allocatedStrength,
                 defenderAllocation: combatResult.defenderAllocation,
+                attackerEffective: attackEffective,
+                defenderEffective: defenseEffective,
+                strengthRatio: parseFloat(strengthRatio),
                 attackerLosses: combatResult.attackerLosses,
                 defenderLosses: combatResult.defenderLosses,
                 captured: false

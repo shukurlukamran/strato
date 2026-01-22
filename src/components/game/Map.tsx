@@ -455,6 +455,7 @@ export function Map({
     if (playerCountryId) {
       for (const city of cities) {
         if (city.countryId === playerCountryId) continue; // can't attack own city
+        if (city.isUnderAttack) continue; // can't attack city that's already under attack
         const neighbors = borderNeighborCountryIdsByCityId.get(city.id);
         if (neighbors?.has(playerCountryId)) attackableCityIds.add(city.id);
       }
