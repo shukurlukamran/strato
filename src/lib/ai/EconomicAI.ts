@@ -31,6 +31,13 @@ export class EconomicAI {
 
     // Analyze economic situation
     const analysis = RuleBasedAI.analyzeEconomicSituation(state, countryId, stats);
+
+    // PRIORITY: Follow LLM action steps (when present) before rule-based heuristics.
+    // This ensures "recommendedActions" actually influence gameplay, not just logs.
+    const llmPreferred = this.tryLLMEconomicActions(state, countryId, intent, analysis);
+    if (llmPreferred.length > 0) {
+      return llmPreferred;
+    }
     
     // Calculate decision weights (influenced by strategic intent)
     const weights = RuleBasedAI.calculateDecisionWeights(
@@ -162,6 +169,121 @@ export class EconomicAI {
     }
 
     return actions;
+  }
+
+  /**
+   * Attempt to turn LLM "recommendedActions" strings into executable economic actions.
+   * Fallback-safe: if an LLM step is not actionable/affordable, we ignore it and
+   * let the normal rule-based logic run.
+   */
+  private tryLLMEconomicActions(
+    state: GameStateSnapshot,
+    countryId: string,
+    intent: StrategyIntent,
+    analysis: ReturnType<typeof RuleBasedAI.analyzeEconomicSituation>
+  ): GameAction[] {
+    const stats = state.countryStatsByCountryId[countryId];
+    if (!stats) return [];
+
+    const steps = intent.llmPlan?.recommendedActions ?? [];
+    if (!Array.isArray(steps) || steps.length === 0) return [];
+
+    // Avoid duplicating economic upgrades if already pending this turn
+    const alreadyHasResearch = state.pendingActions.some(
+      (a) => a.countryId === countryId && a.turn === state.turn && a.status === "pending" && a.actionType === "research"
+    );
+    const alreadyHasInfra = state.pendingActions.some(
+      (a) =>
+        a.countryId === countryId &&
+        a.turn === state.turn &&
+        a.status === "pending" &&
+        a.actionType === "economic" &&
+        (a.actionData as Record<string, unknown>)?.subType === "infrastructure"
+    );
+
+    for (const rawStep of steps) {
+      const step = String(rawStep ?? "").trim();
+      if (!step) continue;
+
+      // Infrastructure directive
+      if (!alreadyHasInfra && this.looksLikeInfrastructureStep(step)) {
+        const currentInfra = stats.infrastructureLevel || 0;
+        const desiredLevel = this.extractTargetLevel(step);
+        if (desiredLevel !== null && desiredLevel <= currentInfra) {
+          continue; // already satisfied
+        }
+        if (currentInfra >= 10) continue;
+        if (!analysis.canAffordInfrastructure) continue;
+
+        const infraCost = ActionResolver.calculateInfrastructureCost(currentInfra);
+        return [
+          {
+            id: "",
+            gameId: state.gameId,
+            countryId,
+            turn: state.turn,
+            actionType: "economic",
+            actionData: {
+              subType: "infrastructure",
+              cost: infraCost,
+              targetLevel: currentInfra + 1,
+              llmStep: step,
+              llmPlanTurn: intent.llmPlan?.turnAnalyzed,
+            },
+            status: "pending",
+            createdAt: new Date().toISOString(),
+          },
+        ];
+      }
+
+      // Research/technology directive
+      if (!alreadyHasResearch && this.looksLikeResearchStep(step)) {
+        const currentTech = stats.technologyLevel;
+        const desiredLevel = this.extractTargetLevel(step);
+        if (desiredLevel !== null && desiredLevel <= currentTech) {
+          continue; // already satisfied
+        }
+        if (currentTech >= 5) continue;
+        if (!analysis.canAffordResearch) continue;
+
+        const researchCost = ActionResolver.calculateResearchCost(currentTech);
+        return [
+          {
+            id: "",
+            gameId: state.gameId,
+            countryId,
+            turn: state.turn,
+            actionType: "research",
+            actionData: {
+              cost: researchCost,
+              targetLevel: currentTech + 1,
+              llmStep: step,
+              llmPlanTurn: intent.llmPlan?.turnAnalyzed,
+            },
+            status: "pending",
+            createdAt: new Date().toISOString(),
+          },
+        ];
+      }
+    }
+
+    return [];
+  }
+
+  private looksLikeInfrastructureStep(step: string): boolean {
+    return /\b(infrastructure|infra)\b/i.test(step);
+  }
+
+  private looksLikeResearchStep(step: string): boolean {
+    return /\b(research|technology|tech)\b/i.test(step);
+  }
+
+  private extractTargetLevel(step: string): number | null {
+    const match = step.match(/\b(?:level|lvl)\.?\s*(\d+)\b/i);
+    if (!match?.[1]) return null;
+    const n = Number(match[1]);
+    if (!Number.isFinite(n)) return null;
+    return Math.max(0, Math.min(10, Math.floor(n)));
   }
 
   /**

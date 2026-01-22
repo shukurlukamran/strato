@@ -6,6 +6,18 @@ import { LLMStrategicPlanner } from "./LLMStrategicPlanner";
 export interface StrategyIntent {
   focus: "economy" | "military" | "diplomacy" | "research" | "balanced";
   rationale: string;
+  /**
+   * Optional LLM guidance (fresh or cached) that should be prioritized
+   * over purely rule-based heuristics when present.
+   */
+  llmPlan?: {
+    source: "fresh" | "cached";
+    turnAnalyzed: number;
+    validUntilTurn: number;
+    recommendedActions: string[];
+    diplomaticStance: Record<string, "friendly" | "neutral" | "hostile">;
+    confidenceScore: number; // 0-1
+  };
 }
 
 /**

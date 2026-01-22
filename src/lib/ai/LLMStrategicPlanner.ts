@@ -555,12 +555,22 @@ Be strategic, realistic, and consider long-term implications.`;
     // Determine if this is a fresh LLM call or using cached plan
     const planAge = currentTurn - guidingAnalysis.turnAnalyzed;
     const planSource = planAge === 0 ? "Fresh LLM" : `LLM (T${guidingAnalysis.turnAnalyzed}, ${planAge}t ago)`;
+    const planSourceKey: "fresh" | "cached" = planAge === 0 ? "fresh" : "cached";
+    const validUntilTurn = guidingAnalysis.turnAnalyzed + this.LLM_CALL_FREQUENCY - 1;
     
     // Combine LLM insight with rule-based safety
     // LLM provides strategic direction, rules ensure execution safety
     return {
       focus: guidingAnalysis.strategicFocus,
       rationale: `[${planSource}] ${guidingAnalysis.rationale}`,
+      llmPlan: {
+        source: planSourceKey,
+        turnAnalyzed: guidingAnalysis.turnAnalyzed,
+        validUntilTurn,
+        recommendedActions: guidingAnalysis.recommendedActions ?? [],
+        diplomaticStance: guidingAnalysis.diplomaticStance ?? {},
+        confidenceScore: guidingAnalysis.confidenceScore ?? 0.7,
+      },
     };
   }
 
