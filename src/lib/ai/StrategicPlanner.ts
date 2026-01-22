@@ -52,8 +52,9 @@ export class StrategicPlanner {
   /**
    * Determine strategic focus for this turn
    * Phase 2.2: Hybrid approach (rule-based + LLM)
+   * @param batchAnalysis - Optional batch LLM analysis (provided by turn API to avoid redundant calls)
    */
-  async plan(state: GameStateSnapshot, countryId: string): Promise<StrategyIntent> {
+  async plan(state: GameStateSnapshot, countryId: string, batchAnalysis?: any): Promise<StrategyIntent> {
     const stats = state.countryStatsByCountryId[countryId];
     
     if (!stats) {
@@ -64,10 +65,14 @@ export class StrategicPlanner {
     const analysis = RuleBasedAI.analyzeEconomicSituation(state, countryId, stats);
     const ruleBasedIntent = this.getRuleBasedIntent(state, countryId, stats, analysis);
     
-    // STEP 2: Get LLM insight if available and it's the right turn
-    let freshLLMAnalysis = null;
-    if (this.llmPlanner && this.llmPlanner.shouldCallLLM(state.turn)) {
+    // STEP 2: Get LLM insight if available
+    // Use batch analysis if provided (preferred to avoid redundant API calls)
+    let freshLLMAnalysis = batchAnalysis || null;
+    
+    // Only make individual API call if no batch analysis was provided and it's an LLM turn
+    if (!freshLLMAnalysis && this.llmPlanner && this.llmPlanner.shouldCallLLM(state.turn)) {
       try {
+        console.log(`[Strategic Planner] No batch analysis for ${countryId}, making individual LLM call`);
         freshLLMAnalysis = await this.llmPlanner.analyzeSituation(state, countryId, stats);
         
         if (freshLLMAnalysis) {
@@ -78,6 +83,10 @@ export class StrategicPlanner {
       } catch (error) {
         console.error(`[Strategic Planner] LLM analysis failed, falling back to rule-based:`, error);
       }
+    } else if (freshLLMAnalysis) {
+      console.log(`[Strategic Planner] Country ${countryId}:`);
+      console.log(`  Rule-based: ${ruleBasedIntent.focus} - ${ruleBasedIntent.rationale}`);
+      console.log(`  Fresh LLM: ${freshLLMAnalysis.strategicFocus} - ${freshLLMAnalysis.rationale}`);
     }
     
     // STEP 3: Enhance intent with LLM guidance (fresh or cached from previous turns)

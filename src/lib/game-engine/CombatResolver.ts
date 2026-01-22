@@ -13,10 +13,16 @@ export interface CombatResult {
  * CombatResolver - Resolves combat between attacker and defender
  * 
  * Features:
- * - Tech-based effectiveness bonuses
- * - Defender terrain advantage (20% bonus)
+ * - Expects EFFECTIVE STRENGTH inputs (tech bonuses already applied by caller)
+ * - Defender terrain advantage (20% bonus applied during combat resolution)
  * - Probabilistic outcomes with strength-based chances
  * - Both sides take losses (winner loses less)
+ * - Losses are converted back to raw military units (divided by tech multiplier)
+ *   to ensure high-tech nations don't lose disproportionately many units
+ * 
+ * IMPORTANT: 
+ * - attackerStrength and defenderStrength should be EFFECTIVE (tech-boosted)
+ * - Losses returned are in RAW MILITARY UNITS for subtraction from militaryStrength
  */
 export class CombatResolver {
   private static readonly DEFENSE_BONUS = 1.2; // 20% bonus for defender
@@ -25,6 +31,9 @@ export class CombatResolver {
   /**
    * Resolve combat between attacker and defender
    * Returns combat result including winner and losses
+   * 
+   * IMPORTANT: attackerStrength and defenderStrength are expected to be ALREADY EFFECTIVE
+   * (i.e., tech bonuses already applied by AttackModal/DefenseModal/DefenseAI)
    */
   static resolveCombat(
     attackerStrength: number,
@@ -32,16 +41,10 @@ export class CombatResolver {
     attackerStats: CountryStats,
     defenderStats: CountryStats
   ): CombatResult {
-    // Calculate effective strengths (with tech bonuses)
-    const attackerEffective = MilitaryCalculator.calculateEffectiveMilitaryStrength({
-      ...attackerStats,
-      militaryStrength: attackerStrength
-    });
-    
-    const defenderEffective = MilitaryCalculator.calculateEffectiveMilitaryStrength({
-      ...defenderStats,
-      militaryStrength: defenderStrength
-    });
+    // FIXED: Do NOT re-apply tech bonuses since attackerStrength/defenderStrength 
+    // are already effective strengths (tech-boosted) from the UI/AI
+    const attackerEffective = attackerStrength;
+    const defenderEffective = defenderStrength;
     
     // Add defense bonus (defenders have terrain advantage)
     const adjustedDefender = defenderEffective * this.DEFENSE_BONUS;
@@ -55,29 +58,32 @@ export class CombatResolver {
     const attackerWins = random < baseChance;
     
     // Calculate losses (both sides lose troops)
-    // Loser loses more
-    let attackerLosses: number;
-    let defenderLosses: number;
+    // Losses are calculated as percentage of allocated effective strength, 
+    // then converted back to raw military units by dividing by tech effectiveness
+    // This ensures high-tech nations don't lose disproportionately many units
+    
+    const attackerTechMultiplier = 1 + ((attackerStats.technologyLevel || 0) * 0.20);
+    const defenderTechMultiplier = 1 + ((defenderStats.technologyLevel || 0) * 0.20);
+    
+    let attackerEffectiveLosses: number;
+    let defenderEffectiveLosses: number;
     
     if (attackerWins) {
       // Attacker wins: loses 20-40% of allocated strength
-      attackerLosses = Math.floor(
-        attackerStrength * (0.2 + Math.random() * 0.2)
-      );
+      attackerEffectiveLosses = attackerStrength * (0.2 + Math.random() * 0.2);
       // Defender loses 40-70% of allocated strength
-      defenderLosses = Math.floor(
-        defenderStrength * (0.4 + Math.random() * 0.3)
-      );
+      defenderEffectiveLosses = defenderStrength * (0.4 + Math.random() * 0.3);
     } else {
       // Defender wins: attacker loses 50-80%
-      attackerLosses = Math.floor(
-        attackerStrength * (0.5 + Math.random() * 0.3)
-      );
+      attackerEffectiveLosses = attackerStrength * (0.5 + Math.random() * 0.3);
       // Defender loses 20-40%
-      defenderLosses = Math.floor(
-        defenderStrength * (0.2 + Math.random() * 0.2)
-      );
+      defenderEffectiveLosses = defenderStrength * (0.2 + Math.random() * 0.2);
     }
+    
+    // Convert effective losses to raw unit losses
+    // (divide by tech multiplier to get raw units)
+    const attackerLosses = Math.floor(attackerEffectiveLosses / attackerTechMultiplier);
+    const defenderLosses = Math.floor(defenderEffectiveLosses / defenderTechMultiplier);
     
     return {
       attackerWins,

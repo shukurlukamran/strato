@@ -285,6 +285,8 @@ export default function GamePage() {
       // Find the first city under attack and fetch attacker info
       const cityUnderAttack = playerCitiesUnderAttack[0];
       
+      console.log(`[Defense] Player city ${cityUnderAttack.name} is under attack! Fetching attacker info...`);
+      
       // Fetch pending attack action to get attacker info
       fetch(`/api/actions?gameId=${encodeURIComponent(gameId)}&turn=${turn}&status=pending`)
         .then(res => res.json())
@@ -303,15 +305,20 @@ export default function GamePage() {
             const attackerStats = statsByCountryId[attackerId];
             
             if (attackerCountry && attackerStats) {
+              console.log(`[Defense] Opening defense modal for ${cityUnderAttack.name} - attacked by ${attackerCountry.name}`);
               setDefenseCity(cityUnderAttack);
               setDefenseAttackerCountry(attackerCountry);
               setDefenseAttackerStats(attackerStats);
+            } else {
+              console.warn(`[Defense] Could not find attacker info for ${cityUnderAttack.name}`, { attackerId, attackerCountry, attackerStats });
             }
+          } else {
+            console.warn(`[Defense] No attack action found for ${cityUnderAttack.name} (city may have been attacked in previous turn)`);
           }
         })
-        .catch(err => console.error("Failed to fetch attack action:", err));
+        .catch(err => console.error("[Defense] Failed to fetch attack action:", err));
     }
-  }, [cities, playerCountryId, countries, statsByCountryId, gameId, turn]);
+  }, [cities, playerCountryId, countries, statsByCountryId, gameId, turn, defenseCity]);
 
   // Cleanup defense modal when no cities are under attack - CLEANUP ONLY
   useEffect(() => {

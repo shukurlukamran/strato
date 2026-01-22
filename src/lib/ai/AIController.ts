@@ -31,11 +31,17 @@ export class AIController {
    * Generate all actions for a country this turn
    * Phase 2.2: Hybrid approach (rule-based + optional LLM)
    * @param cities - All cities in the game (needed for military attack decisions)
+   * @param batchAnalysis - Optional batch LLM analysis (provided by turn API to avoid redundant calls)
    */
-  async decideTurnActions(state: GameStateSnapshot, countryId: string, cities: City[] = []): Promise<GameAction[]> {
+  async decideTurnActions(
+    state: GameStateSnapshot, 
+    countryId: string, 
+    cities: City[] = [], 
+    batchAnalysis?: any
+  ): Promise<GameAction[]> {
     // Step 1: Strategic planning - what should we focus on?
-    // This may call LLM if it's the right turn (every 5 turns)
-    const intent = await this.planner.plan(state, countryId);
+    // Pass batch analysis to avoid redundant LLM calls
+    const intent = await this.planner.plan(state, countryId, batchAnalysis);
     
     console.log(`[AI Controller] Country ${countryId} strategic focus: ${intent.focus} - ${intent.rationale}`);
 

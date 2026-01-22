@@ -208,7 +208,9 @@ export async function POST(req: Request) {
     const aiController = AIController.withRandomPersonality(country.id);
     
     try {
-      const actions = await aiController.decideTurnActions(state.data, country.id, cities);
+      // Pass batch analysis to avoid redundant LLM API calls
+      const batchAnalysisForCountry = batchAnalyses?.get(country.id) || undefined;
+      const actions = await aiController.decideTurnActions(state.data, country.id, cities, batchAnalysisForCountry);
       
       console.log(`[AI] ${country.name}: Generated ${actions.length} actions`);
       if (actions.length > 0) {
@@ -230,19 +232,27 @@ export async function POST(req: Request) {
   const aiActions = aiActionsArrays.flat();
   
   // Save AI actions to database (let database auto-generate UUIDs)
+  // IMPORTANT: Attack actions are scheduled for NEXT TURN to give defenders time to respond
   if (aiActions.length > 0) {
     const { data: insertedActions, error: aiActionsError } = await supabase
       .from("actions")
-      .insert(aiActions.map(a => ({
-        // Don't include id - let database auto-generate UUID
-        game_id: a.gameId,
-        country_id: a.countryId,
-        turn: a.turn,
-        action_type: a.actionType,
-        action_data: a.actionData,
-        status: a.status,
-        created_at: a.createdAt
-      })))
+      .insert(aiActions.map(a => {
+        // Check if this is an attack action
+        const actionData = a.actionData || {};
+        const isAttack = a.actionType === 'military' && actionData.subType === 'attack';
+        
+        return {
+          // Don't include id - let database auto-generate UUID
+          game_id: a.gameId,
+          country_id: a.countryId,
+          // CRITICAL FIX: Attack actions use NEXT turn (turn + 1) so defenders have time to respond
+          turn: isAttack ? a.turn + 1 : a.turn,
+          action_type: a.actionType,
+          action_data: a.actionData,
+          status: a.status,
+          created_at: a.createdAt
+        };
+      }))
       .select(); // Get back the inserted actions with auto-generated IDs
     
     if (aiActionsError) {
@@ -251,21 +261,59 @@ export async function POST(req: Request) {
     } else if (insertedActions && insertedActions.length > 0) {
       console.log(`[AI] ✓ Saved ${insertedActions.length} AI actions to database`);
       
+      // IMPORTANT: Mark cities as under attack for AI attack actions
+      // This allows player defenders to see the defense modal and respond
+      const attackActions = insertedActions.filter((a: any) => {
+        const actionData = a.action_data || {};
+        return a.action_type === 'military' && actionData.subType === 'attack';
+      });
+      
+      if (attackActions.length > 0) {
+        const targetCityIds = attackActions.map((a: any) => {
+          const actionData = a.action_data || {};
+          return actionData.targetCityId;
+        }).filter(Boolean);
+        
+        if (targetCityIds.length > 0) {
+          await supabase
+            .from('cities')
+            .update({ is_under_attack: true })
+            .in('id', targetCityIds);
+          
+          console.log(`[AI] ✓ Marked ${targetCityIds.length} cities as under attack`);
+        }
+      }
+      
       // Add inserted actions (with database-generated IDs) to pending actions in state
-      const actionsWithIds = insertedActions.map((a: any) => ({
-        id: a.id,
-        gameId: a.game_id,
-        countryId: a.country_id,
-        turn: a.turn,
-        actionType: a.action_type,
-        actionData: a.action_data,
-        status: a.status,
-        createdAt: a.created_at,
-      }));
+      // NOTE: Attack actions scheduled for next turn (turn+1) are NOT added to current state
+      // They will be picked up in the next turn processing cycle
+      const actionsForCurrentTurn = insertedActions.filter((a: any) => a.turn === turn);
       
-      state.setPendingActions([...state.data.pendingActions, ...actionsWithIds]);
+      if (actionsForCurrentTurn.length > 0) {
+        const actionsWithIds = actionsForCurrentTurn.map((a: any) => ({
+          id: a.id,
+          gameId: a.game_id,
+          countryId: a.country_id,
+          turn: a.turn,
+          actionType: a.action_type,
+          actionData: a.action_data,
+          status: a.status,
+          createdAt: a.created_at,
+        }));
+        
+        state.setPendingActions([...state.data.pendingActions, ...actionsWithIds]);
+        
+        console.log(`[AI] ✓ Added ${actionsWithIds.length} AI actions to state for processing`);
+      }
       
-      console.log(`[AI] ✓ Added ${actionsWithIds.length} AI actions to state for processing`);
+      const attackActionsForNextTurn = insertedActions.filter((a: any) => {
+        const actionData = a.action_data || {};
+        return a.turn === turn + 1 && a.action_type === 'military' && actionData.subType === 'attack';
+      });
+      
+      if (attackActionsForNextTurn.length > 0) {
+        console.log(`[AI] ✓ Scheduled ${attackActionsForNextTurn.length} attack actions for next turn (players will have time to defend)`);
+      }
     } else {
       console.warn('[AI] No actions were inserted (insertedActions is empty)');
     }
@@ -560,30 +608,41 @@ export async function POST(req: Request) {
                 }
               }
               
-              // Calculate tech modifiers for transparency (20% per tech level)
-              const attackerTechBonus = (attackerStats.technologyLevel || 0) * 0.20; // 20% per level
-              const defenderTechBonus = (defenderStats.technologyLevel || 0) * 0.20;
-              const defenseTerrainBonus = 0.2; // 20% defender advantage
+              // FIXED: allocatedStrength is already in effective terms (includes tech bonus)
+              // The AttackModal and DefenseModal calculate allocatedStrength from effective military strength
+              // So we should NOT re-apply tech bonuses here
               
-              // Create history event for successful capture with detailed combat breakdown
-              const attackEffective = Math.floor(actionData.allocatedStrength * (1 + attackerTechBonus));
-              const defenseEffective = Math.floor(combatResult.defenderAllocation * (1 + defenderTechBonus + defenseTerrainBonus));
+              // Get tech levels for display purposes only
+              const attackerTechLevel = attackerStats.technologyLevel || 0;
+              const defenderTechLevel = defenderStats.technologyLevel || 0;
+              const attackerTechBonus = attackerTechLevel * 0.20; // 20% per level
+              const defenderTechBonus = defenderTechLevel * 0.20;
+              
+              // The allocated strengths are already effective (tech-boosted)
+              const attackStrength = actionData.allocatedStrength;
+              const defenseStrength = combatResult.defenderAllocation;
+              
+              // Check if defender is player and didn't submit defense
+              const hasPlayerDefense = actionData.defenseAllocation !== undefined && actionData.defenseAllocation !== null;
+              const autoDefenseNote = (defenderCountry.isPlayerControlled && !hasPlayerDefense) 
+                ? `\n• Note: Defense was automatically set to 50% of effective strength (no player response)` 
+                : '';
               
               combatEvents.push({
                 type: "action.military.capture",
-                message: `⚔️ ${attackerCountry.name} captured ${city.name} from ${defenderCountry.name}!\n` +
-                  `• Attack: ${actionData.allocatedStrength} (effective: ${attackEffective} with +${(attackerTechBonus * 100).toFixed(0)}% tech)\n` +
-                  `• Defense: ${combatResult.defenderAllocation} (effective: ${defenseEffective} with +${(defenderTechBonus * 100).toFixed(0)}% tech + 20% terrain)\n` +
-                  `• Losses: ${attackerCountry.name} -${combatResult.attackerLosses}, ${defenderCountry.name} -${combatResult.defenderLosses}`,
+                message: `⚔️⚔️ ${attackerCountry.name} captured ${city.name} from ${defenderCountry.name}!\n` +
+                  `• Attack: ${attackStrength} (effective strength with +${(attackerTechBonus * 100).toFixed(0)}% tech)\n` +
+                  `• Defense: ${defenseStrength} (effective strength with +${(defenderTechBonus * 100).toFixed(0)}% tech + 20% terrain)\n` +
+                  `• Losses: ${attackerCountry.name} -${combatResult.attackerLosses}, ${defenderCountry.name} -${combatResult.defenderLosses}${autoDefenseNote}`,
                 data: {
                   attackerId,
                   defenderId,
                   cityId: targetCityId,
                   cityName: city.name,
-                  attackerAllocation: actionData.allocatedStrength,
-                  defenderAllocation: combatResult.defenderAllocation,
-                  attackerEffective: attackEffective,
-                  defenderEffective: defenseEffective,
+                  attackerAllocation: attackStrength,
+                  defenderAllocation: defenseStrength,
+                  attackerEffective: attackStrength,
+                  defenderEffective: defenseStrength,
                   attackerLosses: combatResult.attackerLosses,
                   defenderLosses: combatResult.defenderLosses,
                   captured: true
@@ -597,36 +656,48 @@ export async function POST(req: Request) {
               .update({ is_under_attack: false })
               .eq("id", targetCityId);
             
-            // Calculate tech modifiers for transparency (20% per tech level)
+            // FIXED: allocatedStrength is already in effective terms (includes tech bonus)
+            // The AttackModal and DefenseModal calculate allocatedStrength from effective military strength
+            // So we should NOT re-apply tech bonuses here
             const attackerStats = state.data.countryStatsByCountryId[attackerId];
             const defenderStats = state.data.countryStatsByCountryId[defenderId];
             
             if (attackerStats && defenderStats) {
-              const attackerTechBonus = (attackerStats.technologyLevel || 0) * 0.20; // 20% per level
-              const defenderTechBonus = (defenderStats.technologyLevel || 0) * 0.20;
-              const defenseTerrainBonus = 0.2; // 20% defender advantage
+              // Get tech levels for display purposes only
+              const attackerTechLevel = attackerStats.technologyLevel || 0;
+              const defenderTechLevel = defenderStats.technologyLevel || 0;
+              const attackerTechBonus = attackerTechLevel * 0.20; // 20% per level
+              const defenderTechBonus = defenderTechLevel * 0.20;
               
-              // Create history event for failed capture with detailed combat breakdown
-              const attackEffective = Math.floor(actionData.allocatedStrength * (1 + attackerTechBonus));
-              const defenseEffective = Math.floor(combatResult.defenderAllocation * (1 + defenderTechBonus + defenseTerrainBonus));
-              const strengthRatio = (attackEffective / defenseEffective).toFixed(2);
+              // The allocated strengths are already effective (tech-boosted)
+              const attackStrength = actionData.allocatedStrength;
+              const defenseStrength = combatResult.defenderAllocation;
+              
+              // Ratio for display (note: CombatResolver applies additional 20% terrain bonus internally)
+              const strengthRatio = (attackStrength / defenseStrength).toFixed(2);
+              
+              // Check if defender is player and didn't submit defense
+              const hasPlayerDefense = actionData.defenseAllocation !== undefined && actionData.defenseAllocation !== null;
+              const autoDefenseNote = (defenderCountry.isPlayerControlled && !hasPlayerDefense) 
+                ? `\n• Note: Defense was automatically set to 50% of effective strength (no player response)` 
+                : '';
               
               combatEvents.push({
                 type: "action.military.defense",
-                message: `🛡️ ${defenderCountry.name} defended ${city.name} against ${attackerCountry.name}!\n` +
-                  `• Attack: ${actionData.allocatedStrength} (effective: ${attackEffective} with +${(attackerTechBonus * 100).toFixed(0)}% tech)\n` +
-                  `• Defense: ${combatResult.defenderAllocation} (effective: ${defenseEffective} with +${(defenderTechBonus * 100).toFixed(0)}% tech + 20% terrain)\n` +
+                message: `🛡️🛡️ ${defenderCountry.name} defended ${city.name} against ${attackerCountry.name}!\n` +
+                  `• Attack: ${attackStrength} (effective strength with +${(attackerTechBonus * 100).toFixed(0)}% tech)\n` +
+                  `• Defense: ${defenseStrength} (effective strength with +${(defenderTechBonus * 100).toFixed(0)}% tech + 20% terrain)\n` +
                   `• Ratio: ${strengthRatio}:1 (defender advantage prevailed)\n` +
-                  `• Losses: ${attackerCountry.name} -${combatResult.attackerLosses}, ${defenderCountry.name} -${combatResult.defenderLosses}`,
+                  `• Losses: ${attackerCountry.name} -${combatResult.attackerLosses}, ${defenderCountry.name} -${combatResult.defenderLosses}${autoDefenseNote}`,
                 data: {
                   attackerId,
                   defenderId,
                   cityId: targetCityId,
                   cityName: city.name,
-                  attackerAllocation: actionData.allocatedStrength,
-                  defenderAllocation: combatResult.defenderAllocation,
-                  attackerEffective: attackEffective,
-                  defenderEffective: defenseEffective,
+                  attackerAllocation: attackStrength,
+                  defenderAllocation: defenseStrength,
+                  attackerEffective: attackStrength,
+                  defenderEffective: defenseStrength,
                   strengthRatio: parseFloat(strengthRatio),
                   attackerLosses: combatResult.attackerLosses,
                   defenderLosses: combatResult.defenderLosses,

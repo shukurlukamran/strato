@@ -62,10 +62,10 @@ export async function POST(req: Request) {
   const attackData = attackAction.action_data as any;
   const attackerId = attackData.attackerId || attackAction.country_id;
 
-  // Defender stats (current turn)
+  // Defender stats (current turn) - fetch full stats including technology level
   const statsRes = await supabase
     .from("country_stats")
-    .select("id, country_id, turn, military_strength, budget")
+    .select("id, country_id, turn, military_strength, technology_level, budget")
     .eq("country_id", defenderCountryId)
     .eq("turn", turn)
     .limit(1);
@@ -73,8 +73,18 @@ export async function POST(req: Request) {
   if (!statsRes.data || statsRes.data.length === 0) return NextResponse.json({ error: "Defender stats not found" }, { status: 404 });
 
   const defenderStats = statsRes.data[0];
-  if (defenderStats.military_strength < allocatedStrength) {
-    return NextResponse.json({ error: "Insufficient military strength" }, { status: 400 });
+  
+  // FIXED: Calculate effective strength (includes tech bonuses) for validation
+  // This matches what the DefenseModal uses for the slider
+  const rawStrength = Number(defenderStats.military_strength);
+  const techLevel = Number(defenderStats.technology_level) || 0;
+  const techEffectiveness = 1 + (techLevel * 0.20); // 20% per tech level
+  const effectiveStrength = Math.floor(rawStrength * techEffectiveness);
+  
+  if (allocatedStrength > effectiveStrength) {
+    return NextResponse.json({ 
+      error: `Allocated strength (${allocatedStrength}) exceeds effective military strength (${effectiveStrength})` 
+    }, { status: 400 });
   }
 
   // Update the attack action with defense allocation

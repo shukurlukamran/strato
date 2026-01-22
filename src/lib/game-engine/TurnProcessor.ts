@@ -139,8 +139,23 @@ export class TurnProcessor {
     } else {
       // Defender is Player - should have defense allocation in action data
       // (This would come from a defense action submitted by the player)
-      defenderStrength = actionData.defenseAllocation || Math.floor(defenderStats.militaryStrength * 0.5);
-      console.log(`[Combat] AI ${attackerCountry.name} attacks Player's ${cityData.name}. Player defense: ${defenderStrength}`);
+      const hasPlayerDefense = actionData.defenseAllocation !== undefined && actionData.defenseAllocation !== null;
+      
+      if (hasPlayerDefense) {
+        defenderStrength = actionData.defenseAllocation;
+        console.log(`[Combat] AI ${attackerCountry.name} attacks Player's ${cityData.name}. Player chose defense: ${defenderStrength}`);
+      } else {
+        // FIXED: Use effective strength (tech-boosted) for default defense, not raw military strength
+        // This matches what the AttackModal/DefenseModal use
+        const effectiveStrength = await DefenseAI.decideDefenseAllocation(
+          state.data,
+          defenderId,
+          cityData,
+          attackerId
+        );
+        defenderStrength = effectiveStrength;
+        console.log(`[Combat] AI ${attackerCountry.name} attacks Player's ${cityData.name}. Player did not respond - using AI-calculated defense: ${defenderStrength}`);
+      }
     }
 
     // Resolve combat using CombatResolver

@@ -156,7 +156,7 @@ export function DefenseModal({
             <div className="mb-2 flex items-center justify-between">
               <div className="text-sm font-semibold text-white">Allocate defense strength</div>
               <div className="text-xs text-white/70">
-                {percent}% → {allocatedStrength} strength
+                {percent}% → {allocatedStrength} effective strength
               </div>
             </div>
 
@@ -171,6 +171,10 @@ export function DefenseModal({
               className="w-full"
             />
 
+            <div className="mt-2 text-xs text-white/50 italic">
+              Note: Effective strength includes your technology bonuses
+            </div>
+
             <div className="mt-3 space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <div className="text-white/70">Estimated success chance</div>
@@ -183,7 +187,7 @@ export function DefenseModal({
                 </div>
               </div>
               <div className="text-xs text-white/50 italic">
-                Note: This is an estimate. The attacker's allocation is unknown.
+                This is an estimate. The attacker's allocation is unknown.
               </div>
             </div>
           </div>
@@ -194,6 +198,16 @@ export function DefenseModal({
               • Higher allocation = better defense, but leaves other cities vulnerable
               • Lower allocation = saves strength, but risks losing this city
               • You have a 20% terrain advantage when defending
+            </div>
+          </div>
+
+          <div className="rounded border border-orange-500/40 bg-orange-900/20 px-4 py-3">
+            <div className="flex items-center gap-2 text-orange-300">
+              <span className="text-base">⏰</span>
+              <span className="text-xs font-semibold">Important: Respond before turn ends!</span>
+            </div>
+            <div className="mt-1 text-xs text-orange-200/80">
+              If you don't submit a defense before the turn ends, the system will automatically allocate 50% of your military strength.
             </div>
           </div>
         </div>

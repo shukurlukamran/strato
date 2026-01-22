@@ -289,6 +289,8 @@ export class LLMStrategicPlanner {
       const prompt = this.buildStrategicPrompt(state, countryId, stats);
       
       // Call Groq API (OpenAI-compatible format)
+      // Note: response_format json_object can be strict about schema compliance
+      // If model fails to generate valid JSON, it will return 400 error
       const response = await fetch(this.apiUrl, {
         method: "POST",
         headers: {
@@ -300,15 +302,15 @@ export class LLMStrategicPlanner {
           messages: [
             {
               role: "system",
-              content: "You are a strategic AI advisor for a nation in a turn-based strategy game. Analyze the situation and provide strategic recommendations in valid JSON format only. Return ONLY the JSON object, no markdown, no explanations."
+              content: "You are a strategic AI advisor for a nation in a turn-based strategy game. Analyze the situation and provide strategic recommendations in valid JSON format only. Return ONLY the JSON object, no markdown, no explanations. Ensure the JSON is properly formatted and complete."
             },
             {
               role: "user",
               content: prompt
             }
           ],
-          temperature: 0.3,  // Lower = faster, more deterministic
-          top_p: 0.95,
+          temperature: 0.2,  // Lower temperature for more consistent JSON generation
+          top_p: 0.9,
           max_tokens: 2000,
           response_format: { type: "json_object" }  // Force JSON output
         })
@@ -317,6 +319,18 @@ export class LLMStrategicPlanner {
       if (!response.ok) {
         const errorText = await response.text();
         console.error(`[LLM Planner] Groq API error: ${response.status} - ${errorText}`);
+        
+        // Check if this is a JSON validation error
+        try {
+          const errorJson = JSON.parse(errorText);
+          if (errorJson.error?.code === "json_validate_failed") {
+            console.error(`[LLM Planner] JSON validation failed - model could not generate valid JSON for the schema`);
+            console.error(`[LLM Planner] This usually means the prompt is too complex or the model is struggling with the constraints`);
+          }
+        } catch {
+          // Error text is not JSON, just log it
+        }
+        
         return null;
       }
 

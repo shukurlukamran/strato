@@ -131,9 +131,9 @@ export function AttackModal({
 
           <div className="rounded border border-white/10 bg-slate-800/40 p-4">
             <div className="mb-2 flex items-center justify-between">
-              <div className="text-sm font-semibold text-white">Allocate strength</div>
+              <div className="text-sm font-semibold text-white">Allocate effective strength</div>
               <div className="text-xs text-white/70">
-                {percent}% → {allocatedStrength} strength
+                {percent}% → {allocatedStrength} effective strength
               </div>
             </div>
 
@@ -147,6 +147,10 @@ export function AttackModal({
               disabled={submitting}
               className="w-full"
             />
+
+            <div className="mt-2 text-xs text-white/50 italic">
+              Note: Effective strength includes your technology bonuses
+            </div>
 
             <div className="mt-3 flex items-center justify-between text-sm">
               <div className="text-white/70">Attack cost</div>
