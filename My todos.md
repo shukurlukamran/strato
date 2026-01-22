@@ -9,7 +9,7 @@ The reality is that Aurum attacked with 45 strength not with 45 military units. 
 - This is another problematic calculation from history log: "🛡️🛡️ Dravon defended Dravon against Aurum! • Attack: 90 (effective: 144 with +60% tech) • Defense: 52 (effective: 72 with +20% tech + 20% terrain) • Ratio: 2.00:1 (defender advantage prevailed) • Losses: Aurum -55, Dravon -18"
 - As seen from this log (jan 23 02:16:41), Player (Aurum) was attacked but its defense was automatically chosen by system, and player didn't decide defense strength. 
 
-- Decrease amount of API requests by optimizing as each request costs additionally. (Change DefenseLLM to fully rule-based defense, make sure to have a sophisticated and also a bit randomized algorithm to decide defense strength)
+- Decrease amount of API requests by optimizing as each request costs additionally. Batch them if you can. (Change DefenseLLM to fully rule-based defense, make sure to have a sophisticated and also a bit randomized algorithm to decide defense strength)
 
 - Resource usage (actions should use resources and each resource should at least have one use case)
 - Prevent cheating in the chat deals (you can get money for technology level now, but tech level isn't actually transferred, for example)
