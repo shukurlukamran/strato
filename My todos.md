@@ -11,6 +11,7 @@ The reality is that Aurum attacked with 45 strength not with 45 military units. 
 
 - Decrease amount of API requests by optimizing as each request costs additionally. Batch them if you can. (Change DefenseLLM to fully rule-based defense, make sure to have a sophisticated and also a bit randomized algorithm to decide defense strength)
 - Everything is too expensive in the game, many turns are just passed with no action from anyone at all because noone has money to do anything. Reevaluate economics.
+- Change LLM decision to every 7 turns instead of 5 turns
 
 - Resource usage (actions should use resources and each resource should at least have one use case)
 - Prevent cheating in the chat deals (you can get money for technology level now, but tech level isn't actually transferred, for example)
