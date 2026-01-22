@@ -466,7 +466,12 @@ export async function POST(req: Request) {
                 attackerStats.militaryEquipment = {
                   ...attackerStats.militaryEquipment,
                   ...Object.fromEntries(
-                    Object.entries(defenderStats.militaryEquipment || {}).map(([k, v]) => [k, (attackerStats.militaryEquipment?.[k] || 0) + (typeof v === 'number' ? v : 0)])
+                    Object.entries(defenderStats.militaryEquipment || {}).map(([k, v]) => {
+                      const attackerValue = attackerStats.militaryEquipment?.[k];
+                      const attackerNum = typeof attackerValue === 'number' ? attackerValue : 0;
+                      const defenderNum = typeof v === 'number' ? v : 0;
+                      return [k, attackerNum + defenderNum];
+                    })
                   )
                 };
                 
