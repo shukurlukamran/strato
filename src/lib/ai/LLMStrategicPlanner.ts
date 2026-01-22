@@ -409,6 +409,8 @@ CRITICAL RULES:
 6. "rationale" must be under 150 characters
 7. All text fields must be complete (not truncated)
 8. If you include "effects.prohibit", use short tokens like: recruit, research, infrastructure, attack. (But you may still describe nuanced exceptions in "instruction".)
+9. If a step's instruction uses conditional words like "after/once/when/if/following", you MUST provide a machine-readable "when".
+10. If a step is a target (e.g. "reach X strength" or "upgrade to Level Y"), you SHOULD provide "stop_when" so it can be checked off correctly.
 
 Be strategic, realistic, and consider long-term implications.`;
   }

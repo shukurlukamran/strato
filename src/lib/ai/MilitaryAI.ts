@@ -11,6 +11,7 @@ import {
   extractLLMBansFromProhibitTokens,
   extractNumberRange,
   isOneTimeStep,
+  instructionLooksConditional,
   mergeBans,
 } from "@/lib/ai/LLMPlanInterpreter";
 import type { LLMPlanItem } from "@/lib/ai/LLMStrategicPlanner";
@@ -58,10 +59,13 @@ export class MilitaryAI {
 
     const bans = this.getEffectiveBans(intent);
 
-    // Prefer structured plan items if available: execute next incomplete step by ID.
+    // Prefer structured plan items if available: execute next incomplete step(s) by ID.
     const planItems = intent.llmPlan?.planItems ?? [];
     const executed = new Set((intent.llmPlan?.executedStepIds ?? []).map((s) => String(s ?? "").trim()).filter(Boolean));
-    const structuredStep = this.pickNextExecutableMilitaryStep(planItems, executed, stats, bans);
+    const chosenThisTurn = new Set<string>();
+    const recruitStep = this.pickNextExecutableMilitaryStep(planItems, executed, stats, bans, "recruit", chosenThisTurn);
+    if (recruitStep) chosenThisTurn.add(recruitStep.id);
+    const attackStep = this.pickNextExecutableMilitaryStep(planItems, executed, stats, bans, "attack", chosenThisTurn);
 
     const criticalDefenseNeed = analysis.isUnderDefended && analysis.militaryDeficit > 20;
     const hasLLMPlan = !!intent.llmPlan;
@@ -69,17 +73,17 @@ export class MilitaryAI {
     // Recruit only when the LLM says so, or in critical defense emergencies.
     const allowRecruitment =
       (!bans.banRecruitment && criticalDefenseNeed) ||
-      (structuredStep?.execution?.actionType === "military" &&
-        (structuredStep.execution.actionData as any)?.subType === "recruit") ||
+      (recruitStep?.execution?.actionType === "military" &&
+        (recruitStep.execution.actionData as any)?.subType === "recruit") ||
       (!hasLLMPlan && (intent.focus === "military" || intent.focus === "balanced"));
     const allowAttacks =
-      (structuredStep?.execution?.actionType === "military" &&
-        (structuredStep.execution.actionData as any)?.subType === "attack") ||
+      (attackStep?.execution?.actionType === "military" &&
+        (attackStep.execution.actionData as any)?.subType === "attack") ||
       (!hasLLMPlan && (intent.focus === "military" || intent.focus === "balanced"));
 
     // DECISION: Military recruitment
     const recruitAmount = allowRecruitment
-      ? (this.extractRecruitAmountFromStep(structuredStep) ?? RuleBasedAI.decideMilitaryRecruitment(stats, analysis, weights))
+      ? (this.extractRecruitAmountFromStep(recruitStep) ?? RuleBasedAI.decideMilitaryRecruitment(stats, analysis, weights))
       : 0;
     
     if (!bans.banRecruitment && recruitAmount > 0) {
@@ -107,8 +111,8 @@ export class MilitaryAI {
             subType: "recruit",
             amount: finalRecruitAmount,
             cost: recruitCost,
-            ...(structuredStep
-              ? { llmStepId: structuredStep.id, llmStep: structuredStep.instruction, llmPlanTurn: intent.llmPlan?.turnAnalyzed }
+            ...(recruitStep
+              ? { llmStepId: recruitStep.id, llmStep: recruitStep.instruction, llmPlanTurn: intent.llmPlan?.turnAnalyzed }
               : {}),
           },
           status: "pending",
@@ -126,10 +130,10 @@ export class MilitaryAI {
         intent,
         cities,
         remainingBudget,
-        structuredStep?.execution?.actionType === "military" &&
-          (structuredStep.execution.actionData as any)?.subType === "attack",
-        structuredStep?.id ?? null,
-        structuredStep?.instruction ?? null
+        attackStep?.execution?.actionType === "military" &&
+          (attackStep.execution.actionData as any)?.subType === "attack",
+        attackStep?.id ?? null,
+        attackStep?.instruction ?? null
       );
       if (attackAction) {
         const attackCost = Number((attackAction.actionData as Record<string, unknown>)?.cost ?? 0);
@@ -714,7 +718,9 @@ Your decision:`;
     planItems: LLMPlanItem[],
     executed: Set<string>,
     stats: { technologyLevel: number; infrastructureLevel?: number; militaryStrength: number; budget: number },
-    bans: ReturnType<typeof extractLLMBans>
+    bans: ReturnType<typeof extractLLMBans>,
+    requiredSubType: "recruit" | "attack",
+    chosenThisTurn?: Set<string>
   ): Extract<LLMPlanItem, { kind: "step" }> | null {
     if (!Array.isArray(planItems) || planItems.length === 0) return null;
     const steps = planItems
@@ -735,12 +741,17 @@ Your decision:`;
       };
 
       for (const s of steps) {
-        if (executed.has(s.id)) {
+        if (this.isStopConditionMet(s.stop_when, stats)) {
+          coverage.stopMet++;
+          continue;
+        }
+        // If stop_when exists, allow repeated execution until completion.
+        if (!s.stop_when && executed.has(s.id)) {
           coverage.executed++;
           continue;
         }
-        if (this.isStopConditionMet(s.stop_when, stats)) {
-          coverage.stopMet++;
+        if (chosenThisTurn?.has(s.id)) {
+          coverage.executed++;
           continue;
         }
         if (!s.execution) {
@@ -749,6 +760,11 @@ Your decision:`;
         }
         if (s.execution.actionType !== "military") {
           coverage.wrongDomain++;
+          continue;
+        }
+        // Safety guard: conditional instructions must provide `when`
+        if (!s.when && instructionLooksConditional(s.instruction)) {
+          coverage.whenUnmet++;
           continue;
         }
         if (!this.isWhenConditionMet(s.when, stats)) {
@@ -761,7 +777,7 @@ Your decision:`;
           continue;
         }
         // (attack bans could be added later if you implement prohibit:["attack"] execution blocking)
-        if (subType !== "recruit" && subType !== "attack") {
+        if (subType !== requiredSubType) {
           coverage.wrongDomain++;
           continue;
         }
@@ -772,17 +788,19 @@ Your decision:`;
     }
 
     for (const s of steps) {
-      if (executed.has(s.id)) continue;
       if (this.isStopConditionMet(s.stop_when, stats)) continue;
+      if (!s.stop_when && executed.has(s.id)) continue;
+      if (chosenThisTurn?.has(s.id)) continue;
       if (!s.execution) continue;
       if (s.execution.actionType !== "military") continue;
+      // Safety guard: conditional instructions must provide `when`
+      if (!s.when && instructionLooksConditional(s.instruction)) continue;
       if (!this.isWhenConditionMet(s.when, stats)) continue;
 
       const subType = (s.execution.actionData as any)?.subType;
-      if (subType === "recruit" || subType === "attack") {
-        if (subType === "recruit" && bans.banRecruitment) continue;
-        return s;
-      }
+      if (subType !== requiredSubType) continue;
+      if (subType === "recruit" && bans.banRecruitment) continue;
+      return s;
     }
     return null;
   }

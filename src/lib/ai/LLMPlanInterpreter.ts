@@ -90,6 +90,16 @@ export function mergeBans(a: LLMBans, b: LLMBans): LLMBans {
   };
 }
 
+/**
+ * Safety guard: if a step is conditional but lacks machine-readable `when`,
+ * we should NOT auto-execute it (to avoid misinterpreting natural language).
+ */
+export function instructionLooksConditional(instruction: string): boolean {
+  const s = String(instruction ?? "").toLowerCase();
+  // Common gating words/phrases used by the LLM
+  return /\b(after|once|when|if|following|provided|as\s+soon\s+as)\b/.test(s);
+}
+
 export function isOneTimeStep(raw: string): boolean {
   const step = String(raw ?? "").trim();
   if (!step) return false;

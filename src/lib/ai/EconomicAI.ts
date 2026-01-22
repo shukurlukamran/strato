@@ -12,6 +12,7 @@ import {
   extractTargetInfraLevel,
   extractTargetTechLevel,
   isOneTimeStep,
+  instructionLooksConditional,
   looksLikeInfrastructureUpgradeStep,
   looksLikeTechUpgradeStep,
 } from "@/lib/ai/LLMPlanInterpreter";
@@ -214,12 +215,41 @@ export class EconomicAI {
     // Prefer structured plan items when available
     const planItems = intent.llmPlan?.planItems ?? [];
     if (Array.isArray(planItems) && planItems.length > 0) {
-      const step = this.pickNextExecutableEconomicStep(planItems, executed, stats, bans);
-      if (step && step.execution) {
-        const built = this.buildEconomicActionFromStep(state, countryId, step, analysis, bans, intent.llmPlan?.turnAnalyzed);
-        if (built) return [built];
+      // Allow multiple actions per turn (player can do multiple too).
+      // We keep it conservative: at most 2 economic actions (typically 1 research + 1 infra).
+      let remainingBudget = stats.budget;
+      const chosenThisTurn = new Set<string>();
+      const out: GameAction[] = [];
+
+      for (let i = 0; i < 2; i++) {
+        const step = this.pickNextExecutableEconomicStep(planItems, executed, stats, bans, chosenThisTurn);
+        if (!step || !step.execution) break;
+        const built = this.buildEconomicActionFromStep(
+          state,
+          countryId,
+          step,
+          analysis,
+          bans,
+          intent.llmPlan?.turnAnalyzed
+        );
+        if (!built) {
+          chosenThisTurn.add(step.id);
+          continue;
+        }
+
+        const cost = Number((built.actionData as any)?.cost ?? 0);
+        if (Number.isFinite(cost) && cost > 0 && cost <= remainingBudget) {
+          out.push(built);
+          remainingBudget -= cost;
+          chosenThisTurn.add(step.id);
+        } else {
+          // Can't afford this step this turn; stop trying further economic steps.
+          chosenThisTurn.add(step.id);
+          break;
+        }
       }
-      return [];
+
+      return out;
     }
 
     // Legacy fallback: parse free-text recommendedActions
@@ -340,7 +370,8 @@ export class EconomicAI {
     planItems: LLMPlanItem[],
     executed: Set<string>,
     stats: { technologyLevel: number; infrastructureLevel?: number; budget: number },
-    bans: ReturnType<typeof extractLLMBans>
+    bans: ReturnType<typeof extractLLMBans>,
+    chosenThisTurn?: Set<string>
   ): Extract<LLMPlanItem, { kind: "step" }> | null {
     const steps = planItems
       .filter((i): i is Extract<LLMPlanItem, { kind: "step" }> => i.kind === "step")
@@ -360,12 +391,18 @@ export class EconomicAI {
       };
 
       for (const s of steps) {
-        if (executed.has(s.id)) {
+        if (this.isStopConditionMet(s.stop_when, stats)) {
+          coverage.stopMet++;
+          continue;
+        }
+        // IMPORTANT: If a step has stop_when, it can be executed multiple turns until completion.
+        // In that case, do NOT treat "executed once" as completed.
+        if (!s.stop_when && executed.has(s.id)) {
           coverage.executed++;
           continue;
         }
-        if (this.isStopConditionMet(s.stop_when, stats)) {
-          coverage.stopMet++;
+        if (chosenThisTurn?.has(s.id)) {
+          coverage.executed++;
           continue;
         }
         if (!s.execution) {
@@ -374,6 +411,11 @@ export class EconomicAI {
         }
         if (s.execution.actionType !== "research" && s.execution.actionType !== "economic") {
           coverage.wrongDomain++;
+          continue;
+        }
+        // Safety guard: conditional instructions must provide `when`
+        if (!s.when && instructionLooksConditional(s.instruction)) {
+          coverage.whenUnmet++;
           continue;
         }
         if (!this.isWhenConditionMet(s.when, stats)) {
@@ -395,14 +437,17 @@ export class EconomicAI {
     }
 
     for (const s of steps) {
-      // Completed by execution
-      if (executed.has(s.id)) continue;
       // Completed by stop_when
       if (this.isStopConditionMet(s.stop_when, stats)) continue;
+      // Completed by execution only when this is a one-time step (no stop_when)
+      if (!s.stop_when && executed.has(s.id)) continue;
+      if (chosenThisTurn?.has(s.id)) continue;
       // Must have executable payload
       if (!s.execution) continue;
       // Must be economic-related actionType
       if (s.execution.actionType !== "research" && s.execution.actionType !== "economic") continue;
+      // Safety guard: conditional instructions must provide `when`
+      if (!s.when && instructionLooksConditional(s.instruction)) continue;
       // Must satisfy gating
       if (!this.isWhenConditionMet(s.when, stats)) continue;
       // Must respect bans
