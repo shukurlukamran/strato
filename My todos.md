@@ -3,6 +3,10 @@
 - AI countries don't follow LLM's strategy advices. LLM gives strategy advices and plan every 5 turn and countries are expected to follow this advice for the next 5 turns. We still need to have rule-based logic as a fallback but LLM's advice should be followed mainly if it exists.
 
 We already build some kind of cached plan that persists LLM plan for the next turns but it still doens't work at all. Make sure this cached plan includes action steps given by LLM and this plan is prioritized by countries. Or build it in another way if this isn't a good way to do it.
+- AI countries can do more than one action a turn, don't force it but make sure the system allows for it when it makes sense to do so.
+- History log says: "⚔️⚔️ Aurum captured Timbuktu from Dravon! • Attack: 45 (effective: 81 with +80% tech) • Defense: 4 (effective: 5 with +20% tech + 20% terrain) • Losses: Aurum -11, Dravon -1"
+
+The reality is that Aurum attacked with 45 strength not with 45 military units. I don't know if history log is wrong or the combat resolution calculation is also wrong.
 
 - Optimize LLM on End turn to be faster.
 - Resource usage (actions should use resources and each resource should at least have one use case)
@@ -24,11 +28,8 @@ We already build some kind of cached plan that persists LLM plan for the next tu
 - Player can hire an advisor by clicking "Hire Advisor" button that can tell them what they can improve (the advisor will be the same logic with LLM for AI countries). It should work immediately without needing to end the turn. Advisor can be hired only once each turn.
 - Countries are able to sell their resources to black market at cheaper rates than they would be able to get via trading with other countries.
 - AI countries may have dictators who thinks of themselves more than the country, and potential revolutions, protests, anger of people, etc
-- AI countries can do more than one action a turn, don't force it but make sure the system allows for it when it makes sense to do so.
 -------
 
 Analyze root causes of these, understand what is happening, and then implement fixes. 
 
 Make sure everything we build is aligned with LLM in both Deals chat and End turn decisions and anywhere else it may be used, and also with Supabase database.
-
-CRITICAL: Also, let me know which model is currently in use for building this task - I need this to be able to adjust the code properly while editing manually.

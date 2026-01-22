@@ -799,7 +799,8 @@ Be strategic, realistic, and consider long-term implications.`;
         turnAnalyzed: Number(planRes.data.turn_analyzed),
       };
 
-      // Load plan from DB (jsonb array). Backward compatible:
+      // CRITICAL FIX: Load plan from DB (jsonb array) with proper reconstruction
+      // Backward compatible:
       // - ["string", ...] legacy
       // - [{kind:"step"|...}, ...] structured
       const ra = planRes.data.recommended_actions as unknown;
@@ -824,6 +825,13 @@ Be strategic, realistic, and consider long-term implications.`;
         }
         analysis.planItems = steps.length > 0 ? steps : undefined;
         analysis.recommendedActions = actionStrings.length > 0 ? actionStrings.slice(0, 5) : [];
+        
+        // DEBUG: Log what we retrieved
+        if (steps.length > 0) {
+          console.log(`[LLM Planner] ✓ Retrieved plan for ${countryId}: ${steps.length} plan items`);
+        } else if (actionStrings.length > 0) {
+          console.log(`[LLM Planner] ✓ Retrieved legacy plan for ${countryId}: ${actionStrings.length} action strings`);
+        }
       }
 
       if (!analysis.recommendedActions || analysis.recommendedActions.length === 0) {
@@ -867,6 +875,12 @@ Be strategic, realistic, and consider long-term implications.`;
       const supabase = getSupabaseServerClient();
       const validUntilTurn = analysis.turnAnalyzed + this.LLM_CALL_FREQUENCY - 1;
 
+      // CRITICAL FIX: Store plan items properly as structured objects at the start of the array
+      // This ensures they survive the round trip to/from database
+      const recommendedActionsToStore = Array.isArray(analysis.planItems) && analysis.planItems.length > 0
+        ? analysis.planItems // Store ONLY plan items, no mixing with strings
+        : analysis.recommendedActions; // Fallback to legacy strings
+
       const { error } = await supabase
         .from("llm_strategic_plans")
         .upsert(
@@ -879,15 +893,7 @@ Be strategic, realistic, and consider long-term implications.`;
             rationale: analysis.rationale,
             threat_assessment: analysis.threatAssessment,
             opportunity_identified: analysis.opportunityIdentified,
-            // Backward compatible: store as jsonb array.
-            // - If structured items exist, store them (plus legacy strings for debugging).
-            // - Otherwise store legacy string list.
-            recommended_actions: Array.isArray(analysis.planItems) && analysis.planItems.length > 0
-              ? [
-                  ...analysis.planItems,
-                  ...analysis.recommendedActions.map((s) => String(s ?? "").trim()).filter(Boolean).slice(0, 5),
-                ]
-              : analysis.recommendedActions,
+            recommended_actions: recommendedActionsToStore,
             diplomatic_stance: analysis.diplomaticStance,
             confidence_score: analysis.confidenceScore,
             created_at: new Date().toISOString(),
@@ -897,6 +903,8 @@ Be strategic, realistic, and consider long-term implications.`;
 
       if (error) {
         console.warn("[LLM Planner] Failed to persist strategic plan:", error.message);
+      } else {
+        console.log(`[LLM Planner] ✓ Persisted strategic plan for ${countryId}: ${recommendedActionsToStore.length} items`);
       }
     } catch (error) {
       console.warn("[LLM Planner] Failed to persist strategic plan:", error);

@@ -59,6 +59,11 @@ export class EconomicAI {
       return llmPreferred;
     }
     
+    // CRITICAL FIX: If LLM has strategic guidance but no executable economic steps,
+    // use rule-based logic BUT respect the LLM's strategic focus.
+    // This prevents contradictions like "LLM says economy, AI does research".
+    const hasLLMGuidance = intent.llmPlan && (intent.rationale.includes("LLM") || intent.rationale.includes("Fresh"));
+    
     // Calculate decision weights (influenced by strategic intent)
     const weights = RuleBasedAI.calculateDecisionWeights(
       analysis,
@@ -74,6 +79,13 @@ export class EconomicAI {
     if ((intent.focus === "military" || intent.focus === "diplomacy") && !criticalEconomicNeed) {
       return actions;
     }
+    
+    // CRITICAL: If LLM guidance exists and focus is not economy/research/balanced,
+    // don't do economic actions to avoid contradicting LLM strategy
+    if (hasLLMGuidance && intent.focus === "military") {
+      console.log(`[EconomicAI] Respecting LLM focus (${intent.focus}) - skipping economic actions`);
+      return actions;
+    }
 
     const shouldResearch = RuleBasedAI.shouldInvestInResearch(stats, analysis, weights);
     const shouldInfrastructure = RuleBasedAI.shouldInvestInInfrastructure(stats, analysis, weights);
@@ -85,6 +97,9 @@ export class EconomicAI {
     if (intent.focus === "research") {
       if (canDoResearch && shouldResearch) {
         const researchCost = ActionResolver.calculateResearchCost(stats.technologyLevel);
+        if (hasLLMGuidance) {
+          console.log(`[EconomicAI] Following LLM focus (research) with rule-based execution`);
+        }
         actions.push({
           id: '',
           gameId: state.gameId,
@@ -100,6 +115,9 @@ export class EconomicAI {
         });
       } else if (canDoInfrastructure && shouldInfrastructure) {
         const infraCost = ActionResolver.calculateInfrastructureCost(stats.infrastructureLevel || 0);
+        if (hasLLMGuidance) {
+          console.log(`[EconomicAI] Following LLM focus (research) with infrastructure fallback`);
+        }
         actions.push({
           id: '',
           gameId: state.gameId,
@@ -121,6 +139,9 @@ export class EconomicAI {
     if (intent.focus === "economy") {
       if (canDoInfrastructure && shouldInfrastructure) {
         const infraCost = ActionResolver.calculateInfrastructureCost(stats.infrastructureLevel || 0);
+        if (hasLLMGuidance) {
+          console.log(`[EconomicAI] Following LLM focus (economy) with infrastructure upgrade`);
+        }
         actions.push({
           id: '',
           gameId: state.gameId,
@@ -137,6 +158,9 @@ export class EconomicAI {
         });
       } else if (canDoResearch && shouldResearch) {
         const researchCost = ActionResolver.calculateResearchCost(stats.technologyLevel);
+        if (hasLLMGuidance) {
+          console.log(`[EconomicAI] Following LLM focus (economy) with research fallback`);
+        }
         actions.push({
           id: '',
           gameId: state.gameId,
@@ -154,9 +178,54 @@ export class EconomicAI {
       return actions;
     }
 
+    // FALLBACK: If no focus-specific action was taken, use default logic
+    // CRITICAL: Respect LLM's strategic focus even in fallback
+    
+    // If LLM says "economy", prioritize infrastructure over research
+    if (hasLLMGuidance && intent.focus === "economy") {
+      if (canDoInfrastructure && shouldInfrastructure) {
+        const infraCost = ActionResolver.calculateInfrastructureCost(stats.infrastructureLevel || 0);
+        console.log(`[EconomicAI] Fallback: Following LLM economy focus with infrastructure`);
+        actions.push({
+          id: '',
+          gameId: state.gameId,
+          countryId,
+          turn: state.turn,
+          actionType: "economic",
+          actionData: {
+            subType: "infrastructure",
+            cost: infraCost,
+            targetLevel: (stats.infrastructureLevel || 0) + 1,
+          },
+          status: "pending",
+          createdAt: new Date().toISOString(),
+        });
+      } else if (canDoResearch && shouldResearch) {
+        const researchCost = ActionResolver.calculateResearchCost(stats.technologyLevel);
+        console.log(`[EconomicAI] Fallback: Following LLM economy focus with research (infra unavailable)`);
+        actions.push({
+          id: '',
+          gameId: state.gameId,
+          countryId,
+          turn: state.turn,
+          actionType: "research",
+          actionData: {
+            cost: researchCost,
+            targetLevel: stats.technologyLevel + 1,
+          },
+          status: "pending",
+          createdAt: new Date().toISOString(),
+        });
+      }
+      return actions;
+    }
+    
     // DECISION 1: Research investment
     if (canDoResearch && shouldResearch) {
       const researchCost = ActionResolver.calculateResearchCost(stats.technologyLevel);
+      if (hasLLMGuidance) {
+        console.log(`[EconomicAI] Fallback: Rule-based research decision (LLM focus: ${intent.focus})`);
+      }
       actions.push({
         id: '', // Will be auto-generated by database
         gameId: state.gameId,
@@ -176,6 +245,9 @@ export class EconomicAI {
     // Only if we didn't research this turn (one major investment per turn)
     if (actions.length === 0 && canDoInfrastructure && shouldInfrastructure) {
       const infraCost = ActionResolver.calculateInfrastructureCost(stats.infrastructureLevel || 0);
+      if (hasLLMGuidance) {
+        console.log(`[EconomicAI] Fallback: Rule-based infrastructure decision (LLM focus: ${intent.focus})`);
+      }
       actions.push({
         id: '', // Will be auto-generated by database
         gameId: state.gameId,
@@ -390,50 +462,76 @@ export class EconomicAI {
         actionable: 0,
       };
 
+      const skippedReasons: Record<string, string[]> = {
+        stopMet: [],
+        executed: [],
+        noExecution: [],
+        wrongDomain: [],
+        whenUnmet: [],
+        banned: [],
+      };
+
       for (const s of steps) {
         if (this.isStopConditionMet(s.stop_when, stats)) {
           coverage.stopMet++;
+          skippedReasons.stopMet.push(s.id);
           continue;
         }
         // IMPORTANT: If a step has stop_when, it can be executed multiple turns until completion.
         // In that case, do NOT treat "executed once" as completed.
         if (!s.stop_when && executed.has(s.id)) {
           coverage.executed++;
+          skippedReasons.executed.push(s.id);
           continue;
         }
         if (chosenThisTurn?.has(s.id)) {
           coverage.executed++;
+          skippedReasons.executed.push(s.id);
           continue;
         }
         if (!s.execution) {
           coverage.noExecution++;
+          skippedReasons.noExecution.push(`${s.id} (${s.instruction.substring(0, 50)}...)`);
           continue;
         }
         if (s.execution.actionType !== "research" && s.execution.actionType !== "economic") {
           coverage.wrongDomain++;
+          skippedReasons.wrongDomain.push(s.id);
           continue;
         }
         // Safety guard: conditional instructions must provide `when`
         if (!s.when && instructionLooksConditional(s.instruction)) {
           coverage.whenUnmet++;
+          skippedReasons.whenUnmet.push(s.id);
           continue;
         }
         if (!this.isWhenConditionMet(s.when, stats)) {
           coverage.whenUnmet++;
+          skippedReasons.whenUnmet.push(s.id);
           continue;
         }
         if (bans.banTechUpgrades && s.execution.actionType === "research") {
           coverage.banned++;
+          skippedReasons.banned.push(`${s.id} (research banned)`);
           continue;
         }
         if (bans.banInfrastructureUpgrades && s.execution.actionType === "economic") {
           coverage.banned++;
+          skippedReasons.banned.push(`${s.id} (infrastructure banned)`);
           continue;
         }
         coverage.actionable++;
       }
 
       console.log(`[LLM Plan Debug] Economic coverage:`, coverage);
+      
+      // Log non-executable steps so they're visible
+      if (skippedReasons.noExecution.length > 0) {
+        console.log(`[LLM Plan Debug] Non-executable economic steps (e.g., trading):`, skippedReasons.noExecution);
+      }
+      if (skippedReasons.banned.length > 0) {
+        console.log(`[LLM Plan Debug] Banned economic steps:`, skippedReasons.banned);
+      }
     }
 
     for (const s of steps) {
@@ -453,7 +551,15 @@ export class EconomicAI {
       // Must respect bans
       if (bans.banTechUpgrades && s.execution.actionType === "research") continue;
       if (bans.banInfrastructureUpgrades && s.execution.actionType === "economic") continue;
+      
+      if (this.debugLLMPlan) {
+        console.log(`[LLM Plan Debug] Selected economic step: ${s.id} (priority: ${s.priority ?? 'none'}, instruction: "${s.instruction.substring(0, 60)}...")`);
+      }
       return s;
+    }
+    
+    if (this.debugLLMPlan && steps.length > 0) {
+      console.log(`[LLM Plan Debug] No actionable economic step found (all ${steps.length} steps filtered out)`);
     }
     return null;
   }

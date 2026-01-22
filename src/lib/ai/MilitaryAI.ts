@@ -740,51 +740,77 @@ Your decision:`;
         actionable: 0,
       };
 
+      const skippedReasons: Record<string, string[]> = {
+        stopMet: [],
+        executed: [],
+        noExecution: [],
+        wrongDomain: [],
+        whenUnmet: [],
+        banned: [],
+      };
+
       for (const s of steps) {
         if (this.isStopConditionMet(s.stop_when, stats)) {
           coverage.stopMet++;
+          skippedReasons.stopMet.push(s.id);
           continue;
         }
         // If stop_when exists, allow repeated execution until completion.
         if (!s.stop_when && executed.has(s.id)) {
           coverage.executed++;
+          skippedReasons.executed.push(s.id);
           continue;
         }
         if (chosenThisTurn?.has(s.id)) {
           coverage.executed++;
+          skippedReasons.executed.push(s.id);
           continue;
         }
         if (!s.execution) {
           coverage.noExecution++;
+          skippedReasons.noExecution.push(`${s.id} (${s.instruction.substring(0, 50)}...)`);
           continue;
         }
         if (s.execution.actionType !== "military") {
           coverage.wrongDomain++;
+          skippedReasons.wrongDomain.push(s.id);
           continue;
         }
         // Safety guard: conditional instructions must provide `when`
         if (!s.when && instructionLooksConditional(s.instruction)) {
           coverage.whenUnmet++;
+          skippedReasons.whenUnmet.push(s.id);
           continue;
         }
         if (!this.isWhenConditionMet(s.when, stats)) {
           coverage.whenUnmet++;
+          skippedReasons.whenUnmet.push(s.id);
           continue;
         }
         const subType = (s.execution.actionData as any)?.subType;
         if (subType === "recruit" && bans.banRecruitment) {
           coverage.banned++;
+          skippedReasons.banned.push(`${s.id} (recruitment banned)`);
           continue;
         }
         // (attack bans could be added later if you implement prohibit:["attack"] execution blocking)
         if (subType !== requiredSubType) {
           coverage.wrongDomain++;
+          skippedReasons.wrongDomain.push(`${s.id} (need ${requiredSubType}, got ${subType})`);
           continue;
         }
         coverage.actionable++;
       }
 
-      console.log(`[LLM Plan Debug] Military coverage:`, coverage);
+      console.log(`[LLM Plan Debug] Military coverage (${requiredSubType}):`, coverage);
+      
+      // Log non-executable steps so they're visible
+      if (skippedReasons.noExecution.length > 0) {
+        console.log(`[LLM Plan Debug] Non-executable military steps:`, skippedReasons.noExecution);
+      }
+      if (skippedReasons.banned.length > 0) {
+        console.log(`[LLM Plan Debug] Banned military steps:`, skippedReasons.banned);
+      }
     }
 
     for (const s of steps) {
@@ -800,7 +826,15 @@ Your decision:`;
       const subType = (s.execution.actionData as any)?.subType;
       if (subType !== requiredSubType) continue;
       if (subType === "recruit" && bans.banRecruitment) continue;
+      
+      if (this.debugLLMPlan) {
+        console.log(`[LLM Plan Debug] Selected military step: ${s.id} (${requiredSubType}, priority: ${s.priority ?? 'none'}, instruction: "${s.instruction.substring(0, 60)}...")`);
+      }
       return s;
+    }
+    
+    if (this.debugLLMPlan && steps.length > 0) {
+      console.log(`[LLM Plan Debug] No actionable ${requiredSubType} step found (all ${steps.length} steps filtered out)`);
     }
     return null;
   }
