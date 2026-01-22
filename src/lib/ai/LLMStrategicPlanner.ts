@@ -10,6 +10,7 @@ import type { GameStateSnapshot } from "@/lib/game-engine/GameState";
 import type { CountryStats } from "@/types/country";
 import type { StrategyIntent } from "./StrategicPlanner";
 import { RuleBasedAI } from "./RuleBasedAI";
+import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export interface LLMStrategicAnalysis {
   strategicFocus: "economy" | "military" | "diplomacy" | "research" | "balanced";
@@ -91,6 +92,10 @@ export class LLMStrategicPlanner {
   
   // Call LLM every N turns
   private readonly LLM_CALL_FREQUENCY = 5;
+
+  private getPlanKey(gameId: string, countryId: string): string {
+    return `${gameId}:${countryId}`;
+  }
   
   constructor() {
     const apiKey = process.env.GOOGLE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
@@ -186,7 +191,9 @@ export class LLMStrategicPlanner {
       
       // IMPORTANT: Store as active strategic plan for this country
       // This plan will guide decisions for the next 5 turns
-      this.activeStrategicPlans.set(countryId, analysis);
+      const planKey = this.getPlanKey(state.gameId, countryId);
+      this.activeStrategicPlans.set(planKey, analysis);
+      await this.persistStrategicPlan(state.gameId, countryId, analysis);
       
       // Enhanced logging for development
       const country = state.countries.find(c => c.id === countryId);
@@ -462,25 +469,6 @@ Be strategic, realistic, and consider long-term implications.`;
   }
   
   /**
-   * Get active strategic plan for a country (if exists and still valid)
-   * This allows LLM analysis to persist across turns
-   */
-  getActiveStrategicPlan(countryId: string, currentTurn: number): LLMStrategicAnalysis | null {
-    const plan = this.activeStrategicPlans.get(countryId);
-    if (!plan) return null;
-    
-    // Check if plan is still valid (within LLM_CALL_FREQUENCY turns)
-    const turnsSincePlan = currentTurn - plan.turnAnalyzed;
-    if (turnsSincePlan >= 0 && turnsSincePlan < this.LLM_CALL_FREQUENCY) {
-      return plan;
-    }
-    
-    // Plan expired, remove it
-    this.activeStrategicPlans.delete(countryId);
-    return null;
-  }
-  
-  /**
    * Convert LLM analysis to StrategyIntent for use by AIController
    * Phase 2.2+: Now checks for active strategic plans
    */
@@ -488,10 +476,8 @@ Be strategic, realistic, and consider long-term implications.`;
     llmAnalysis: LLMStrategicAnalysis | null,
     ruleBasedIntent: StrategyIntent,
     currentTurn: number,
-    countryId: string
+    activePlan: LLMStrategicAnalysis | null
   ): StrategyIntent {
-    // Check if there's an active strategic plan (from previous LLM call)
-    const activePlan = this.getActiveStrategicPlan(countryId, currentTurn);
     const guidingAnalysis = llmAnalysis || activePlan;
     
     // If no LLM guidance (new or cached), use rule-based intent
@@ -509,6 +495,111 @@ Be strategic, realistic, and consider long-term implications.`;
       focus: guidingAnalysis.strategicFocus,
       rationale: `[${planSource}] ${guidingAnalysis.rationale}`,
     };
+  }
+
+  async getActiveStrategicPlan(
+    countryId: string,
+    currentTurn: number,
+    gameId: string
+  ): Promise<LLMStrategicAnalysis | null> {
+    const cached = this.getCachedPlan(countryId, currentTurn, gameId);
+    if (cached) return cached;
+
+    try {
+      const supabase = getSupabaseServerClient();
+      const planRes = await supabase
+        .from("llm_strategic_plans")
+        .select(
+          "turn_analyzed, valid_until_turn, strategic_focus, rationale, threat_assessment, opportunity_identified, recommended_actions, diplomatic_stance, confidence_score"
+        )
+        .eq("game_id", gameId)
+        .eq("country_id", countryId)
+        .lte("turn_analyzed", currentTurn)
+        .gte("valid_until_turn", currentTurn)
+        .order("turn_analyzed", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (planRes.error || !planRes.data) {
+        return null;
+      }
+
+      const analysis: LLMStrategicAnalysis = {
+        strategicFocus: planRes.data.strategic_focus,
+        rationale: planRes.data.rationale,
+        threatAssessment: planRes.data.threat_assessment,
+        opportunityIdentified: planRes.data.opportunity_identified,
+        recommendedActions: Array.isArray(planRes.data.recommended_actions)
+          ? planRes.data.recommended_actions
+          : [],
+        diplomaticStance: (planRes.data.diplomatic_stance as Record<string, "friendly" | "neutral" | "hostile">) ?? {},
+        confidenceScore: Number(planRes.data.confidence_score ?? 0.7),
+        turnAnalyzed: Number(planRes.data.turn_analyzed),
+      };
+
+      const planKey = this.getPlanKey(gameId, countryId);
+      this.activeStrategicPlans.set(planKey, analysis);
+      return analysis;
+    } catch (error) {
+      console.warn("[LLM Planner] Failed to fetch strategic plan from DB:", error);
+      return null;
+    }
+  }
+
+  private getCachedPlan(
+    countryId: string,
+    currentTurn: number,
+    gameId?: string
+  ): LLMStrategicAnalysis | null {
+    if (!gameId) return null;
+    const planKey = this.getPlanKey(gameId, countryId);
+    const plan = this.activeStrategicPlans.get(planKey);
+    if (!plan) return null;
+
+    const turnsSincePlan = currentTurn - plan.turnAnalyzed;
+    if (turnsSincePlan >= 0 && turnsSincePlan < this.LLM_CALL_FREQUENCY) {
+      return plan;
+    }
+
+    this.activeStrategicPlans.delete(planKey);
+    return null;
+  }
+
+  private async persistStrategicPlan(
+    gameId: string,
+    countryId: string,
+    analysis: LLMStrategicAnalysis
+  ): Promise<void> {
+    try {
+      const supabase = getSupabaseServerClient();
+      const validUntilTurn = analysis.turnAnalyzed + this.LLM_CALL_FREQUENCY - 1;
+
+      const { error } = await supabase
+        .from("llm_strategic_plans")
+        .upsert(
+          {
+            game_id: gameId,
+            country_id: countryId,
+            turn_analyzed: analysis.turnAnalyzed,
+            valid_until_turn: validUntilTurn,
+            strategic_focus: analysis.strategicFocus,
+            rationale: analysis.rationale,
+            threat_assessment: analysis.threatAssessment,
+            opportunity_identified: analysis.opportunityIdentified,
+            recommended_actions: analysis.recommendedActions,
+            diplomatic_stance: analysis.diplomaticStance,
+            confidence_score: analysis.confidenceScore,
+            created_at: new Date().toISOString(),
+          },
+          { onConflict: "game_id,country_id,turn_analyzed" }
+        );
+
+      if (error) {
+        console.warn("[LLM Planner] Failed to persist strategic plan:", error.message);
+      }
+    } catch (error) {
+      console.warn("[LLM Planner] Failed to persist strategic plan:", error);
+    }
   }
   
   /**

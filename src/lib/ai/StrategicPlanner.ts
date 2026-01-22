@@ -63,24 +63,22 @@ export class StrategicPlanner {
     
     // STEP 3: Enhance intent with LLM guidance (fresh or cached from previous turns)
     if (this.llmPlanner) {
-      const enhancedIntent = this.llmPlanner.enhanceStrategyIntent(
+      const activePlan = freshLLMAnalysis
+        ? freshLLMAnalysis
+        : await this.llmPlanner.getActiveStrategicPlan(countryId, state.turn, state.gameId);
+
+      if (activePlan && !freshLLMAnalysis) {
+        const planAge = state.turn - activePlan.turnAnalyzed;
+        console.log(`[Strategic Planner] Country ${countryId}: Using cached LLM plan from turn ${activePlan.turnAnalyzed} (${planAge} turns ago)`);
+        console.log(`  Cached plan: ${activePlan.strategicFocus} - ${activePlan.rationale}`);
+      }
+
+      return this.llmPlanner.enhanceStrategyIntent(
         freshLLMAnalysis,
         ruleBasedIntent,
         state.turn,
-        countryId
+        activePlan ?? null
       );
-      
-      // If using cached plan, log it
-      if (!freshLLMAnalysis) {
-        const activePlan = this.llmPlanner.getActiveStrategicPlan(countryId, state.turn);
-        if (activePlan) {
-          const planAge = state.turn - activePlan.turnAnalyzed;
-          console.log(`[Strategic Planner] Country ${countryId}: Using cached LLM plan from turn ${activePlan.turnAnalyzed} (${planAge} turns ago)`);
-          console.log(`  Cached plan: ${activePlan.strategicFocus} - ${activePlan.rationale}`);
-        }
-      }
-      
-      return enhancedIntent;
     }
     
     // FALLBACK: Use rule-based intent (LLM not available)

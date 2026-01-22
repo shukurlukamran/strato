@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import type { LLMStrategicAnalysis } from "@/lib/ai/LLMStrategicPlanner";
+import { getDiplomaticScore } from "@/lib/game-engine/DiplomaticRelations";
 import type { Country, CountryStats } from "@/types/country";
 import type { ChatMessage } from "@/types/chat";
 
@@ -31,6 +33,7 @@ interface GameContext {
   senderStats: CountryStats;
   receiverStats: CountryStats;
   chatHistory: ChatMessage[];
+  strategicPlan?: (LLMStrategicAnalysis & { validUntilTurn?: number }) | null;
 }
 
 /**
@@ -134,6 +137,41 @@ export class ChatHandler {
         }
       }
 
+      let strategicPlan: (LLMStrategicAnalysis & { validUntilTurn?: number }) | null = null;
+
+      try {
+        const planRes = await supabase
+          .from("llm_strategic_plans")
+          .select(
+            "turn_analyzed, valid_until_turn, strategic_focus, rationale, threat_assessment, opportunity_identified, recommended_actions, diplomatic_stance, confidence_score"
+          )
+          .eq("game_id", turn.gameId)
+          .eq("country_id", turn.receiverCountryId)
+          .lte("turn_analyzed", gameRes.data.current_turn)
+          .gte("valid_until_turn", gameRes.data.current_turn)
+          .order("turn_analyzed", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (planRes.data) {
+          strategicPlan = {
+            strategicFocus: planRes.data.strategic_focus,
+            rationale: planRes.data.rationale,
+            threatAssessment: planRes.data.threat_assessment,
+            opportunityIdentified: planRes.data.opportunity_identified,
+            recommendedActions: Array.isArray(planRes.data.recommended_actions)
+              ? planRes.data.recommended_actions
+              : [],
+            diplomaticStance: (planRes.data.diplomatic_stance as Record<string, "friendly" | "neutral" | "hostile">) ?? {},
+            confidenceScore: Number(planRes.data.confidence_score ?? 0.7),
+            turnAnalyzed: Number(planRes.data.turn_analyzed),
+            validUntilTurn: Number(planRes.data.valid_until_turn),
+          };
+        }
+      } catch (planError) {
+        console.warn("ChatHandler: Failed to fetch strategic plan:", planError);
+      }
+
       return {
         gameId: turn.gameId,
         turn: gameRes.data.current_turn,
@@ -182,6 +220,7 @@ export class ChatHandler {
           createdAt: receiverStats.created_at,
         },
         chatHistory,
+        strategicPlan,
       };
     } catch {
       return null;
@@ -190,6 +229,23 @@ export class ChatHandler {
 
   private buildSystemPrompt(context: GameContext): string {
     const { senderCountry, receiverCountry, senderStats, receiverStats, turn } = context;
+    const diplomaticScore = getDiplomaticScore(
+      receiverStats.diplomaticRelations,
+      senderCountry.id
+    );
+
+    const strategicPlanBlock = context.strategicPlan
+      ? `
+CURRENT STRATEGIC PLAN (valid through turn ${context.strategicPlan.validUntilTurn ?? turn}):
+- Focus: ${context.strategicPlan.strategicFocus}
+- Rationale: ${context.strategicPlan.rationale}
+- Threats: ${context.strategicPlan.threatAssessment}
+- Opportunities: ${context.strategicPlan.opportunityIdentified}
+- Recommended Actions: ${context.strategicPlan.recommendedActions.join("; ") || "None"}
+- Diplomatic Stance Guidance: ${JSON.stringify(context.strategicPlan.diplomaticStance)}`
+      : `
+CURRENT STRATEGIC PLAN:
+- No active LLM plan found. Use pragmatic, risk-aware judgment.`;
 
     return `You are the diplomatic representative of ${receiverCountry.name}, an AI-controlled country in a turn-based strategy game.
 
@@ -213,7 +269,9 @@ THEIR COUNTRY (${senderCountry.name}) STATS:
 - Resources: ${JSON.stringify(senderStats.resources)}
 
 DIPLOMATIC RELATIONS:
-- Your relations with them: ${receiverStats.diplomaticRelations[senderCountry.id] ?? 0}/100
+- Your relations with them: ${diplomaticScore}/100
+
+${strategicPlanBlock}
 
 INSTRUCTIONS:
 1. Respond as a strategic, realistic diplomatic representative who acts in ${receiverCountry.name}'s best interests
@@ -224,6 +282,7 @@ INSTRUCTIONS:
 6. Match the tone of the conversation - formal for serious negotiations, more casual for friendly chats
 7. Reference specific stats or resources when relevant to show you're paying attention
 8. If they propose something unreasonable, politely decline or counter-propose
+9. Align your response with the current strategic plan focus and recommended actions when present
 
 Respond naturally and strategically.`;
   }

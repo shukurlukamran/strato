@@ -110,7 +110,8 @@ export async function POST(req: Request) {
       currentTurn,
       countryAId,
       countryBId,
-      result.dealTerms
+      result.dealTerms,
+      result.dealType
     );
 
     if (!executionResult.success) {

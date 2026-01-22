@@ -46,8 +46,14 @@ export class MilitaryAI {
       stats.resourceProfile
     );
 
+    const criticalDefenseNeed = analysis.isUnderDefended && analysis.militaryDeficit > 20;
+    const allowRecruitment = intent.focus === "military" || intent.focus === "balanced" || criticalDefenseNeed;
+    const allowAttacks = intent.focus === "military" || intent.focus === "balanced";
+
     // DECISION: Military recruitment
-    const recruitAmount = RuleBasedAI.decideMilitaryRecruitment(stats, analysis, weights);
+    const recruitAmount = allowRecruitment
+      ? RuleBasedAI.decideMilitaryRecruitment(stats, analysis, weights)
+      : 0;
     
     if (recruitAmount > 0) {
       // Use STANDARDIZED cost: 50 budget per strength point (same as player)
@@ -74,7 +80,7 @@ export class MilitaryAI {
     }
 
     // DECISION: Attack decisions (only if we have budget left)
-    if (cities.length > 0 && remainingBudget >= 200) { // Min attack cost: 100 base + buffer
+    if (allowAttacks && cities.length > 0 && remainingBudget >= 200) { // Min attack cost: 100 base + buffer
       const attackAction = await this.decideAttack(state, countryId, intent, cities, remainingBudget);
       if (attackAction) {
         const attackCost = (attackAction.actionData as any).cost || 0;

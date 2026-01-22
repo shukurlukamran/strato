@@ -1,5 +1,6 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import type { DealTerms, DealCommitment } from "@/types/deals";
+import { applyDiplomaticDelta } from "@/lib/game-engine/DiplomaticRelations";
 
 /**
  * Executes deal terms by transferring resources, budget, etc. between countries.
@@ -10,7 +11,8 @@ export async function executeDealTerms(
   turn: number,
   proposingCountryId: string,
   receivingCountryId: string,
-  dealTerms: DealTerms
+  dealTerms: DealTerms,
+  dealType?: string
 ): Promise<{ success: boolean; errors: string[] }> {
   const errors: string[] = [];
   const supabase = getSupabaseServerClient();
@@ -19,7 +21,7 @@ export async function executeDealTerms(
     // Fetch current stats for both countries
     const statsRes = await supabase
       .from("country_stats")
-      .select("id, country_id, budget, resources")
+      .select("id, country_id, budget, resources, diplomatic_relations")
       .eq("turn", turn)
       .in("country_id", [proposingCountryId, receivingCountryId]);
 
@@ -58,6 +60,20 @@ export async function executeDealTerms(
       );
     }
 
+    // Apply baseline diplomatic boost for the deal type (if provided)
+    if (dealType) {
+      const baseDelta = getDealDiplomaticDelta(dealType);
+      if (baseDelta !== 0) {
+        await applyDiplomaticDeltaForPair(
+          proposerStats,
+          receiverStats,
+          baseDelta,
+          supabase,
+          errors
+        );
+      }
+    }
+
     return { success: errors.length === 0, errors };
   } catch (error) {
     console.error("Error executing deal terms:", error);
@@ -71,8 +87,8 @@ export async function executeDealTerms(
  */
 async function processCommitment(
   commitment: DealCommitment,
-  fromStats: { id: string; country_id: string; budget: number; resources: Record<string, number> },
-  toStats: { id: string; country_id: string; budget: number; resources: Record<string, number> },
+  fromStats: { id: string; country_id: string; budget: number; resources: Record<string, number>; diplomatic_relations?: Record<string, number> },
+  toStats: { id: string; country_id: string; budget: number; resources: Record<string, number>; diplomatic_relations?: Record<string, number> },
   supabase: ReturnType<typeof getSupabaseServerClient>,
   errors: string[]
 ): Promise<void> {
@@ -158,8 +174,12 @@ async function processCommitment(
       }
 
       case "diplomatic_commitment": {
-        // TODO: Implement diplomatic relations update
-        console.log("Diplomatic commitment not yet implemented");
+        if (commitment.amount === undefined || commitment.amount === null) {
+          errors.push(`Invalid diplomatic_commitment: missing amount`);
+          return;
+        }
+
+        await applyDiplomaticDeltaForPair(fromStats, toStats, commitment.amount, supabase, errors);
         break;
       }
 
@@ -181,5 +201,86 @@ async function processCommitment(
   } catch (error) {
     console.error(`Error processing commitment ${commitment.type}:`, error);
     errors.push(`Failed to process ${commitment.type}: ${error instanceof Error ? error.message : "Unknown error"}`);
+  }
+}
+
+async function applyDiplomaticDeltaForPair(
+  fromStats: { id: string; country_id: string; diplomatic_relations?: Record<string, number> },
+  toStats: { id: string; country_id: string; diplomatic_relations?: Record<string, number> },
+  delta: number,
+  supabase: ReturnType<typeof getSupabaseServerClient>,
+  errors: string[]
+): Promise<void> {
+  try {
+    const updatedFrom = applyDiplomaticDelta(
+      {
+        id: fromStats.id,
+        countryId: fromStats.country_id,
+        turn: 0,
+        population: 0,
+        budget: 0,
+        technologyLevel: 0,
+        militaryStrength: 0,
+        militaryEquipment: {},
+        resources: {},
+        diplomaticRelations: fromStats.diplomatic_relations ?? {},
+        createdAt: new Date().toISOString(),
+      },
+      toStats.country_id,
+      delta
+    );
+
+    const updatedTo = applyDiplomaticDelta(
+      {
+        id: toStats.id,
+        countryId: toStats.country_id,
+        turn: 0,
+        population: 0,
+        budget: 0,
+        technologyLevel: 0,
+        militaryStrength: 0,
+        militaryEquipment: {},
+        resources: {},
+        diplomaticRelations: toStats.diplomatic_relations ?? {},
+        createdAt: new Date().toISOString(),
+      },
+      fromStats.country_id,
+      delta
+    );
+
+    fromStats.diplomatic_relations = updatedFrom.diplomaticRelations;
+    toStats.diplomatic_relations = updatedTo.diplomaticRelations;
+
+    await supabase
+      .from("country_stats")
+      .update({ diplomatic_relations: updatedFrom.diplomaticRelations })
+      .eq("id", fromStats.id);
+
+    await supabase
+      .from("country_stats")
+      .update({ diplomatic_relations: updatedTo.diplomaticRelations })
+      .eq("id", toStats.id);
+  } catch (error) {
+    console.error(`Failed to apply diplomatic delta ${delta}:`, error);
+    errors.push(`Diplomatic update failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+  }
+}
+
+function getDealDiplomaticDelta(dealType: string): number {
+  switch (dealType) {
+    case "alliance":
+      return 18;
+    case "non_aggression":
+      return 12;
+    case "military_aid":
+      return 14;
+    case "technology_share":
+      return 10;
+    case "trade":
+      return 8;
+    case "custom":
+      return 6;
+    default:
+      return 4;
   }
 }

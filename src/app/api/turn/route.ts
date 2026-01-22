@@ -727,6 +727,13 @@ export async function POST(req: Request) {
           combatCountryIds.add(actionData.defenderId);
         }
       }
+      
+      // Diplomatic fallout affects all countries when combat occurs
+      if (result.combatResults.length > 0) {
+        for (const country of state.data.countries) {
+          combatCountryIds.add(country.id);
+        }
+      }
     }
     
     const affectedCountryIds = [...new Set([...actionCountryIds, ...combatCountryIds])];

@@ -7,6 +7,7 @@ import { GameState } from "@/lib/game-engine/GameState";
 import { CombatResolver } from "@/lib/game-engine/CombatResolver";
 import { CityTransfer } from "@/lib/game-engine/CityTransfer";
 import { DefenseAI } from "@/lib/ai/DefenseAI";
+import { applyDiplomaticDelta, applyMutualDiplomaticDelta } from "@/lib/game-engine/DiplomaticRelations";
 
 export interface CombatResult {
   attackAction: GameAction;
@@ -82,6 +83,11 @@ export class TurnProcessor {
       } else {
         executedActions.push({ ...attackAction, status: "failed" });
       }
+    }
+
+    // 4.5) Apply diplomatic effects from combat resolution
+    if (combatResults.length > 0) {
+      this.applyDiplomaticEffectsFromCombat(state, combatResults);
     }
 
     // 5) Run events (randomness controlled later via seeded RNG)
@@ -172,6 +178,46 @@ export class TurnProcessor {
     };
 
     return result;
+  }
+
+  private applyDiplomaticEffectsFromCombat(state: GameState, combatResults: CombatResult[]): void {
+    const baseAttackerPenalty = -35;
+    const baseDefenderPenalty = -30;
+    const captureExtraPenalty = -10;
+    const failedAttackExtraPenalty = -5;
+    const thirdPartyWarPenalty = -5;
+    const defenderSympathyBonus = 2;
+
+    for (const combat of combatResults) {
+      const actionData = combat.attackAction.actionData as any;
+      const attackerId = actionData.attackerId || combat.attackAction.countryId;
+      const defenderId = actionData.defenderId;
+
+      if (!attackerId || !defenderId) continue;
+
+      const extra = combat.attackerWins ? captureExtraPenalty : failedAttackExtraPenalty;
+      const { updatedA, updatedB } = applyMutualDiplomaticDelta(
+        state.data.countryStatsByCountryId,
+        attackerId,
+        defenderId,
+        baseAttackerPenalty + extra,
+        baseDefenderPenalty + extra
+      );
+
+      if (updatedA) state.withUpdatedStats(attackerId, updatedA);
+      if (updatedB) state.withUpdatedStats(defenderId, updatedB);
+
+      for (const country of state.data.countries) {
+        const otherId = country.id;
+        if (otherId === attackerId || otherId === defenderId) continue;
+        const otherStats = state.data.countryStatsByCountryId[otherId];
+        if (!otherStats) continue;
+
+        const penalized = applyDiplomaticDelta(otherStats, attackerId, thirdPartyWarPenalty);
+        const sympathetic = applyDiplomaticDelta(penalized, defenderId, defenderSympathyBonus);
+        state.withUpdatedStats(otherId, sympathetic);
+      }
+    }
   }
 }
 
