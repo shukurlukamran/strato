@@ -178,47 +178,9 @@ export class EconomicAI {
       return actions;
     }
 
-    // FALLBACK: If no focus-specific action was taken, use default logic
-    // CRITICAL: Respect LLM's strategic focus even in fallback
-    
-    // If LLM says "economy", prioritize infrastructure over research
-    if (hasLLMGuidance && intent.focus === "economy") {
-      if (canDoInfrastructure && shouldInfrastructure) {
-        const infraCost = ActionResolver.calculateInfrastructureCost(stats.infrastructureLevel || 0);
-        console.log(`[EconomicAI] Fallback: Following LLM economy focus with infrastructure`);
-        actions.push({
-          id: '',
-          gameId: state.gameId,
-          countryId,
-          turn: state.turn,
-          actionType: "economic",
-          actionData: {
-            subType: "infrastructure",
-            cost: infraCost,
-            targetLevel: (stats.infrastructureLevel || 0) + 1,
-          },
-          status: "pending",
-          createdAt: new Date().toISOString(),
-        });
-      } else if (canDoResearch && shouldResearch) {
-        const researchCost = ActionResolver.calculateResearchCost(stats.technologyLevel);
-        console.log(`[EconomicAI] Fallback: Following LLM economy focus with research (infra unavailable)`);
-        actions.push({
-          id: '',
-          gameId: state.gameId,
-          countryId,
-          turn: state.turn,
-          actionType: "research",
-          actionData: {
-            cost: researchCost,
-            targetLevel: stats.technologyLevel + 1,
-          },
-          status: "pending",
-          createdAt: new Date().toISOString(),
-        });
-      }
-      return actions;
-    }
+    // FALLBACK: Generic rule-based logic for focuses not handled above
+    // At this point, focus can only be: "balanced", "military", or "diplomacy"
+    // ("economy" and "research" already returned above)
     
     // DECISION 1: Research investment
     if (canDoResearch && shouldResearch) {
