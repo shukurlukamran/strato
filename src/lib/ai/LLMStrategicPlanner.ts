@@ -1,11 +1,9 @@
 /**
  * LLM Strategic Planner - Phase 2.2
- * Uses Gemini Flash for complex strategic decisions
+ * Uses Perplexity Sonar for complex strategic decisions
  * Called sparingly (once per 5 turns) to minimize costs
  * Provides high-level strategic guidance that enhances rule-based AI
  */
-
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import type { GameStateSnapshot } from "@/lib/game-engine/GameState";
 import type { CountryStats } from "@/types/country";
 import type { StrategyIntent } from "./StrategicPlanner";
@@ -97,8 +95,8 @@ PROFILES:
 `;
 
 export class LLMStrategicPlanner {
-  private genAI: GoogleGenerativeAI | null = null;
-  private model: ReturnType<GoogleGenerativeAI["getGenerativeModel"]> | null = null;
+  private apiKey: string = "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";
+  private apiUrl: string = "https://api.perplexity.ai/chat/completions";
   private costTracking: LLMCostTracking;
   private lastAnalysisCache: Map<string, LLMStrategicAnalysis> = new Map();
   
@@ -113,22 +111,10 @@ export class LLMStrategicPlanner {
   }
   
   constructor() {
-    const apiKey = process.env.GOOGLE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
-    if (!apiKey) {
+    if (!this.apiKey) {
       console.warn("[LLM Planner] No API key found. LLM strategic planning will be disabled.");
-      console.warn("[LLM Planner] Set GOOGLE_GEMINI_API_KEY or GEMINI_API_KEY environment variable.");
     } else {
-      this.genAI = new GoogleGenerativeAI(apiKey);
-      // Use Gemini 2.5 Flash for best cost/performance ratio
-      // Lower temperature for faster, more deterministic responses
-      this.model = this.genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash",
-        generationConfig: {
-          temperature: 0.4,  // Lower = faster, more focused (default 1.0)
-          topP: 0.8,         // Lower = more deterministic
-          topK: 20,          // Lower = faster sampling
-        }
-      });
+      console.log("[LLM Planner] Using Perplexity Sonar standard for strategic planning");
     }
     
     this.costTracking = {
@@ -159,7 +145,7 @@ export class LLMStrategicPlanner {
     stats: CountryStats
   ): Promise<LLMStrategicAnalysis | null> {
     // Check if LLM is available
-    if (!this.model) {
+    if (!this.apiKey) {
       console.log(`[LLM Planner] Skipping LLM analysis - no API key configured`);
       return null;
     }
@@ -179,21 +165,51 @@ export class LLMStrategicPlanner {
     
     try {
       const startTime = Date.now();
-      console.log(`[LLM Planner] 🤖 Calling Gemini Flash for strategic analysis (Turn ${state.turn})`);
+      console.log(`[LLM Planner] 🤖 Calling Perplexity Sonar for strategic analysis (Turn ${state.turn})`);
       
       // Build context-rich prompt
       const prompt = this.buildStrategicPrompt(state, countryId, stats);
       
-      // Call Gemini
-      const result = await this.model.generateContent(prompt);
-      const response = result.response;
-      const responseText = response.text();
+      // Call Perplexity API
+      const response = await fetch(this.apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${this.apiKey}`
+        },
+        body: JSON.stringify({
+          model: "sonar",
+          messages: [
+            {
+              role: "system",
+              content: "You are a strategic AI advisor for a nation in a turn-based strategy game. Analyze the situation and provide strategic recommendations in JSON format only."
+            },
+            {
+              role: "user",
+              content: prompt
+            }
+          ],
+          temperature: 0.4,
+          top_p: 0.8,
+          max_tokens: 2000
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`[LLM Planner] Perplexity API error: ${response.status} - ${errorText}`);
+        return null;
+      }
+
+      const data = await response.json();
+      const responseText = data.choices?.[0]?.message?.content || "";
       
-      // Track costs (estimate based on Gemini 2.5 Flash pricing)
-      const inputTokens = prompt.length / 4; // Rough estimate: 1 token ≈ 4 chars
-      const outputTokens = responseText.length / 4;
-      const inputCost = (inputTokens / 1_000_000) * 0.075; // $0.075 per 1M input tokens
-      const outputCost = (outputTokens / 1_000_000) * 0.30; // $0.30 per 1M output tokens
+      // Track costs (estimate based on Perplexity Sonar pricing)
+      const usage = data.usage || {};
+      const inputTokens = usage.prompt_tokens || prompt.length / 4;
+      const outputTokens = usage.completion_tokens || responseText.length / 4;
+      const inputCost = (inputTokens / 1_000_000) * 1.0; // $1 per 1M input tokens
+      const outputCost = (outputTokens / 1_000_000) * 1.0; // $1 per 1M output tokens
       
       this.costTracking.totalCalls++;
       this.costTracking.totalInputTokens += inputTokens;
@@ -270,7 +286,7 @@ export class LLMStrategicPlanner {
       
       return analysis;
     } catch (error) {
-      console.error("[LLM Planner] Error calling Gemini:", error);
+      console.error("[LLM Planner] Error calling Perplexity:", error);
       if (error instanceof Error) {
         console.error("[LLM Planner] Error details:", error.message);
       }

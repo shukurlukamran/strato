@@ -7,6 +7,7 @@ We already build some kind of cached plan that persists LLM plan for the next tu
 
 The reality is that Aurum attacked with 45 strength not with 45 military units. I don't know if history log is wrong or the combat resolution calculation is also wrong.
 - This is another problematic calculation from history log: "🛡️🛡️ Dravon defended Dravon against Aurum! • Attack: 90 (effective: 144 with +60% tech) • Defense: 52 (effective: 72 with +20% tech + 20% terrain) • Ratio: 2.00:1 (defender advantage prevailed) • Losses: Aurum -55, Dravon -18"
+- As seen from this log (jan 23 02:16:41), Player (Aurum) was attacked but its defense was automatically chosen by system, and player didn't decide defense strength.
 
 - Optimize LLM on End turn to be faster.
 - Resource usage (actions should use resources and each resource should at least have one use case)
