@@ -19,8 +19,8 @@ city-building games (Medieval Dynasty, Foundation, Going Medieval...)"
 
 ### **Why Groq is Better**
 
-| Feature | Perplexity Sonar | Groq (Llama 3.3 70B) |
-|---------|------------------|----------------------|
+| Feature | Perplexity Sonar | Groq (GPT OSS 20B) |
+|---------|------------------|---------------------|
 | **Purpose** | Web search + chat | Pure LLM inference |
 | **Speed** | ~5-7s per call | **~0.5-1s per call** ⚡ |
 | **JSON Support** | Unreliable | ✅ Excellent (forced mode) |
@@ -47,7 +47,7 @@ private apiUrl = "https://api.groq.com/openai/v1/chat/completions";
 model: "sonar"
 
 // After
-model: "llama-3.3-70b-versatile"  // Groq's best general-purpose model
+model: "openai/gpt-oss-20b"  // Groq's GPT OSS 20B 128K Model
 ```
 
 ### **3. Environment Variable**
@@ -63,7 +63,7 @@ GROQ_API_KEY=your_key_here
 ```typescript
 // Groq uses OpenAI-compatible format
 {
-  model: "llama-3.3-70b-versatile",
+  model: "openai/gpt-oss-20b",
   messages: [...],
   temperature: 0.3,
   top_p: 0.95,
@@ -112,7 +112,7 @@ const outputCost = (outputTokens / 1_000_000) * 0.20;
 | Model | Speed | Cost per Call | Reliability |
 |-------|-------|---------------|-------------|
 | Perplexity Sonar | 5-7s | $0.0013 | ✅ Good (fallback) |
-| **Groq Llama 3.3 70B** | **0.5-1s** | **$0.0002** | ✅ Excellent |
+| **Groq GPT OSS 20B** | **0.5-1s** | **$0.0002** | ✅ Excellent |
 
 ---
 
@@ -120,7 +120,7 @@ const outputCost = (outputTokens / 1_000_000) * 0.20;
 
 ### **Turn 2 (First LLM Turn):**
 ```
-[LLM Planner] Using Groq llama-3.3-70b-versatile for strategic planning
+[LLM Planner] Using Groq openai/gpt-oss-20b for strategic planning
 [Turn API] 🚀 BATCH analyzing 5 countries in SINGLE API call
 [LLM Planner] 🚀 BATCH analyzing 5 countries in SINGLE API call (Turn 2)
 [LLM Planner] ✓ BATCH analysis complete in 2145ms for 5 countries
@@ -203,8 +203,8 @@ If batch call fails for any reason:
 - Optimized for inference (not training)
 - **Fastest LLM inference in the world**
 
-### **2. Llama 3.3 70B is Excellent**
-- Meta's latest open-source model
+### **2. GPT OSS 20B is Excellent**
+- OpenAI-style model optimized for structured tasks
 - Excellent instruction following
 - Strong JSON formatting capabilities
 - Large context window (128K tokens)
@@ -292,7 +292,7 @@ Or use Gemini 2.5 Flash as alternative (already integrated).
 
 **Migration Complete:**
 - ✅ Switched from Perplexity to Groq
-- ✅ Model: llama-3.3-70b-versatile
+- ✅ Model: openai/gpt-oss-20b (GPT OSS 20B 128K)
 - ✅ Batch processing: 5 API calls → 1 API call
 - ✅ Speed: 30s → 2-3s (10x faster)
 - ✅ Cost: $0.85 → $0.044 per game (95% cheaper)

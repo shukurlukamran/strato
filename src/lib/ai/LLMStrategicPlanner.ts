@@ -97,7 +97,7 @@ PROFILES:
 export class LLMStrategicPlanner {
   private apiKey: string | null = null;
   private apiUrl: string = "https://api.groq.com/openai/v1/chat/completions";
-  private modelName: string = "llama-3.3-70b-versatile"; // Groq's best general model
+  private modelName: string = "openai/gpt-oss-20b"; // Groq's GPT OSS 20B 128K Model
   private costTracking: LLMCostTracking;
   private lastAnalysisCache: Map<string, LLMStrategicAnalysis> = new Map();
   

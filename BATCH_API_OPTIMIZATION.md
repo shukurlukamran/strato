@@ -1,6 +1,11 @@
 # Batch API Optimization - Implementation Summary
 
 ## Date: January 23, 2026
+## Updated: January 22, 2026 - Migrated to Groq (openai/gpt-oss-20b)
+
+> **⚠️ NOTE:** Original implementation used Perplexity Sonar but failed due to web search behavior. 
+> Successfully migrated to **Groq's GPT OSS 20B 128K** model (`openai/gpt-oss-20b`) which handles batch JSON perfectly.
+> See `GROQ_MIGRATION.md` for details.
 
 ## 🎯 **Goal: Reduce API Request Count by 80%**
 
