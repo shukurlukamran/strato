@@ -11,7 +11,8 @@
 - Bug: AI country defended successfully with 2.5x less army. How is this possible? Player attacked 2 cities at the same turn, both failed but only one should have failed, the other should have been captured because player army was 2.5x bigger. If it is because of some multipliers or defence advantages, they should be mentioned clearly in the History log as well to explain why the result happened so.
 - Bug: Deal Extractor struggles to understand that Player wants to sell something not buy
 - War should affect diplomatic stance
-- When attacking a city, in the slider, olayer can only max choose its current military amount, not the military strength. It should be military strength. If you can't use your military strength while attacking or defending, what is the point of improving it with tech, etc.? The same logic should apply to AI countries and LLM attack and defense military allocation logic too. Also, check combat resolution logic to make sure it also aligns with this new method of calculation.
+- When attacking a city, in the slider, player can only max choose its current military amount, not the military strength (i guess tech, etc. boosts are applied in the combat resolution but if it is the case, it should be shown in the slider window too for clarity). It should be military strength. If you can't use your military strength while attacking or defending, what is the point of improving it with tech, etc.? The same logic should apply to AI countries and LLM attack and defense military allocation logic too. Also, check combat resolution logic to make sure it also aligns with this new method of calculation.
+- Pulsing red border or persistent indicator for isUnderAttack for cities
 
 
 - Resource usage (actions should use resources and each resource should at least have one use case)
