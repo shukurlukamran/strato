@@ -9,6 +9,7 @@
 - Prevent cheating in the chat deals (you can get money for technology level now, but tech level isn't actually transferred, for example)
 - Prevent abuse in the LLM chat (It shouldn't be possible to use it for anything unrelated to game - we also need to have some hard limits to prevent spamming, but this limit shouldn't interrupt gameplay. And negotiations may even cost some small money in the game to slightly discourage people to overuse it unnecessarily - Come up with a rational fair plan)
 - Player shouldn't be able to see the "Propose Deal" button for their own country, it should only be shown for other countries.
+- Borders are sometimes messed up, especially when cities are captured. Sometimes there are some blank areas that doesn't belong to any country. We need to make these super defined with almost no place for error. 
 
 - City transfer mechanism in Deal Chat (analyze and see what can be exchanged or agreed with the current state of the game but doesn't exist in the deal chat's implementation capabilities)
 - AI countries should do deals between each-other (we should have a plan somewhere on this)
