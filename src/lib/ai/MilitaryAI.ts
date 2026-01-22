@@ -1,12 +1,14 @@
 import type { StrategyIntent } from "@/lib/ai/StrategicPlanner";
 import type { GameAction } from "@/types/actions";
 import type { GameStateSnapshot } from "@/lib/game-engine/GameState";
+import type { City } from "@/types/city";
 import { RuleBasedAI } from "./RuleBasedAI";
 import { DefaultPersonality, type AIPersonality } from "./Personality";
+import { calculateCityValue } from "@/types/city";
 
 /**
  * Military AI Decision Maker
- * Uses rule-based logic to decide on military actions (recruitment, defense)
+ * Uses rule-based logic to decide on military actions (recruitment, defense, attacks)
  */
 export class MilitaryAI {
   private personality: AIPersonality;
@@ -17,12 +19,14 @@ export class MilitaryAI {
 
   /**
    * Decide military actions for this turn
+   * @param cities - All cities in the game (needed for attack target evaluation)
    */
-  decideActions(
+  async decideActions(
     state: GameStateSnapshot,
     countryId: string,
-    intent: StrategyIntent
-  ): GameAction[] {
+    intent: StrategyIntent,
+    cities: City[] = []
+  ): Promise<GameAction[]> {
     const actions: GameAction[] = [];
     const stats = state.countryStatsByCountryId[countryId];
     
@@ -62,9 +66,434 @@ export class MilitaryAI {
       });
     }
 
-    // Future: Add deployment, fortification, attack decisions here
+    // DECISION: Attack decisions
+    if (cities.length > 0) {
+      const attackAction = await this.decideAttack(state, countryId, intent, cities);
+      if (attackAction) {
+        actions.push(attackAction);
+      }
+    }
 
     return actions;
+  }
+
+  /**
+   * Decide whether to attack and which city to target
+   * Uses LLM for AI vs Player on strategic turns, rule-based otherwise
+   */
+  private async decideAttack(
+    state: GameStateSnapshot,
+    countryId: string,
+    intent: StrategyIntent,
+    cities: City[]
+  ): Promise<GameAction | null> {
+    const stats = state.countryStatsByCountryId[countryId];
+    const country = state.countries.find(c => c.id === countryId);
+    
+    if (!stats || !country) return null;
+
+    // Get neighboring enemy cities
+    const neighboringCities = this.getAttackableNeighboringCities(
+      countryId,
+      cities,
+      state
+    );
+
+    if (neighboringCities.length === 0) return null;
+
+    // Check if we have minimum military strength and budget
+    const minMilitaryStrength = 50;
+    const minBudget = 200; // Base attack cost + some buffer
+    
+    if (stats.militaryStrength < minMilitaryStrength || stats.budget < minBudget) {
+      return null; // Not strong enough or can't afford to attack
+    }
+
+    // Check if we already have a pending attack this turn
+    const hasPendingAttack = state.pendingActions.some(
+      a => a.countryId === countryId && 
+           a.actionType === "military" && 
+           (a.actionData as any)?.subType === "attack"
+    );
+    if (hasPendingAttack) return null; // One attack per turn
+
+    // Determine if we should use LLM (AI vs Player on strategic turns) or rule-based
+    const hasPlayerTarget = neighboringCities.some(city => {
+      const owner = state.countries.find(ct => ct.id === city.countryId);
+      return owner?.isPlayerControlled;
+    });
+
+    const useLLM = hasPlayerTarget && this.shouldUseLLMForAttack(state, countryId);
+
+    if (useLLM) {
+      return this.llmAttackDecision(state, countryId, neighboringCities, stats);
+    } else {
+      // Use rule-based for AI vs AI OR AI vs Player on non-LLM turns
+      // Rule-based logic works for both player and AI cities
+      return this.ruleBasedAttackDecision(state, countryId, neighboringCities, stats, intent);
+    }
+  }
+
+  /**
+   * Get cities that are neighbors and can be attacked
+   * Simplified: cities within a certain distance threshold
+   */
+  private getAttackableNeighboringCities(
+    attackerCountryId: string,
+    cities: City[],
+    state: GameStateSnapshot
+  ): City[] {
+    const attackerCountry = state.countries.find(c => c.id === attackerCountryId);
+    if (!attackerCountry) return [];
+
+    // Get all cities owned by other countries
+    const enemyCities = cities.filter(c => c.countryId !== attackerCountryId && !c.isUnderAttack);
+
+    // Find cities that are "neighbors" (within attack range)
+    // Using distance-based approach (simplified - in production would use actual border detection)
+    const attackRange = 15; // Distance threshold for neighboring cities
+    
+    const neighboring: City[] = [];
+    for (const city of enemyCities) {
+      const distance = Math.sqrt(
+        Math.pow(attackerCountry.positionX - city.positionX, 2) +
+        Math.pow(attackerCountry.positionY - city.positionY, 2)
+      );
+      
+      if (distance <= attackRange) {
+        neighboring.push(city);
+      }
+    }
+
+    return neighboring;
+  }
+
+  /**
+   * Rule-based attack decision (works for both AI vs AI and AI vs Player)
+   * Used on non-LLM turns or when LLM is unavailable
+   */
+  private ruleBasedAttackDecision(
+    state: GameStateSnapshot,
+    countryId: string,
+    neighboringCities: City[],
+    stats: any,
+    intent: StrategyIntent
+  ): GameAction | null {
+    // Evaluate each potential target (works for both AI and player cities)
+    const targets = neighboringCities.map(city => {
+      const defenderStats = state.countryStatsByCountryId[city.countryId];
+      if (!defenderStats) return null;
+
+      const cityValue = calculateCityValue(city);
+      const strengthRatio = stats.militaryStrength / defenderStats.militaryStrength;
+      const techAdvantage = stats.technologyLevel - defenderStats.technologyLevel;
+      
+      // Calculate attack score (higher = better target)
+      let score = cityValue;
+      
+      // Prefer targets where we have strength advantage
+      if (strengthRatio > 1.5) score *= 1.5;
+      else if (strengthRatio > 1.2) score *= 1.2;
+      else if (strengthRatio < 0.8) score *= 0.5; // Avoid if weaker
+      
+      // Tech advantage bonus
+      if (techAdvantage > 2) score *= 1.3;
+      else if (techAdvantage < -2) score *= 0.7;
+      
+      // Personality adjustment
+      const adjustedPersonality = this.adjustPersonalityForIntent(intent);
+      if (adjustedPersonality.aggression > 0.7) score *= 1.2; // Aggressive AI attacks more
+      if (adjustedPersonality.riskTolerance < 0.3) score *= 0.8; // Risk-averse AI attacks less
+
+      // Slight preference for player cities (more valuable targets)
+      const owner = state.countries.find(c => c.id === city.countryId);
+      if (owner?.isPlayerControlled) {
+        score *= 1.1; // 10% bonus for attacking player cities
+      }
+
+      return {
+        city,
+        score,
+        strengthRatio,
+        defenderStats,
+      };
+    }).filter((t): t is NonNullable<typeof t> => t !== null);
+
+    if (targets.length === 0) return null;
+
+    // Sort by score and pick best target
+    targets.sort((a, b) => b.score - a.score);
+    const bestTarget = targets[0];
+
+    // Only attack if score is above threshold
+    const attackThreshold = 100; // Minimum city value to consider attacking
+    if (bestTarget.score < attackThreshold) return null;
+
+    // Only attack if we have reasonable chance (strength ratio > 0.8)
+    if (bestTarget.strengthRatio < 0.8) return null;
+
+    // Decide allocation (30-70% of military strength)
+    const adjustedPersonality = this.adjustPersonalityForIntent(intent);
+    const baseAllocation = 0.3 + (adjustedPersonality.aggression * 0.4);
+    const allocatedStrength = Math.floor(stats.militaryStrength * baseAllocation);
+    const minAllocation = Math.floor(stats.militaryStrength * 0.3);
+    const maxAllocation = Math.floor(stats.militaryStrength * 0.7);
+    const finalAllocation = Math.max(minAllocation, Math.min(maxAllocation, allocatedStrength));
+
+    // Calculate cost
+    const cost = 100 + (finalAllocation * 10);
+    
+    // Check if we can afford it
+    if (stats.budget < cost) return null;
+
+    const targetOwner = state.countries.find(c => c.id === bestTarget.city.countryId);
+    const isPlayerTarget = targetOwner?.isPlayerControlled;
+    console.log(`[MilitaryAI] ${state.countries.find(c => c.id === countryId)?.name} attacking ${bestTarget.city.name} (${isPlayerTarget ? 'Player' : 'AI'}) with ${finalAllocation} strength (rule-based)`);
+
+    return {
+      id: '',
+      gameId: state.gameId,
+      countryId,
+      turn: state.turn,
+      actionType: "military",
+      actionData: {
+        subType: "attack",
+        targetCityId: bestTarget.city.id,
+        allocatedStrength: finalAllocation,
+        attackerId: countryId,
+        defenderId: bestTarget.city.countryId,
+        cost,
+        immediate: true,
+        createdAt: new Date().toISOString(),
+      },
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * LLM-based attack decision (for AI vs Player on strategic turns)
+   */
+  private async llmAttackDecision(
+    state: GameStateSnapshot,
+    countryId: string,
+    neighboringCities: City[],
+    stats: any
+  ): Promise<GameAction | null> {
+    const country = state.countries.find(c => c.id === countryId);
+    if (!country) return null;
+
+    // Filter to only player cities
+    const playerCities = neighboringCities.filter(city => {
+      const owner = state.countries.find(ct => ct.id === city.countryId);
+      return owner?.isPlayerControlled;
+    });
+
+    if (playerCities.length === 0) {
+      // No player cities to attack, fall back to rule-based
+      return this.ruleBasedAttackDecision(state, countryId, neighboringCities, stats, { focus: "balanced", rationale: "" });
+    }
+
+    try {
+      const prompt = this.buildAttackPrompt(state, countryId, playerCities, stats);
+      const response = await this.callLLM(prompt);
+      const decision = this.parseAttackDecision(response, playerCities, stats);
+      
+      if (!decision) return null;
+
+      console.log(`[MilitaryAI LLM] ${country.name} decided to attack ${decision.city.name} with ${decision.allocatedStrength} strength`);
+
+      const cost = 100 + (decision.allocatedStrength * 10);
+      if (stats.budget < cost) return null;
+
+      return {
+        id: '',
+        gameId: state.gameId,
+        countryId,
+        turn: state.turn,
+        actionType: "military",
+        actionData: {
+          subType: "attack",
+          targetCityId: decision.city.id,
+          allocatedStrength: decision.allocatedStrength,
+          attackerId: countryId,
+          defenderId: decision.city.countryId,
+          cost,
+          immediate: true,
+          createdAt: new Date().toISOString(),
+        },
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error(`[MilitaryAI LLM] Failed to get LLM decision, falling back to rule-based:`, error);
+      // Fall back to rule-based
+      return this.ruleBasedAttackDecision(state, countryId, neighboringCities, stats, { focus: "balanced", rationale: "" });
+    }
+  }
+
+  /**
+   * Build prompt for LLM attack decision
+   */
+  private buildAttackPrompt(
+    state: GameStateSnapshot,
+    countryId: string,
+    targetCities: City[],
+    stats: any
+  ): string {
+    const country = state.countries.find(c => c.id === countryId);
+    
+    const cityDescriptions = targetCities.map((city, index) => {
+      const owner = state.countries.find(c => c.id === city.countryId);
+      const ownerStats = state.countryStatsByCountryId[city.countryId];
+      const cityValue = calculateCityValue(city);
+      const resourceList = Object.entries(city.perTurnResources)
+        .map(([resource, amount]) => `${resource}: ${amount}/turn`)
+        .join(", ");
+
+      return `
+${index + 1}. ${city.name} (Owner: ${owner?.name || "Unknown"})
+   - Population: ${city.population.toLocaleString()}
+   - Resources: ${resourceList || "None"}
+   - Strategic Value: ${cityValue} points
+   - Owner Military: ${ownerStats?.militaryStrength || 0}
+   - Owner Tech Level: ${ownerStats?.technologyLevel || 0}`;
+    }).join("\n");
+
+    return `You are a military strategist deciding whether to attack an enemy city.
+
+YOUR COUNTRY: ${country?.name || "Unknown"}
+- Total Military Strength: ${stats.militaryStrength}
+- Technology Level: ${stats.technologyLevel}
+- Budget: $${stats.budget.toLocaleString()}
+- Available for Attack: ${Math.floor(stats.militaryStrength * 0.3)} - ${Math.floor(stats.militaryStrength * 0.7)} strength
+
+POTENTIAL TARGETS:
+${cityDescriptions}
+
+ATTACK COSTS:
+- Base cost: 100 budget
+- Additional: 10 budget per strength point allocated
+- Example: 50 strength = 600 budget total
+
+IMPORTANT CONSIDERATIONS:
+1. You can only attack ONE city per turn
+2. You must allocate 30-70% of your military strength
+3. Attacks are risky - you'll lose troops even if you win
+4. Consider the strategic value vs the risk
+5. The defender will respond with their own military allocation
+
+DECISION REQUIRED:
+Respond with ONLY a JSON object in this exact format:
+{
+  "target": "City Name",
+  "allocation_percent": 45
+}
+
+Where:
+- "target" is the exact name of the city to attack (from the list above)
+- "allocation_percent" is a number between 30 and 70 (percentage of military to commit)
+
+If you decide NOT to attack, respond with: {"target": null, "allocation_percent": 0}
+
+Your decision:`;
+  }
+
+  /**
+   * Parse LLM attack decision
+   */
+  private parseAttackDecision(
+    response: string,
+    targetCities: City[],
+    stats: any
+  ): { city: City; allocatedStrength: number } | null {
+    try {
+      // Try to extract JSON from response
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return null;
+
+      const decision = JSON.parse(jsonMatch[0]);
+      
+      if (!decision.target || decision.allocation_percent === 0) {
+        return null; // Decided not to attack
+      }
+
+      const city = targetCities.find(c => c.name === decision.target);
+      if (!city) return null;
+
+      const percentage = Math.max(30, Math.min(70, decision.allocation_percent || 50));
+      const allocatedStrength = Math.floor(stats.militaryStrength * (percentage / 100));
+
+      return { city, allocatedStrength };
+    } catch (error) {
+      console.error(`[MilitaryAI] Failed to parse LLM response:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Call LLM API (uses Google Gemini)
+   */
+  private async callLLM(prompt: string): Promise<string> {
+    const apiKey = process.env.GOOGLE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+    
+    if (!apiKey) {
+      throw new Error("GOOGLE_GEMINI_API_KEY or GEMINI_API_KEY not configured");
+    }
+
+    // Use Gemini 2.5 Flash (matches existing LLM usage in codebase)
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: prompt }]
+          }],
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 200,
+          }
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'Unknown error');
+      throw new Error(`LLM API error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    
+    return text.trim();
+  }
+
+  /**
+   * Determine if LLM should be used for attack decisions
+   * Aligns with strategic planning schedule: turn 2, then every 5 turns (5, 10, 15, 20...)
+   * On non-LLM turns, uses rule-based logic for consistency and cost efficiency
+   * Rule-based logic still works for attacking players, just without LLM intelligence
+   */
+  private shouldUseLLMForAttack(
+    state: GameStateSnapshot,
+    countryId: string
+  ): boolean {
+    const turn = state.turn;
+    // Use LLM on the same schedule as strategic planning
+    // Turn 2, then every 5 turns (5, 10, 15, 20, 25...)
+    const isLLMTurn = turn === 2 || (turn >= 5 && turn % 5 === 0);
+    
+    if (!isLLMTurn) {
+      // On non-LLM turns, use rule-based logic
+      // This still allows AI to attack players, just with deterministic algorithm
+      return false;
+    }
+    
+    // Only use LLM if there are player-controlled targets
+    // This makes AI vs Player combat more interesting and unpredictable on strategic turns
+    return true;
   }
 
   /**
@@ -98,4 +527,3 @@ export class MilitaryAI {
     return adjusted;
   }
 }
-

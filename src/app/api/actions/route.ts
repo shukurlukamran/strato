@@ -16,6 +16,42 @@ const ActionRequestSchema = z.object({
   amount: z.number().min(5).max(50).optional(), // Optional military amount (5-50, multiples of 5)
 });
 
+/**
+ * GET endpoint to fetch actions
+ */
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const gameId = searchParams.get("gameId");
+  const turn = searchParams.get("turn");
+  const status = searchParams.get("status");
+
+  if (!gameId) {
+    return NextResponse.json({ error: "gameId is required" }, { status: 400 });
+  }
+
+  const supabase = getSupabaseServerClient();
+  let query = supabase
+    .from("actions")
+    .select("id, game_id, country_id, turn, action_type, action_data, status, created_at")
+    .eq("game_id", gameId);
+
+  if (turn) {
+    query = query.eq("turn", parseInt(turn));
+  }
+
+  if (status) {
+    query = query.eq("status", status);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 400 });
+  }
+
+  return NextResponse.json({ actions: data ?? [] });
+}
+
 export async function POST(req: Request) {
   try {
     const json = await req.json().catch(() => null);

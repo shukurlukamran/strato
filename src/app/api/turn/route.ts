@@ -88,6 +88,28 @@ export async function POST(req: Request) {
     .eq("status", "active");
   if (dealsRes.error) return NextResponse.json({ error: dealsRes.error.message }, { status: 400 });
 
+  // Fetch cities for attack decision evaluation
+  const citiesRes = await supabase
+    .from("cities")
+    .select("id, country_id, game_id, name, position_x, position_y, size, border_path, per_turn_resources, population, is_under_attack, created_at")
+    .eq("game_id", gameId);
+  if (citiesRes.error) return NextResponse.json({ error: citiesRes.error.message }, { status: 400 });
+
+  const cities = (citiesRes.data ?? []).map(c => ({
+    id: c.id,
+    countryId: c.country_id,
+    gameId: c.game_id,
+    name: c.name,
+    positionX: Number(c.position_x),
+    positionY: Number(c.position_y),
+    size: Number(c.size),
+    borderPath: c.border_path,
+    perTurnResources: (c.per_turn_resources as Record<string, number>) ?? {},
+    population: c.population,
+    isUnderAttack: c.is_under_attack ?? false,
+    createdAt: c.created_at,
+  }));
+
   const state = new GameState({
     gameId,
     turn,
@@ -170,7 +192,7 @@ export async function POST(req: Request) {
     const aiController = AIController.withRandomPersonality(country.id);
     
     try {
-      const actions = await aiController.decideTurnActions(state.data, country.id);
+      const actions = await aiController.decideTurnActions(state.data, country.id, cities);
       
       console.log(`[AI] ${country.name}: Generated ${actions.length} actions`);
       if (actions.length > 0) {

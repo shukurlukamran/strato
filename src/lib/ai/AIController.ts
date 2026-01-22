@@ -1,5 +1,6 @@
 import type { GameAction } from "@/types/actions";
 import type { GameStateSnapshot } from "@/lib/game-engine/GameState";
+import type { City } from "@/types/city";
 import { StrategicPlanner } from "@/lib/ai/StrategicPlanner";
 import { DiplomacyAI } from "@/lib/ai/DiplomacyAI";
 import { EconomicAI } from "@/lib/ai/EconomicAI";
@@ -27,8 +28,9 @@ export class AIController {
   /**
    * Generate all actions for a country this turn
    * Phase 2.2: Hybrid approach (rule-based + optional LLM)
+   * @param cities - All cities in the game (needed for military attack decisions)
    */
-  async decideTurnActions(state: GameStateSnapshot, countryId: string): Promise<GameAction[]> {
+  async decideTurnActions(state: GameStateSnapshot, countryId: string, cities: City[] = []): Promise<GameAction[]> {
     // Step 1: Strategic planning - what should we focus on?
     // This may call LLM if it's the right turn (every 5 turns)
     const intent = await this.planner.plan(state, countryId);
@@ -43,8 +45,8 @@ export class AIController {
       // Economy (research, infrastructure)
       ...this.economicAI.decideActions(state, countryId, intent),
       
-      // Military (recruitment, deployment)
-      ...this.militaryAI.decideActions(state, countryId, intent),
+      // Military (recruitment, deployment, attacks) - now async and needs cities
+      ...(await this.militaryAI.decideActions(state, countryId, intent, cities)),
     ];
     
     console.log(`[AI Controller] Country ${countryId} generated ${actions.length} action(s)`);

@@ -13,6 +13,7 @@ import { ResourceDisplay } from "@/components/game/ResourceDisplay";
 import { BudgetPanel } from "@/components/game/BudgetPanel";
 import { ActionPanel } from "@/components/game/ActionPanel";
 import { AttackModal } from "@/components/game/AttackModal";
+import { DefenseModal } from "@/components/game/DefenseModal";
 import { AllProfilesInfo } from "@/components/game/AllProfilesInfo";
 import { HistoryLog } from "@/components/game/HistoryLog";
 import { useGameStore } from "@/lib/store/gameStore";
@@ -69,6 +70,9 @@ export default function GamePage() {
   const [endingTurn, setEndingTurn] = useState(false);
   const [turnProcessing, setTurnProcessing] = useState(false);
   const [attackTargetCity, setAttackTargetCity] = useState<City | null>(null);
+  const [defenseCity, setDefenseCity] = useState<City | null>(null);
+  const [defenseAttackerCountry, setDefenseAttackerCountry] = useState<Country | null>(null);
+  const [defenseAttackerStats, setDefenseAttackerStats] = useState<CountryStats | null>(null);
 
   useEffect(() => setGameId(gameId), [gameId, setGameId]);
 
@@ -264,6 +268,51 @@ export default function GamePage() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId]);
+
+  // Check for cities under attack that belong to player
+  useEffect(() => {
+    if (!playerCountryId || cities.length === 0 || countries.length === 0) return;
+
+    const playerCitiesUnderAttack = cities.filter(
+      c => c.countryId === playerCountryId && c.isUnderAttack
+    );
+
+    if (playerCitiesUnderAttack.length > 0 && !defenseCity) {
+      // Find the first city under attack and fetch attacker info
+      const cityUnderAttack = playerCitiesUnderAttack[0];
+      
+      // Fetch pending attack action to get attacker info
+      fetch(`/api/actions?gameId=${encodeURIComponent(gameId)}&turn=${turn}&status=pending`)
+        .then(res => res.json())
+        .then((data: { actions?: Array<{ action_data: any; country_id: string }> }) => {
+          const attackAction = data.actions?.find(
+            (a: any) => {
+              const actionData = a.action_data || {};
+              return actionData.subType === "attack" && actionData.targetCityId === cityUnderAttack.id;
+            }
+          );
+          
+          if (attackAction) {
+            const actionData = attackAction.action_data || {};
+            const attackerId = actionData.attackerId || attackAction.country_id;
+            const attackerCountry = countries.find(c => c.id === attackerId);
+            const attackerStats = statsByCountryId[attackerId];
+            
+            if (attackerCountry && attackerStats) {
+              setDefenseCity(cityUnderAttack);
+              setDefenseAttackerCountry(attackerCountry);
+              setDefenseAttackerStats(attackerStats);
+            }
+          }
+        })
+        .catch(err => console.error("Failed to fetch attack action:", err));
+    } else if (playerCitiesUnderAttack.length === 0 && defenseCity) {
+      // Clear defense modal if no cities are under attack
+      setDefenseCity(null);
+      setDefenseAttackerCountry(null);
+      setDefenseAttackerStats(null);
+    }
+  }, [cities, playerCountryId, countries, statsByCountryId, gameId, turn, defenseCity]);
 
   // Automatically redirect to latest game if current game doesn't exist
   useEffect(() => {
@@ -687,6 +736,24 @@ export default function GamePage() {
           defenderCountry={defenderCountry}
           defenderStats={defenderStats}
           onClose={() => setAttackTargetCity(null)}
+          onSubmitted={() => void refreshGameData()}
+        />
+      )}
+
+      {/* Defense Modal */}
+      {defenseCity && defenseAttackerCountry && defenseAttackerStats && selectedCountry && selectedStats && (
+        <DefenseModal
+          gameId={gameId}
+          defendingCity={defenseCity}
+          defenderCountry={selectedCountry}
+          defenderStats={selectedStats}
+          attackerCountry={defenseAttackerCountry}
+          attackerStats={defenseAttackerStats}
+          onClose={() => {
+            setDefenseCity(null);
+            setDefenseAttackerCountry(null);
+            setDefenseAttackerStats(null);
+          }}
           onSubmitted={() => void refreshGameData()}
         />
       )}
