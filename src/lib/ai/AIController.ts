@@ -17,12 +17,14 @@ export class AIController {
   private readonly diplomacyAI: DiplomacyAI;
   private readonly economicAI: EconomicAI;
   private readonly militaryAI: MilitaryAI;
+  private readonly debugLLMPlan: boolean;
 
   constructor(personality: AIPersonality = DefaultPersonality) {
     this.planner = new StrategicPlanner(personality);
     this.diplomacyAI = new DiplomacyAI();
     this.economicAI = new EconomicAI(personality);
     this.militaryAI = new MilitaryAI(personality);
+    this.debugLLMPlan = process.env.LLM_PLAN_DEBUG === "1";
   }
 
   /**
@@ -36,6 +38,19 @@ export class AIController {
     const intent = await this.planner.plan(state, countryId);
     
     console.log(`[AI Controller] Country ${countryId} strategic focus: ${intent.focus} - ${intent.rationale}`);
+
+    if (this.debugLLMPlan && intent.llmPlan) {
+      const planItems = intent.llmPlan.planItems ?? [];
+      const stepCount = planItems.filter((i) => i.kind === "step").length;
+      const constraintCount = planItems.filter((i) => i.kind === "constraint").length;
+      const executableCount = planItems.filter((i) => i.kind === "step" && i.execution).length;
+      const executedCount = new Set(intent.llmPlan.executedStepIds ?? []).size;
+
+      console.log(
+        `[LLM Plan Debug] ${countryId} T${state.turn} planTurn=${intent.llmPlan.turnAnalyzed} validUntil=${intent.llmPlan.validUntilTurn} ` +
+          `steps=${stepCount} executable=${executableCount} constraints=${constraintCount} executed=${executedCount}`
+      );
+    }
     
     // Step 2: Generate actions based on strategic intent
     const actions: GameAction[] = [
@@ -50,6 +65,24 @@ export class AIController {
     ];
     
     console.log(`[AI Controller] Country ${countryId} generated ${actions.length} action(s)`);
+
+    if (this.debugLLMPlan && intent.llmPlan) {
+      const fromLLMSteps = actions
+        .map((a) => {
+          const data = a.actionData as Record<string, unknown>;
+          const llmStepId = typeof data?.llmStepId === "string" ? data.llmStepId : null;
+          return llmStepId
+            ? { actionType: a.actionType, subType: data?.subType, llmStepId }
+            : null;
+        })
+        .filter(Boolean);
+
+      if (fromLLMSteps.length > 0) {
+        console.log(`[LLM Plan Debug] ${countryId} executed-from-plan:`, fromLLMSteps);
+      } else {
+        console.log(`[LLM Plan Debug] ${countryId} executed-from-plan: none`);
+      }
+    }
     
     return actions;
   }

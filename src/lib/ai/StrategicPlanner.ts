@@ -1,7 +1,7 @@
 import type { GameStateSnapshot } from "@/lib/game-engine/GameState";
 import { RuleBasedAI } from "./RuleBasedAI";
 import { DefaultPersonality, type AIPersonality } from "./Personality";
-import { LLMStrategicPlanner } from "./LLMStrategicPlanner";
+import { LLMStrategicPlanner, type LLMPlanItem } from "./LLMStrategicPlanner";
 
 export interface StrategyIntent {
   focus: "economy" | "military" | "diplomacy" | "research" | "balanced";
@@ -15,11 +15,13 @@ export interface StrategyIntent {
     turnAnalyzed: number;
     validUntilTurn: number;
     recommendedActions: string[];
+    /** Structured plan items (preferred for execution). */
+    planItems?: LLMPlanItem[];
     /**
-     * Steps already executed during this plan window (best-effort).
+     * Executed step IDs (or legacy step strings) during this plan window (best-effort).
      * Used to prevent repeating "do X additional" directives every turn.
      */
-    executedSteps?: string[];
+    executedStepIds?: string[];
     diplomaticStance: Record<string, "friendly" | "neutral" | "hostile">;
     confidenceScore: number; // 0-1
   };
@@ -86,14 +88,14 @@ export class StrategicPlanner {
 
       // Best-effort: determine which recommended steps already executed for this plan,
       // to prevent repeating "do X additional" every single turn.
-      let executedSteps: string[] = [];
+      let executedStepIds: string[] = [];
       if (activePlan) {
         const executed = await this.llmPlanner.getExecutedLLMStepsForPlan(
           state.gameId,
           countryId,
           activePlan.turnAnalyzed
         );
-        executedSteps = Array.from(executed);
+        executedStepIds = Array.from(executed);
       }
 
       if (activePlan && !freshLLMAnalysis) {
@@ -107,7 +109,7 @@ export class StrategicPlanner {
         ruleBasedIntent,
         state.turn,
         activePlan ?? null,
-        executedSteps
+        executedStepIds
       );
     }
     

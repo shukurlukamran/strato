@@ -6,6 +6,8 @@ import { ActionResolver } from "@/lib/game-engine/ActionResolver";
 import { DefaultPersonality, type AIPersonality } from "./Personality";
 import {
   extractLLMBans,
+  extractLLMBansFromProhibitTokens,
+  mergeBans,
   extractNumberRange,
   extractTargetInfraLevel,
   extractTargetTechLevel,
@@ -13,6 +15,7 @@ import {
   looksLikeInfrastructureUpgradeStep,
   looksLikeTechUpgradeStep,
 } from "@/lib/ai/LLMPlanInterpreter";
+import type { LLMPlanItem } from "@/lib/ai/LLMStrategicPlanner";
 
 /**
  * Economic AI Decision Maker
@@ -20,9 +23,11 @@ import {
  */
 export class EconomicAI {
   private personality: AIPersonality;
+  private readonly debugLLMPlan: boolean;
 
   constructor(personality: AIPersonality = DefaultPersonality) {
     this.personality = personality;
+    this.debugLLMPlan = process.env.LLM_PLAN_DEBUG === "1";
   }
 
   /**
@@ -44,7 +49,7 @@ export class EconomicAI {
     // HARD CONSTRAINTS: If LLM explicitly says "avoid/refrain", enforce it for the plan window,
     // including against rule-based fallbacks.
     const llmSteps = intent.llmPlan?.recommendedActions ?? [];
-    const bans = extractLLMBans(llmSteps);
+    const bans = this.getEffectiveBans(intent, llmSteps);
 
     // PRIORITY: Follow LLM action steps (when present) before rule-based heuristics.
     // This ensures "recommendedActions" actually influence gameplay, not just logs.
@@ -204,10 +209,22 @@ export class EconomicAI {
     const stats = state.countryStatsByCountryId[countryId];
     if (!stats) return [];
 
+    const executed = new Set((intent.llmPlan?.executedStepIds ?? []).map((s) => String(s ?? "").trim()).filter(Boolean));
+
+    // Prefer structured plan items when available
+    const planItems = intent.llmPlan?.planItems ?? [];
+    if (Array.isArray(planItems) && planItems.length > 0) {
+      const step = this.pickNextExecutableEconomicStep(planItems, executed, stats, bans);
+      if (step && step.execution) {
+        const built = this.buildEconomicActionFromStep(state, countryId, step, analysis, bans, intent.llmPlan?.turnAnalyzed);
+        if (built) return [built];
+      }
+      return [];
+    }
+
+    // Legacy fallback: parse free-text recommendedActions
     const steps = intent.llmPlan?.recommendedActions ?? [];
     if (!Array.isArray(steps) || steps.length === 0) return [];
-
-    const executed = new Set((intent.llmPlan?.executedSteps ?? []).map((s) => String(s ?? "").trim()).filter(Boolean));
 
     // Avoid duplicating economic upgrades if already pending this turn
     const alreadyHasResearch = state.pendingActions.some(
@@ -259,6 +276,7 @@ export class EconomicAI {
               cost: infraCost,
               targetLevel: currentInfra + 1,
               llmStep: step,
+              llmStepId: step,
               llmPlanTurn: intent.llmPlan?.turnAnalyzed,
             },
             status: "pending",
@@ -292,6 +310,7 @@ export class EconomicAI {
               cost: researchCost,
               targetLevel: currentTech + 1,
               llmStep: step,
+              llmStepId: step,
               llmPlanTurn: intent.llmPlan?.turnAnalyzed,
             },
             status: "pending",
@@ -302,6 +321,198 @@ export class EconomicAI {
     }
 
     return [];
+  }
+
+  private getEffectiveBans(intent: StrategyIntent, legacySteps: string[]): ReturnType<typeof extractLLMBans> {
+    let bans = extractLLMBans(legacySteps);
+    const planItems = intent.llmPlan?.planItems ?? [];
+    for (const item of planItems) {
+      if (item && item.kind === "constraint") {
+        bans = mergeBans(bans, extractLLMBansFromProhibitTokens(item.effects?.prohibit, item.instruction));
+        // Also treat the constraint instruction as legacy text for negation parsing (best-effort)
+        bans = mergeBans(bans, extractLLMBans([item.instruction]));
+      }
+    }
+    return bans;
+  }
+
+  private pickNextExecutableEconomicStep(
+    planItems: LLMPlanItem[],
+    executed: Set<string>,
+    stats: { technologyLevel: number; infrastructureLevel?: number; budget: number },
+    bans: ReturnType<typeof extractLLMBans>
+  ): Extract<LLMPlanItem, { kind: "step" }> | null {
+    const steps = planItems
+      .filter((i): i is Extract<LLMPlanItem, { kind: "step" }> => i.kind === "step")
+      .slice()
+      .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
+
+    if (this.debugLLMPlan) {
+      const coverage = {
+        total: steps.length,
+        executed: 0,
+        stopMet: 0,
+        noExecution: 0,
+        wrongDomain: 0,
+        whenUnmet: 0,
+        banned: 0,
+        actionable: 0,
+      };
+
+      for (const s of steps) {
+        if (executed.has(s.id)) {
+          coverage.executed++;
+          continue;
+        }
+        if (this.isStopConditionMet(s.stop_when, stats)) {
+          coverage.stopMet++;
+          continue;
+        }
+        if (!s.execution) {
+          coverage.noExecution++;
+          continue;
+        }
+        if (s.execution.actionType !== "research" && s.execution.actionType !== "economic") {
+          coverage.wrongDomain++;
+          continue;
+        }
+        if (!this.isWhenConditionMet(s.when, stats)) {
+          coverage.whenUnmet++;
+          continue;
+        }
+        if (bans.banTechUpgrades && s.execution.actionType === "research") {
+          coverage.banned++;
+          continue;
+        }
+        if (bans.banInfrastructureUpgrades && s.execution.actionType === "economic") {
+          coverage.banned++;
+          continue;
+        }
+        coverage.actionable++;
+      }
+
+      console.log(`[LLM Plan Debug] Economic coverage:`, coverage);
+    }
+
+    for (const s of steps) {
+      // Completed by execution
+      if (executed.has(s.id)) continue;
+      // Completed by stop_when
+      if (this.isStopConditionMet(s.stop_when, stats)) continue;
+      // Must have executable payload
+      if (!s.execution) continue;
+      // Must be economic-related actionType
+      if (s.execution.actionType !== "research" && s.execution.actionType !== "economic") continue;
+      // Must satisfy gating
+      if (!this.isWhenConditionMet(s.when, stats)) continue;
+      // Must respect bans
+      if (bans.banTechUpgrades && s.execution.actionType === "research") continue;
+      if (bans.banInfrastructureUpgrades && s.execution.actionType === "economic") continue;
+      return s;
+    }
+    return null;
+  }
+
+  private isWhenConditionMet(when: Record<string, unknown> | undefined, stats: { technologyLevel: number; infrastructureLevel?: number; budget: number }): boolean {
+    if (!when) return true;
+    const tech = stats.technologyLevel;
+    const infra = stats.infrastructureLevel ?? 0;
+    const budget = stats.budget;
+    const techGte = typeof when.tech_level_gte === "number" ? when.tech_level_gte : undefined;
+    const infraGte = typeof when.infra_level_gte === "number" ? when.infra_level_gte : undefined;
+    const budgetGte = typeof when.budget_gte === "number" ? when.budget_gte : undefined;
+    if (typeof techGte === "number" && tech < techGte) return false;
+    if (typeof infraGte === "number" && infra < infraGte) return false;
+    if (typeof budgetGte === "number" && budget < budgetGte) return false;
+    return true;
+  }
+
+  private isStopConditionMet(stop: Record<string, unknown> | undefined, stats: { technologyLevel: number; infrastructureLevel?: number; budget: number }): boolean {
+    if (!stop) return false;
+    const tech = stats.technologyLevel;
+    const infra = stats.infrastructureLevel ?? 0;
+    const budget = stats.budget;
+    const techGte = typeof stop.tech_level_gte === "number" ? stop.tech_level_gte : undefined;
+    const infraGte = typeof stop.infra_level_gte === "number" ? stop.infra_level_gte : undefined;
+    const budgetGte = typeof stop.budget_gte === "number" ? stop.budget_gte : undefined;
+    if (typeof techGte === "number" && tech >= techGte) return true;
+    if (typeof infraGte === "number" && infra >= infraGte) return true;
+    if (typeof budgetGte === "number" && budget >= budgetGte) return true;
+    return false;
+  }
+
+  private buildEconomicActionFromStep(
+    state: GameStateSnapshot,
+    countryId: string,
+    step: Extract<LLMPlanItem, { kind: "step" }>,
+    analysis: ReturnType<typeof RuleBasedAI.analyzeEconomicSituation>,
+    bans: ReturnType<typeof extractLLMBans>,
+    llmPlanTurn: number | undefined
+  ): GameAction | null {
+    const stats = state.countryStatsByCountryId[countryId];
+    if (!stats || !step.execution) return null;
+
+    if (step.execution.actionType === "research") {
+      if (bans.banTechUpgrades) return null;
+      if (!analysis.canAffordResearch) return null;
+      if (stats.technologyLevel >= 5) return null;
+
+      const desired = Number((step.execution.actionData as any)?.targetLevel ?? stats.technologyLevel + 1);
+      const targetLevel =
+        Number.isFinite(desired) && desired > stats.technologyLevel ? Math.min(5, Math.floor(desired)) : stats.technologyLevel + 1;
+      const cost = ActionResolver.calculateResearchCost(stats.technologyLevel);
+
+      return {
+        id: "",
+        gameId: state.gameId,
+        countryId,
+        turn: state.turn,
+        actionType: "research",
+        actionData: {
+          cost,
+          targetLevel,
+          llmStepId: step.id,
+          llmStep: step.instruction,
+          llmPlanTurn,
+        },
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      };
+    }
+
+    if (step.execution.actionType === "economic") {
+      const subType = (step.execution.actionData as any)?.subType;
+      if (subType !== "infrastructure") return null;
+      if (bans.banInfrastructureUpgrades) return null;
+      if (!analysis.canAffordInfrastructure) return null;
+      const currentInfra = stats.infrastructureLevel || 0;
+      if (currentInfra >= 10) return null;
+
+      const desired = Number((step.execution.actionData as any)?.targetLevel ?? currentInfra + 1);
+      const targetLevel =
+        Number.isFinite(desired) && desired > currentInfra ? Math.min(10, Math.floor(desired)) : currentInfra + 1;
+      const cost = ActionResolver.calculateInfrastructureCost(currentInfra);
+
+      return {
+        id: "",
+        gameId: state.gameId,
+        countryId,
+        turn: state.turn,
+        actionType: "economic",
+        actionData: {
+          subType: "infrastructure",
+          cost,
+          targetLevel,
+          llmStepId: step.id,
+          llmStep: step.instruction,
+          llmPlanTurn,
+        },
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      };
+    }
+
+    return null;
   }
 
   /**

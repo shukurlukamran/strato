@@ -12,13 +12,58 @@ import type { StrategyIntent } from "./StrategicPlanner";
 import { RuleBasedAI } from "./RuleBasedAI";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getDiplomaticScore } from "@/lib/game-engine/DiplomaticRelations";
+import type { ActionType } from "@/types/actions";
+
+/**
+ * IMPORTANT: We do NOT constrain what the LLM can *advise* (instruction is always free text).
+ * We only optionally constrain what can be *executed* by the game engine via `execution`.
+ */
+export type LLMPlanItem =
+  | {
+      kind: "step";
+      id: string;
+      instruction: string;
+      /**
+       * Optional machine-executable action. If omitted/null, the step is still valid advice,
+       * but may require future systems (diplomacy deals, multi-action, etc).
+       */
+      execution?: {
+        actionType: ActionType;
+        actionData: Record<string, unknown>;
+      } | null;
+      /** Optional gating conditions (best-effort; unknown keys are ignored). */
+      when?: Record<string, unknown>;
+      /** Optional completion conditions (best-effort; unknown keys are ignored). */
+      stop_when?: Record<string, unknown>;
+      /** Lower number = higher priority. Defaults to array order. */
+      priority?: number;
+    }
+  | {
+      kind: "constraint";
+      id: string;
+      instruction: string;
+      /**
+       * Optional structured effects. `prohibit` is intentionally free-form strings
+       * (e.g. ["recruit", "research", "infrastructure"]) to avoid limiting capability.
+       */
+      effects?: { prohibit?: string[] };
+    };
 
 export interface LLMStrategicAnalysis {
   strategicFocus: "economy" | "military" | "diplomacy" | "research" | "balanced";
   rationale: string;
   threatAssessment: string;
   opportunityIdentified: string;
+  /**
+   * Backward-compatible "display list" of actions. This is derived from `planItems` when present.
+   * It remains an array of strings for logging/UI and legacy logic.
+   */
   recommendedActions: string[];
+  /**
+   * Structured plan items (steps + constraints). Prefer this for actual execution.
+   * Stored in DB inside `recommended_actions` as a JSONB array (mixed strings/objects supported).
+   */
+  planItems?: LLMPlanItem[];
   diplomaticStance: Record<string, "friendly" | "neutral" | "hostile">;
   confidenceScore: number; // 0-1
   turnAnalyzed: number;
@@ -319,12 +364,25 @@ IMPORTANT: You must respond with ONLY valid JSON in the following exact format (
   "rationale": "One concise sentence explaining your strategic choice (max 150 characters)",
   "threats": "Specific threats this country faces (e.g., 'Neighbor military 180 vs our 60, food shortage in 3 turns')",
   "opportunities": "Specific opportunities to exploit (e.g., 'Excellent Research ROI of 15 turns, abundant iron resources')",
-  "actions": [
-    "Specific action 1 (e.g., 'Build infrastructure to level 3 immediately')",
-    "Specific action 2 (e.g., 'Recruit 20 military units to address deficit')",
-    "Specific action 3 (e.g., 'Research technology to leverage 2.2x multiplier')",
-    "Specific action 4 (optional)",
-    "Specific action 5 (optional)"
+  "constraints": [
+    {
+      "id": "no_spending_if_deficit",
+      "instruction": "Optional. If needed, express prohibitions like 'Avoid recruitment and tech upgrades for 5 turns'.",
+      "effects": { "prohibit": ["recruit", "research", "infrastructure", "attack"] }
+    }
+  ],
+  "action_plan": [
+    {
+      "id": "unique_step_id_1",
+      "instruction": "Free-text strategic advice (NOT limited). Example: 'Recruit to reach 55 strength, then pause.'",
+      "priority": 1,
+      "when": { "tech_level_gte": 3 },
+      "stop_when": { "military_strength_gte": 55 },
+      "execution": {
+        "actionType": "military",
+        "actionData": { "subType": "recruit", "amount": 10 }
+      }
+    }
   ],
   "diplomacy": {
 ${neighbors
@@ -343,12 +401,14 @@ ${neighbors
 
 CRITICAL RULES:
 1. Return ONLY the JSON object (no markdown code blocks, no extra text)
-2. "actions" must contain 3-5 SPECIFIC, actionable items (NOT "Continue balanced development")
+2. "action_plan" must contain 3-5 SPECIFIC, prioritized steps. Each step MUST have a stable unique "id".
+3. Steps are NOT restricted. If a step is not directly executable by the game engine, set "execution": null and keep the "instruction".
 3. "diplomacy" must include ALL neighbors listed above with stance: "friendly", "neutral", or "hostile"
 4. IMPORTANT: keys in "diplomacy" MUST be the NEIGHBOR COUNTRY IDs (the values inside parentheses), NOT country names
 5. "threats" and "opportunities" must be SPECIFIC with numbers and details
 6. "rationale" must be under 150 characters
 7. All text fields must be complete (not truncated)
+8. If you include "effects.prohibit", use short tokens like: recruit, research, infrastructure, attack. (But you may still describe nuanced exceptions in "instruction".)
 
 Be strategic, realistic, and consider long-term implications.`;
   }
@@ -416,9 +476,28 @@ Be strategic, realistic, and consider long-term implications.`;
       const rationale = (parsed.rationale || "Strategic analysis completed").substring(0, 200);
       const threatAssessment = parsed.threats || "Normal threat level";
       const opportunityIdentified = parsed.opportunities || "Multiple opportunities available";
-      const recommendedActions = Array.isArray(parsed.actions) && parsed.actions.length > 0
-        ? parsed.actions.slice(0, 5)
-        : ["Continue balanced development"];
+      const planItems = this.parsePlanItems(parsed);
+      const recommendedActionsFromPlan =
+        planItems && planItems.length > 0
+          ? planItems
+              .filter((i): i is Extract<LLMPlanItem, { kind: "step" }> => i.kind === "step")
+              .map((s) => s.instruction)
+              .filter(Boolean)
+              .slice(0, 5)
+          : [];
+
+      // Backward compatibility: accept old "actions": string[]
+      const legacyActions =
+        Array.isArray(parsed.actions) && parsed.actions.length > 0
+          ? parsed.actions.map((a: unknown) => String(a ?? "").trim()).filter(Boolean).slice(0, 5)
+          : [];
+
+      const recommendedActions =
+        recommendedActionsFromPlan.length > 0
+          ? recommendedActionsFromPlan
+          : legacyActions.length > 0
+            ? legacyActions
+            : ["Continue balanced development"];
       
       const diplomaticStance: Record<string, "friendly" | "neutral" | "hostile"> = {};
       if (parsed.diplomacy && typeof parsed.diplomacy === 'object') {
@@ -471,6 +550,7 @@ Be strategic, realistic, and consider long-term implications.`;
         threatAssessment,
         opportunityIdentified,
         recommendedActions,
+        planItems: planItems.length > 0 ? planItems : undefined,
         diplomaticStance,
         confidenceScore,
         turnAnalyzed: turn,
@@ -529,10 +609,68 @@ Be strategic, realistic, and consider long-term implications.`;
       threatAssessment: threatAssessment || "Normal threat level",
       opportunityIdentified: opportunityIdentified || "Multiple opportunities available",
       recommendedActions: recommendedActions.length > 0 ? recommendedActions : ["Continue balanced development"],
+      planItems: undefined,
       diplomaticStance,
       confidenceScore,
       turnAnalyzed: turn,
     };
+  }
+
+  private parsePlanItems(parsed: any): LLMPlanItem[] {
+    const items: LLMPlanItem[] = [];
+
+    // Constraints first (optional)
+    if (Array.isArray(parsed.constraints)) {
+      for (const c of parsed.constraints) {
+        if (!c || typeof c !== "object") continue;
+        const id = typeof c.id === "string" ? c.id.trim() : "";
+        const instruction = typeof c.instruction === "string" ? c.instruction.trim() : "";
+        if (!id || !instruction) continue;
+        const prohibit = Array.isArray(c.effects?.prohibit)
+          ? c.effects.prohibit.map((x: unknown) => String(x ?? "").trim()).filter(Boolean)
+          : undefined;
+        items.push({
+          kind: "constraint",
+          id,
+          instruction,
+          effects: prohibit && prohibit.length > 0 ? { prohibit } : undefined,
+        });
+      }
+    }
+
+    // Action plan steps (preferred)
+    if (Array.isArray(parsed.action_plan)) {
+      for (const s of parsed.action_plan) {
+        if (!s || typeof s !== "object") continue;
+        const id = typeof s.id === "string" ? s.id.trim() : "";
+        const instruction = typeof s.instruction === "string" ? s.instruction.trim() : "";
+        if (!id || !instruction) continue;
+
+        let execution: Extract<LLMPlanItem, { kind: "step" }>["execution"] = null;
+        if (s.execution && typeof s.execution === "object") {
+          const actionType = typeof s.execution.actionType === "string" ? s.execution.actionType : "";
+          const actionData = s.execution.actionData && typeof s.execution.actionData === "object" ? s.execution.actionData : null;
+          if (
+            (actionType === "diplomacy" || actionType === "military" || actionType === "economic" || actionType === "research") &&
+            actionData
+          ) {
+            execution = { actionType, actionData: actionData as Record<string, unknown> };
+          }
+        }
+
+        items.push({
+          kind: "step",
+          id,
+          instruction,
+          execution,
+          when: s.when && typeof s.when === "object" ? (s.when as Record<string, unknown>) : undefined,
+          stop_when: s.stop_when && typeof s.stop_when === "object" ? (s.stop_when as Record<string, unknown>) : undefined,
+          priority: typeof s.priority === "number" ? s.priority : undefined,
+        });
+      }
+    }
+
+    return items;
   }
   
   /**
@@ -569,7 +707,8 @@ Be strategic, realistic, and consider long-term implications.`;
         turnAnalyzed: guidingAnalysis.turnAnalyzed,
         validUntilTurn,
         recommendedActions: guidingAnalysis.recommendedActions ?? [],
-        executedSteps,
+        planItems: guidingAnalysis.planItems,
+        executedStepIds: executedSteps,
         diplomaticStance: guidingAnalysis.diplomaticStance ?? {},
         confidenceScore: guidingAnalysis.confidenceScore ?? 0.7,
       },
@@ -603,6 +742,12 @@ Be strategic, realistic, and consider long-term implications.`;
       const steps = new Set<string>();
       for (const row of res.data as Array<{ action_data: unknown }>) {
         const data = row.action_data as Record<string, unknown> | null;
+        const stepId = typeof data?.llmStepId === "string" ? data.llmStepId.trim() : "";
+        if (stepId) {
+          steps.add(stepId);
+          continue;
+        }
+        // Backward compatibility (older actions wrote llmStep as raw text)
         const step = typeof data?.llmStep === "string" ? data.llmStep.trim() : "";
         if (step) steps.add(step);
       }
@@ -645,13 +790,43 @@ Be strategic, realistic, and consider long-term implications.`;
         rationale: planRes.data.rationale,
         threatAssessment: planRes.data.threat_assessment,
         opportunityIdentified: planRes.data.opportunity_identified,
-        recommendedActions: Array.isArray(planRes.data.recommended_actions)
-          ? planRes.data.recommended_actions
-          : [],
+        recommendedActions: [],
+        planItems: undefined,
         diplomaticStance: (planRes.data.diplomatic_stance as Record<string, "friendly" | "neutral" | "hostile">) ?? {},
         confidenceScore: Number(planRes.data.confidence_score ?? 0.7),
         turnAnalyzed: Number(planRes.data.turn_analyzed),
       };
+
+      // Load plan from DB (jsonb array). Backward compatible:
+      // - ["string", ...] legacy
+      // - [{kind:"step"|...}, ...] structured
+      const ra = planRes.data.recommended_actions as unknown;
+      if (Array.isArray(ra)) {
+        const steps: LLMPlanItem[] = [];
+        const actionStrings: string[] = [];
+        for (const item of ra) {
+          if (typeof item === "string") {
+            const s = item.trim();
+            if (s) actionStrings.push(s);
+            continue;
+          }
+          if (!item || typeof item !== "object") continue;
+          const kind = (item as any).kind;
+          if (kind === "step" || kind === "constraint") {
+            steps.push(item as LLMPlanItem);
+            if (kind === "step" && typeof (item as any).instruction === "string") {
+              const s = (item as any).instruction.trim();
+              if (s) actionStrings.push(s);
+            }
+          }
+        }
+        analysis.planItems = steps.length > 0 ? steps : undefined;
+        analysis.recommendedActions = actionStrings.length > 0 ? actionStrings.slice(0, 5) : [];
+      }
+
+      if (!analysis.recommendedActions || analysis.recommendedActions.length === 0) {
+        analysis.recommendedActions = ["Continue balanced development"];
+      }
 
       const planKey = this.getPlanKey(gameId, countryId);
       this.activeStrategicPlans.set(planKey, analysis);
@@ -702,7 +877,15 @@ Be strategic, realistic, and consider long-term implications.`;
             rationale: analysis.rationale,
             threat_assessment: analysis.threatAssessment,
             opportunity_identified: analysis.opportunityIdentified,
-            recommended_actions: analysis.recommendedActions,
+            // Backward compatible: store as jsonb array.
+            // - If structured items exist, store them (plus legacy strings for debugging).
+            // - Otherwise store legacy string list.
+            recommended_actions: Array.isArray(analysis.planItems) && analysis.planItems.length > 0
+              ? [
+                  ...analysis.planItems,
+                  ...analysis.recommendedActions.map((s) => String(s ?? "").trim()).filter(Boolean).slice(0, 5),
+                ]
+              : analysis.recommendedActions,
             diplomatic_stance: analysis.diplomaticStance,
             confidence_score: analysis.confidenceScore,
             created_at: new Date().toISOString(),

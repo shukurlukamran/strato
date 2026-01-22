@@ -61,6 +61,35 @@ export function extractLLMBans(rawSteps: string[]): LLMBans {
   return { banRecruitment, banTechUpgrades, banInfrastructureUpgrades, reasons };
 }
 
+/**
+ * Map structured constraint effects (free-form tokens) into engine-level bans.
+ * This does NOT limit what the LLM can say; it's a best-effort mapping.
+ */
+export function extractLLMBansFromProhibitTokens(prohibit: string[] | undefined, sourceInstruction?: string): LLMBans {
+  const tokens = Array.isArray(prohibit) ? prohibit : [];
+  const joined = tokens.map((t) => t.toLowerCase()).join(" ");
+  const reasons: string[] = [];
+  if (sourceInstruction) reasons.push(sourceInstruction);
+
+  const banRecruitment =
+    /\b(recruit|recruitment|conscrip|train)\b/.test(joined);
+  const banTechUpgrades =
+    /\b(research|tech|technology|upgrade_tech|upgrade-tech)\b/.test(joined);
+  const banInfrastructureUpgrades =
+    /\b(infra|infrastructure|upgrade_infrastructure|upgrade-infrastructure)\b/.test(joined);
+
+  return { banRecruitment, banTechUpgrades, banInfrastructureUpgrades, reasons };
+}
+
+export function mergeBans(a: LLMBans, b: LLMBans): LLMBans {
+  return {
+    banRecruitment: a.banRecruitment || b.banRecruitment,
+    banTechUpgrades: a.banTechUpgrades || b.banTechUpgrades,
+    banInfrastructureUpgrades: a.banInfrastructureUpgrades || b.banInfrastructureUpgrades,
+    reasons: [...(a.reasons ?? []), ...(b.reasons ?? [])],
+  };
+}
+
 export function isOneTimeStep(raw: string): boolean {
   const step = String(raw ?? "").trim();
   if (!step) return false;

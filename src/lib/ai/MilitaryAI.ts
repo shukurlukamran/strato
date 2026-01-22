@@ -6,7 +6,14 @@ import { RuleBasedAI } from "./RuleBasedAI";
 import { DefaultPersonality, type AIPersonality } from "./Personality";
 import { calculateCityValue } from "@/types/city";
 import { MilitaryCalculator } from "@/lib/game-engine/MilitaryCalculator";
-import { extractLLMBans, extractNumberRange, isOneTimeStep } from "@/lib/ai/LLMPlanInterpreter";
+import {
+  extractLLMBans,
+  extractLLMBansFromProhibitTokens,
+  extractNumberRange,
+  isOneTimeStep,
+  mergeBans,
+} from "@/lib/ai/LLMPlanInterpreter";
+import type { LLMPlanItem } from "@/lib/ai/LLMStrategicPlanner";
 
 /**
  * Military AI Decision Maker
@@ -14,9 +21,11 @@ import { extractLLMBans, extractNumberRange, isOneTimeStep } from "@/lib/ai/LLMP
  */
 export class MilitaryAI {
   private personality: AIPersonality;
+  private readonly debugLLMPlan: boolean;
 
   constructor(personality: AIPersonality = DefaultPersonality) {
     this.personality = personality;
+    this.debugLLMPlan = process.env.LLM_PLAN_DEBUG === "1";
   }
 
   /**
@@ -47,15 +56,12 @@ export class MilitaryAI {
       stats.resourceProfile
     );
 
-    // PRIORITY: Follow LLM action steps (when present) before pure rule-based heuristics.
-    const llmDirectives = this.extractLLMMilitaryDirectives(
-      intent.llmPlan?.recommendedActions ?? [],
-      analysis,
-      stats.militaryStrength,
-      intent.llmPlan?.executedSteps ?? []
-    );
+    const bans = this.getEffectiveBans(intent);
 
-    const bans = extractLLMBans(intent.llmPlan?.recommendedActions ?? []);
+    // Prefer structured plan items if available: execute next incomplete step by ID.
+    const planItems = intent.llmPlan?.planItems ?? [];
+    const executed = new Set((intent.llmPlan?.executedStepIds ?? []).map((s) => String(s ?? "").trim()).filter(Boolean));
+    const structuredStep = this.pickNextExecutableMilitaryStep(planItems, executed, stats, bans);
 
     const criticalDefenseNeed = analysis.isUnderDefended && analysis.militaryDeficit > 20;
     const hasLLMPlan = !!intent.llmPlan;
@@ -63,15 +69,17 @@ export class MilitaryAI {
     // Recruit only when the LLM says so, or in critical defense emergencies.
     const allowRecruitment =
       (!bans.banRecruitment && criticalDefenseNeed) ||
-      llmDirectives.recruit !== null ||
+      (structuredStep?.execution?.actionType === "military" &&
+        (structuredStep.execution.actionData as any)?.subType === "recruit") ||
       (!hasLLMPlan && (intent.focus === "military" || intent.focus === "balanced"));
     const allowAttacks =
-      llmDirectives.forceAttack ||
+      (structuredStep?.execution?.actionType === "military" &&
+        (structuredStep.execution.actionData as any)?.subType === "attack") ||
       (!hasLLMPlan && (intent.focus === "military" || intent.focus === "balanced"));
 
     // DECISION: Military recruitment
     const recruitAmount = allowRecruitment
-      ? (llmDirectives.recruit?.amount ?? RuleBasedAI.decideMilitaryRecruitment(stats, analysis, weights))
+      ? (this.extractRecruitAmountFromStep(structuredStep) ?? RuleBasedAI.decideMilitaryRecruitment(stats, analysis, weights))
       : 0;
     
     if (!bans.banRecruitment && recruitAmount > 0) {
@@ -99,8 +107,8 @@ export class MilitaryAI {
             subType: "recruit",
             amount: finalRecruitAmount,
             cost: recruitCost,
-            ...(llmDirectives.recruit
-              ? { llmStep: llmDirectives.recruit.rawStep, llmPlanTurn: intent.llmPlan?.turnAnalyzed }
+            ...(structuredStep
+              ? { llmStepId: structuredStep.id, llmStep: structuredStep.instruction, llmPlanTurn: intent.llmPlan?.turnAnalyzed }
               : {}),
           },
           status: "pending",
@@ -118,8 +126,10 @@ export class MilitaryAI {
         intent,
         cities,
         remainingBudget,
-        llmDirectives.forceAttack,
-        llmDirectives.attackRawStep
+        structuredStep?.execution?.actionType === "military" &&
+          (structuredStep.execution.actionData as any)?.subType === "attack",
+        structuredStep?.id ?? null,
+        structuredStep?.instruction ?? null
       );
       if (attackAction) {
         const attackCost = Number((attackAction.actionData as Record<string, unknown>)?.cost ?? 0);
@@ -146,6 +156,7 @@ export class MilitaryAI {
     cities: City[],
     remainingBudget: number,
     forcedByLLM: boolean,
+    llmStepId: string | null,
     llmAttackStep: string | null
   ): Promise<GameAction | null> {
     const stats = state.countryStatsByCountryId[countryId];
@@ -206,6 +217,7 @@ export class MilitaryAI {
         forcedByLLM
       );
       if (action && forcedByLLM && llmAttackStep) {
+        if (llmStepId) (action.actionData as Record<string, unknown>).llmStepId = llmStepId;
         (action.actionData as Record<string, unknown>).llmStep = llmAttackStep;
         (action.actionData as Record<string, unknown>).llmPlanTurn = intent.llmPlan?.turnAnalyzed;
       }
@@ -684,6 +696,144 @@ Your decision:`;
     }
 
     return { recruit, forceAttack, attackRawStep };
+  }
+
+  private getEffectiveBans(intent: StrategyIntent): ReturnType<typeof extractLLMBans> {
+    let bans = extractLLMBans(intent.llmPlan?.recommendedActions ?? []);
+    const planItems = intent.llmPlan?.planItems ?? [];
+    for (const item of planItems) {
+      if (item && item.kind === "constraint") {
+        bans = mergeBans(bans, extractLLMBansFromProhibitTokens(item.effects?.prohibit, item.instruction));
+        bans = mergeBans(bans, extractLLMBans([item.instruction]));
+      }
+    }
+    return bans;
+  }
+
+  private pickNextExecutableMilitaryStep(
+    planItems: LLMPlanItem[],
+    executed: Set<string>,
+    stats: { technologyLevel: number; infrastructureLevel?: number; militaryStrength: number; budget: number },
+    bans: ReturnType<typeof extractLLMBans>
+  ): Extract<LLMPlanItem, { kind: "step" }> | null {
+    if (!Array.isArray(planItems) || planItems.length === 0) return null;
+    const steps = planItems
+      .filter((i): i is Extract<LLMPlanItem, { kind: "step" }> => i.kind === "step")
+      .slice()
+      .sort((a, b) => (a.priority ?? 999) - (b.priority ?? 999));
+
+    if (this.debugLLMPlan) {
+      const coverage = {
+        total: steps.length,
+        executed: 0,
+        stopMet: 0,
+        noExecution: 0,
+        wrongDomain: 0,
+        whenUnmet: 0,
+        banned: 0,
+        actionable: 0,
+      };
+
+      for (const s of steps) {
+        if (executed.has(s.id)) {
+          coverage.executed++;
+          continue;
+        }
+        if (this.isStopConditionMet(s.stop_when, stats)) {
+          coverage.stopMet++;
+          continue;
+        }
+        if (!s.execution) {
+          coverage.noExecution++;
+          continue;
+        }
+        if (s.execution.actionType !== "military") {
+          coverage.wrongDomain++;
+          continue;
+        }
+        if (!this.isWhenConditionMet(s.when, stats)) {
+          coverage.whenUnmet++;
+          continue;
+        }
+        const subType = (s.execution.actionData as any)?.subType;
+        if (subType === "recruit" && bans.banRecruitment) {
+          coverage.banned++;
+          continue;
+        }
+        // (attack bans could be added later if you implement prohibit:["attack"] execution blocking)
+        if (subType !== "recruit" && subType !== "attack") {
+          coverage.wrongDomain++;
+          continue;
+        }
+        coverage.actionable++;
+      }
+
+      console.log(`[LLM Plan Debug] Military coverage:`, coverage);
+    }
+
+    for (const s of steps) {
+      if (executed.has(s.id)) continue;
+      if (this.isStopConditionMet(s.stop_when, stats)) continue;
+      if (!s.execution) continue;
+      if (s.execution.actionType !== "military") continue;
+      if (!this.isWhenConditionMet(s.when, stats)) continue;
+
+      const subType = (s.execution.actionData as any)?.subType;
+      if (subType === "recruit" || subType === "attack") {
+        if (subType === "recruit" && bans.banRecruitment) continue;
+        return s;
+      }
+    }
+    return null;
+  }
+
+  private isWhenConditionMet(
+    when: Record<string, unknown> | undefined,
+    stats: { technologyLevel: number; infrastructureLevel?: number; militaryStrength: number; budget: number }
+  ): boolean {
+    if (!when) return true;
+    const tech = stats.technologyLevel;
+    const infra = stats.infrastructureLevel ?? 0;
+    const mil = stats.militaryStrength;
+    const budget = stats.budget;
+    const techGte = typeof when.tech_level_gte === "number" ? when.tech_level_gte : undefined;
+    const infraGte = typeof when.infra_level_gte === "number" ? when.infra_level_gte : undefined;
+    const milGte = typeof when.military_strength_gte === "number" ? when.military_strength_gte : undefined;
+    const budgetGte = typeof when.budget_gte === "number" ? when.budget_gte : undefined;
+    if (typeof techGte === "number" && tech < techGte) return false;
+    if (typeof infraGte === "number" && infra < infraGte) return false;
+    if (typeof milGte === "number" && mil < milGte) return false;
+    if (typeof budgetGte === "number" && budget < budgetGte) return false;
+    return true;
+  }
+
+  private isStopConditionMet(
+    stop: Record<string, unknown> | undefined,
+    stats: { technologyLevel: number; infrastructureLevel?: number; militaryStrength: number; budget: number }
+  ): boolean {
+    if (!stop) return false;
+    const tech = stats.technologyLevel;
+    const infra = stats.infrastructureLevel ?? 0;
+    const mil = stats.militaryStrength;
+    const budget = stats.budget;
+    const techGte = typeof stop.tech_level_gte === "number" ? stop.tech_level_gte : undefined;
+    const infraGte = typeof stop.infra_level_gte === "number" ? stop.infra_level_gte : undefined;
+    const milGte = typeof stop.military_strength_gte === "number" ? stop.military_strength_gte : undefined;
+    const budgetGte = typeof stop.budget_gte === "number" ? stop.budget_gte : undefined;
+    if (typeof techGte === "number" && tech >= techGte) return true;
+    if (typeof infraGte === "number" && infra >= infraGte) return true;
+    if (typeof milGte === "number" && mil >= milGte) return true;
+    if (typeof budgetGte === "number" && budget >= budgetGte) return true;
+    return false;
+  }
+
+  private extractRecruitAmountFromStep(step: Extract<LLMPlanItem, { kind: "step" }> | null): number | null {
+    if (!step?.execution || step.execution.actionType !== "military") return null;
+    const subType = (step.execution.actionData as any)?.subType;
+    if (subType !== "recruit") return null;
+    const amount = Number((step.execution.actionData as any)?.amount);
+    if (!Number.isFinite(amount)) return null;
+    return Math.max(0, Math.min(50, Math.floor(amount)));
   }
 
   private looksLikeRecruitStep(step: string): boolean {
