@@ -75,13 +75,51 @@ export function ResourceDisplay({ country, stats, resources }: ResourceDisplayPr
     const popUnits = stats.population / 10000;
     const techMult = ECONOMIC_BALANCE.TECHNOLOGY[`LEVEL_${Math.min(Math.max(0, Math.floor(stats.technologyLevel)), 5)}_MULTIPLIER` as keyof typeof ECONOMIC_BALANCE.TECHNOLOGY] || 1;
     
+    // Resource purposes and requirements from plan
+    const resourceInfo: Record<string, { purpose: string; usedFor: string[] }> = {
+      food: {
+        purpose: "Population survival and growth",
+        usedFor: ["Population maintenance (5 per 10k pop/turn)", "Growth bonus with surplus"]
+      },
+      timber: {
+        purpose: "Basic construction and infrastructure",
+        usedFor: ["Infrastructure upgrades (all levels)", "Basic military (tech 0-1)"]
+      },
+      iron: {
+        purpose: "Military equipment and weapons",
+        usedFor: ["Military recruitment (all tech levels)", "Steel production"]
+      },
+      oil: {
+        purpose: "Advanced military and energy",
+        usedFor: ["Advanced military (tech 2+)", "Infrastructure level 4+", "Industrial production boost"]
+      },
+      gold: {
+        purpose: "Diplomacy and luxury trade",
+        usedFor: ["Diplomatic influence bonus", "High-value trade commodity"]
+      },
+      copper: {
+        purpose: "Research and early industry",
+        usedFor: ["Research (tech 0-5)", "Trade commodity"]
+      },
+      steel: {
+        purpose: "Advanced construction and military",
+        usedFor: ["Tech upgrades (all levels)", "Infrastructure level 2+", "Military tech 2+"]
+      },
+      coal: {
+        purpose: "Energy and production",
+        usedFor: ["Research (all levels)", "Infrastructure level 2+", "Steel production"]
+      }
+    };
+    
+    const info = resourceInfo[resourceId] || { purpose: definition.description, usedFor: [] };
+    
     let calc = "";
     if (resourceId === 'food') {
-      calc = `Base: ${(popUnits * ECONOMIC_BALANCE.PRODUCTION.BASE_FOOD_PER_POP).toFixed(1)} × Tech(${techMult.toFixed(1)}x) = ${prod}/turn\n\nNOTE: Infrastructure no longer affects production!`;
-      if (cons > 0) calc += ` | Consumed: ${popUnits.toFixed(1)} × 5 = ${cons}/turn`;
+      calc = `📊 PRODUCTION:\nBase: ${(popUnits * ECONOMIC_BALANCE.PRODUCTION.BASE_FOOD_PER_POP).toFixed(1)} × Tech(${techMult.toFixed(1)}x) = ${prod}/turn`;
+      if (cons > 0) calc += `\n\n📉 CONSUMPTION:\n${popUnits.toFixed(1)} × 5 = ${cons}/turn`;
     } else {
-      calc = `Production: ${prod}/turn (Tech ${techMult.toFixed(1)}x)`;
-      if (cons > 0) calc += ` | Consumption: ${cons}/turn`;
+      calc = `📊 PRODUCTION:\n${prod}/turn (Tech ${techMult.toFixed(1)}x multiplier)`;
+      if (cons > 0) calc += `\n\n📉 CONSUMPTION:\n${cons}/turn`;
     }
     
     // Add profile effect if exists
@@ -89,13 +127,18 @@ export function ResourceDisplay({ country, stats, resources }: ResourceDisplayPr
     if (profileEffect) {
       const effectType = profileEffect.multiplier > 1.0 ? 'BONUS' : 'PENALTY';
       const effectPercent = Math.round(profileEffect.multiplier * 100);
-      calc += `\n\n🏛️ Profile Effect (${stats.resourceProfile?.name}):\n${effectType}: ${effectPercent}% production`;
+      calc += `\n\n🏛️ PROFILE EFFECT (${stats.resourceProfile?.name}):\n${effectType}: ${effectPercent}% production`;
       if (profileEffect.startingBonus !== 0) {
-        calc += `\nStarting: ${profileEffect.startingBonus > 0 ? '+' : ''}${profileEffect.startingBonus}`;
+        calc += `\nStarting bonus: ${profileEffect.startingBonus > 0 ? '+' : ''}${profileEffect.startingBonus}`;
       }
     }
     
-    return `${definition.description}\n\n${calc}\n\nCurrent: ${amount.toLocaleString()}`;
+    let usedForText = "";
+    if (info.usedFor.length > 0) {
+      usedForText = `\n\n🎯 USED FOR:\n${info.usedFor.map(u => `• ${u}`).join('\n')}`;
+    }
+    
+    return `${info.purpose}\n\n${calc}${usedForText}\n\n📦 CURRENT STOCKPILE: ${amount.toLocaleString()}`;
   };
 
   const getTechBonusTooltip = () => {
@@ -172,15 +215,6 @@ export function ResourceDisplay({ country, stats, resources }: ResourceDisplayPr
           <span>{isExpanded ? "▼" : "▶"}</span>
           <span>Resources</span>
         </button>
-        <div className="flex items-center gap-3 text-xs text-white/60">
-          <Tooltip content={getTechBonusTooltip()}>
-            <span className="cursor-help">Tech: +{production.productionSummary.technologyBonus.toFixed(0)}%</span>
-          </Tooltip>
-          <span>|</span>
-          <Tooltip content={getInfraBonusTooltip()}>
-            <span className="cursor-help">Infra: +{production.productionSummary.infrastructureBonus.toFixed(0)}%</span>
-          </Tooltip>
-        </div>
       </div>
 
       {isExpanded && (

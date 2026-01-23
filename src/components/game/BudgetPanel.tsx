@@ -55,7 +55,7 @@ export function BudgetPanel({ country, stats, activeDealsValue = 0 }: BudgetPane
   };
 
   const getMaintenanceTooltip = () => {
-    return `Maintenance Cost: ${(ECONOMIC_BALANCE.CONSUMPTION.MAINTENANCE_COST_MULTIPLIER * 100).toFixed(0)}% of current treasury\n\nTreasury: $${Number(stats.budget).toLocaleString()}\nRate: ${(ECONOMIC_BALANCE.CONSUMPTION.MAINTENANCE_COST_MULTIPLIER * 100).toFixed(0)}%\n\nTotal: $${breakdown.maintenanceCost.toLocaleString()}/turn`;
+    return `Maintenance Cost: ${(ECONOMIC_BALANCE.CONSUMPTION.MAINTENANCE_COST_MULTIPLIER * 100).toFixed(1)}% of current treasury\n\nTreasury: $${Number(stats.budget).toLocaleString()}\nRate: ${(ECONOMIC_BALANCE.CONSUMPTION.MAINTENANCE_COST_MULTIPLIER * 100).toFixed(1)}%\n\nTotal: $${breakdown.maintenanceCost.toLocaleString()}/turn`;
   };
 
   const getMilitaryUpkeepTooltip = () => {
