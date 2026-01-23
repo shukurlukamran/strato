@@ -25,8 +25,13 @@
 - LLM should include the new resources mechanism for his decision-making
 
 - AI countries should do deals between each-other and offer deals to Player (we should have a plan somewhere on this) (Only implement existing elements to deals for now). LLM Strategic Advices should include advices for this too but the actions should be executed without LLM. 
-- Countries are able to buy/sell resources from/to black market at significantly worse rates than they would be able to get via trading with other countries.
+- Countries are able to buy/sell resources from/to black market at significantly worse rates than they would be able to get via trading with other countries. (When implementing this, remove allowing increase of infra and tech with penalty when resources are missing - game shouldn't allow these upgrades if resource requirements aren't met - now countries and players can buy them from black market too so they have option)
 - History log should include any deals realized with details, including black market trades.
+
+In Defense window when player is attacked:
+- Estimated success chance isn't updated when allocated strength is changed in the slider.
+- When clicking X or "Close" button to close Defense window, it keeps popping up. Instead, it should be closed but stay somewhere in the UI with blinking red color showing that it requires attention. So the player can click it to open the window again to decide defense allocation later in the turn.
+- When defense allocation is chosen and submitted, the window pops up again.
 
 - Prevent cheating in the chat deals (you can get money for technology level now, but tech level isn't actually transferred, for example)
 - Prevent abuse in the LLM chat (It shouldn't be possible to use it for anything unrelated to game - we also need to have some hard limits to prevent spamming, but this limit shouldn't interrupt gameplay. And negotiations may even cost some small money in the game to slightly discourage people to overuse it unnecessarily - Come up with a rational fair plan)
