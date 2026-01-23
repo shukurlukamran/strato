@@ -85,7 +85,12 @@ EXECUTABLE ACTIONS (only these can be done):
 1. TECHNOLOGY UPGRADE: Boosts production (1.25x→3.0x) & military (+20%/level). Cost: 800×1.35^level×profile
 2. INFRASTRUCTURE UPGRADE: Boosts tax (+12%/level) & capacity (200k+50k×level). Cost: 700×1.30^level×profile
 3. RECRUIT MILITARY: Add strength. Cost: 50/point
-4. ATTACK CITY: Conquer enemies (risky)
+4. ATTACK CITY: Conquer enemies to expand territory. Success requires strength advantage. Cost: 100 base + 50/strength allocated
+
+WINNING STRATEGIES:
+- Economic: Build tech + infra for long-term dominance
+- Military: Build strength, then attack weak neighbors to expand
+- Balanced: Alternate economic growth with strategic conquests
 
 PROFILES:
 - Tech Hub: 0.75x tech, 0.90x military
@@ -179,14 +184,14 @@ export class LLMStrategicPlanner {
           messages: [
             {
               role: "system",
-              content: "You are a strategic AI advisor analyzing multiple nations in a turn-based strategy game. Provide strategic recommendations for EACH country in valid JSON array format. Return ONLY the JSON array, no markdown, no explanations."
+              content: "You are an aggressive strategic AI advisor in a turn-based conquest game. Nations expand by attacking weak neighbors. Recommend BOTH economic development AND military conquests when advantageous. Provide strategic recommendations for EACH country in valid JSON format. Return ONLY the JSON object, no markdown, no explanations."
             },
             {
               role: "user",
               content: batchPrompt
             }
           ],
-          temperature: 0.3,
+          temperature: 0.5,  // Higher temperature for more varied/aggressive strategies
           top_p: 0.95,
           max_tokens: 8000,  // More tokens for multiple countries
           response_format: { type: "json_object" }  // Force JSON output
@@ -302,14 +307,14 @@ export class LLMStrategicPlanner {
           messages: [
             {
               role: "system",
-              content: "You are a strategic AI advisor for a nation in a turn-based strategy game. Analyze the situation and provide strategic recommendations in valid JSON format only. Return ONLY the JSON object, no markdown, no explanations. Ensure the JSON is properly formatted and complete."
+              content: "You are an aggressive strategic AI advisor for a nation in a turn-based conquest game. Nations expand by conquering weak neighbors. Recommend military attacks when the nation is strong, or economic development when weak. Balance risk vs reward. Analyze the situation and provide strategic recommendations in valid JSON format only. Return ONLY the JSON object, no markdown, no explanations."
             },
             {
               role: "user",
               content: prompt
             }
           ],
-          temperature: 0.2,  // Lower temperature for more consistent JSON generation
+          temperature: 0.4,  // Balanced temperature for varied strategies with reliable JSON
           top_p: 0.9,
           max_tokens: 2000,
           response_format: { type: "json_object" }  // Force JSON output
@@ -451,22 +456,31 @@ Income: $${economicAnalysis.netIncome}/t | ${economicAnalysis.isUnderDefended ? 
 
 NEIGHBORS: ${neighbors}
 
-Plan ${this.LLM_CALL_FREQUENCY} turns (2-3 actions/turn). Use "when" to pace.
+Plan ${this.LLM_CALL_FREQUENCY} turns (2-3 actions/turn). Consider BOTH economic AND military strategies.
 
-JSON ONLY:
+JSON ONLY - EXAMPLE STRATEGIES:
+
+ECONOMIC FOCUS:
+{"focus":"economy","rationale":"Build tech advantage","action_plan":[
+  {"id":"tech_l2","instruction":"Tech→L2","priority":1,"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
+  {"id":"recruit_30","instruction":"Recruit→30 for defense","priority":2,"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}},
+  {"id":"infra_l2","instruction":"Infra→L2","priority":3,"when":{"budget_gte":1000},"execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}}
+]}
+
+MILITARY FOCUS:
+{"focus":"military","rationale":"Strong mil, weak neighbors - expand","action_plan":[
+  {"id":"recruit_50","instruction":"Recruit→50","priority":1,"stop_when":{"military_strength_gte":50},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":15}}},
+  {"id":"attack_weak","instruction":"Attack weakest neighbor city","priority":2,"when":{"military_strength_gte":45},"execution":{"actionType":"military","actionData":{"subType":"attack","targetCityId":"<neighbor_city_id>","allocatedStrength":30}}},
+  {"id":"tech_l2","instruction":"Tech→L2 after conquest","priority":3,"when":{"budget_gte":1200},"execution":{"actionType":"research","actionData":{"targetLevel":2}}}
+]}
+
+YOUR RESPONSE (adapt to situation):
 {
   "focus": "economy"|"military"|"research"|"balanced",
   "rationale": "Why (max 100 chars)",
   "threats": "Key threats",
-  "opportunities": "Key opportunities",
-  "action_plan": [
-    {"id":"tech_l2","instruction":"Tech→L2","priority":1,"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
-    {"id":"infra_l2","instruction":"Infra→L2","priority":2,"when":{"budget_gte":1000},"execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}},
-    {"id":"recruit_45","instruction":"Recruit→45","priority":3,"when":{"tech_level_gte":2},"stop_when":{"military_strength_gte":45},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}},
-    {"id":"tech_l3","instruction":"Tech→L3","priority":4,"when":{"budget_gte":1500,"tech_level_gte":2},"execution":{"actionType":"research","actionData":{"targetLevel":3}}},
-    {"id":"infra_l3","instruction":"Infra→L3","priority":5,"when":{"budget_gte":1200},"execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":3}}},
-    {"id":"recruit_55","instruction":"Recruit→55","priority":6,"when":{"tech_level_gte":3,"budget_gte":800},"stop_when":{"military_strength_gte":55},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}}
-  ],
+  "opportunities": "Key opportunities - INCLUDE attack opportunities if militarily strong",
+  "action_plan": [6-8 steps with mix of tech/infra/recruit/attack based on situation],
   "diplomacy":{${neighbors
   .split('\n')
   .filter(n => n.trim())
@@ -479,11 +493,15 @@ JSON ONLY:
   "confidence":0.9
 }
 
-RULES: 6-8 steps, ALL executable (tech/infra/recruit/attack), use "when" for pacing, NO passive steps`;
+RULES: 
+- Include ATTACKS when militarily advantageous (stronger than neighbors)
+- Economic builds are for WEAKER nations or tech advantage seekers
+- 6-8 executable steps (tech/infra/recruit/attack)
+- Use "when" conditions to sequence actions properly`;
   }
   
   /**
-   * Get summary of neighboring countries (optimized: only show threats/key neighbors)
+   * Get summary of neighboring countries (show threats AND opportunities)
    */
   private getNeighborsSummary(state: GameStateSnapshot, countryId: string, stats: CountryStats): string {
     const country = state.countries.find(c => c.id === countryId);
@@ -505,18 +523,23 @@ RULES: 6-8 steps, ALL executable (tech/infra/recruit/attack), use "when" for pac
         if (otherStats) {
           const ourToThem = getDiplomaticScore(stats.diplomaticRelations, otherCountry.id);
           const isThreat = otherStats.militaryStrength > stats.militaryStrength * 1.2 || ourToThem < 30;
+          const isOpportunity = otherStats.militaryStrength < stats.militaryStrength * 0.7; // We're much stronger
           
-          // Only show threats or first 2 neighbors (reduce token usage)
-          if (isThreat || neighbors.length < 2) {
+          // Show threats (always), opportunities (always), and first 2 regular neighbors
+          if (isThreat || isOpportunity || neighbors.length < 2) {
+            let label = '';
+            if (isThreat) label = ' ⚠️THREAT';
+            else if (isOpportunity) label = ' 🎯WEAK (conquest opportunity)';
+            
             neighbors.push(
-              `- ${otherCountry.name} (${otherCountry.id}): Rel ${ourToThem}, Mil ${otherStats.militaryStrength}${isThreat ? ' ⚠️' : ''}`
+              `- ${otherCountry.name} (${otherCountry.id}): Rel ${ourToThem}, Mil ${otherStats.militaryStrength}${label}`
             );
           }
         }
       }
     }
     
-    return neighbors.length > 0 ? neighbors.join('\n') : "No threats detected";
+    return neighbors.length > 0 ? neighbors.join('\n') : "No notable neighbors";
   }
   
   /**
@@ -711,32 +734,41 @@ Neighbors: ${neighbors.split('\n').join('; ')}`;
 
     return `${CACHED_GAME_RULES}
 
-Plan ${this.LLM_CALL_FREQUENCY} turns (2-3 actions/turn). Use "when" to pace.
+Plan ${this.LLM_CALL_FREQUENCY} turns (2-3 actions/turn). Consider BOTH economic AND military strategies.
 
 COUNTRIES TO ANALYZE:
 ${countryPrompts}
 
-Return JSON OBJECT with "countries" array containing one analysis per country:
+Return JSON OBJECT with "countries" array. Each country should have 6-8 steps based on its situation:
+- If STRONG military vs neighbors → Include ATTACK steps in action_plan
+- If WEAK military or bankrupt → Focus on economic/defensive steps
+- Use "when" conditions to sequence properly
+
 {
   "countries": [
     {
       "countryId": "${countries[0].countryId}",
       "focus": "economy"|"military"|"research"|"balanced",
-      "rationale": "Why (max 100 chars)",
+      "rationale": "Why (max 100 chars) - mention attack opportunities if strong",
       "threats": "Key threats",
-      "opportunities": "Key opportunities",
+      "opportunities": "Key opportunities - INCLUDE conquest opportunities if advantageous",
       "action_plan": [
         {"id":"tech_l2","instruction":"Tech→L2","priority":1,"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
-        {"id":"infra_l2","instruction":"Infra→L2","priority":2,"when":{"budget_gte":1000},"execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}},
-        {"id":"recruit_45","instruction":"Recruit→45","priority":3,"when":{"tech_level_gte":2},"stop_when":{"military_strength_gte":45},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}}
+        {"id":"recruit_45","instruction":"Recruit→45","priority":2,"stop_when":{"military_strength_gte":45},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}},
+        {"id":"attack_city","instruction":"Attack weak neighbor","priority":3,"when":{"military_strength_gte":40},"execution":{"actionType":"military","actionData":{"subType":"attack","targetCityId":"<city_id>","allocatedStrength":25}}},
+        {"id":"infra_l2","instruction":"Infra→L2","priority":4,"when":{"budget_gte":1000},"execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}}
       ],
-      "diplomacy":{"neighbor_id":"neutral"},
+      "diplomacy":{"neighbor_id":"neutral"|"hostile" if planning attack},
       "confidence":0.9
     }
   ]
 }
 
-RULES: 6-8 steps, ALL executable (tech/infra/recruit/attack), use "when" for pacing, NO passive steps`;
+RULES: 
+- Include ATTACKS when nation is stronger than neighbors (example above)
+- 6-8 executable steps (tech/infra/recruit/attack)
+- Use actual neighbor IDs for targetCityId in attacks
+- Economic focus only for weak/bankrupt nations`;
   }
 
   /**
