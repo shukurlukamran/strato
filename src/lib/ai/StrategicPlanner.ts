@@ -224,8 +224,8 @@ export class StrategicPlanner {
     if (stats.resourceProfile) {
       const profile = stats.resourceProfile;
       
-      // Agriculture/Coastal - leverage food advantage
-      if (profile.name === "Agriculture" || profile.name === "Coastal Trading Hub") {
+      // Agricultural Hub / Trade Hub - leverage food advantage
+      if (profile.name === "Agricultural Hub" || profile.name === "Trade Hub") {
         if (analysis.foodBalance > 50) {
           return {
             focus: "diplomacy",
@@ -235,7 +235,7 @@ export class StrategicPlanner {
       }
       
       // Mining/Industrial - need infrastructure for production
-      if (profile.name === "Mining Empire" || profile.name === "Industrial Complex") {
+      if (profile.name === "Mining Empire" || profile.name === "Industrial Powerhouse") {
         if ((stats.infrastructureLevel || 0) < 4) {
           return {
             focus: "economy",
@@ -244,18 +244,17 @@ export class StrategicPlanner {
         }
       }
       
-      // Technological Hub - double down on tech
-      if (profile.name === "Technological Hub") {
-        if (stats.technologyLevel < 5) {
-          return {
-            focus: "research",
-            rationale: `${profile.name}: Leverage tech advantage. Pursue advanced research.`,
-          };
-        }
+      // Tech Innovator - double down on tech (unlimited levels supported)
+      if (profile.name === "Tech Innovator") {
+        // Always prioritize research for tech-focused profiles
+        return {
+          focus: "research",
+          rationale: `${profile.name}: Leverage tech advantage. Pursue advanced research.`,
+        };
       }
       
-      // Oil Kingdom / Precious Metals - trade focus
-      if (profile.name === "Oil Kingdom" || profile.name === "Precious Metals Trader") {
+      // Oil Kingdom / Trade Hub - trade focus
+      if (profile.name === "Oil Kingdom" || profile.name === "Trade Hub") {
         return {
           focus: "diplomacy",
           rationale: `${profile.name}: High-value resources. Trade for strategic advantage.`,

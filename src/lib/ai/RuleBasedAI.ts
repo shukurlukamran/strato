@@ -180,15 +180,15 @@ export class RuleBasedAI {
     
     // Resource profile influence
     if (resourceProfile) {
-      if (resourceProfile.name === "Agriculture" || resourceProfile.name === "Coastal Trading Hub") {
+      if (resourceProfile.name === "Agricultural Hub" || resourceProfile.name === "Trade Hub") {
         // Food-rich nations can afford more military/tech
         militaryPriority += 0.1;
         researchPriority += 0.1;
         infrastructurePriority -= 0.05;
-      } else if (resourceProfile.name === "Mining Empire" || resourceProfile.name === "Industrial Complex") {
+      } else if (resourceProfile.name === "Mining Empire" || resourceProfile.name === "Industrial Powerhouse") {
         // Industrial nations need food security infrastructure
         infrastructurePriority += 0.15;
-      } else if (resourceProfile.name === "Technological Hub") {
+      } else if (resourceProfile.name === "Tech Innovator") {
         // Tech-focused nations double down on research
         researchPriority += 0.2;
       }
@@ -237,8 +237,7 @@ export class RuleBasedAI {
     if (analysis.turnsUntilBankrupt !== null && analysis.turnsUntilBankrupt < 5) return false;
     if (analysis.foodTurnsRemaining !== null && analysis.foodTurnsRemaining < 3) return false;
     
-    // Don't research if tech is already very high
-    if (stats.technologyLevel >= 5) return false;
+    // No cap on tech level - unlimited upgrades supported
     
     // Research if high priority and good ROI
     if (weights.researchPriority > 0.5 && analysis.researchROI < 50) {
@@ -380,12 +379,13 @@ export class RuleBasedAI {
    * NEW: Tech affects production, not tax. ROI based on production value increase.
    */
   private static calculateResearchROI(stats: CountryStats, cost: number): number {
-    // Get current and next tech multipliers (discrete levels)
-    const currentLevel = Math.min(Math.floor(stats.technologyLevel), 5);
-    const nextLevel = Math.min(currentLevel + 1, 5);
+    // Get current and next tech multipliers (supports unlimited levels)
+    const currentLevel = Math.floor(stats.technologyLevel);
+    const nextLevel = currentLevel + 1;
     
-    const currentMultiplier = ECONOMIC_BALANCE.TECHNOLOGY[`LEVEL_${currentLevel}_MULTIPLIER` as keyof typeof ECONOMIC_BALANCE.TECHNOLOGY] as number;
-    const nextMultiplier = ECONOMIC_BALANCE.TECHNOLOGY[`LEVEL_${nextLevel}_MULTIPLIER` as keyof typeof ECONOMIC_BALANCE.TECHNOLOGY] as number;
+    // Use ResourceProduction to get multipliers (handles unlimited levels)
+    const currentMultiplier = ResourceProduction.getTechnologyMultiplier(currentLevel);
+    const nextMultiplier = ResourceProduction.getTechnologyMultiplier(nextLevel);
     
     // Estimate production value increase (simplified - assume average resource value)
     const populationUnits = stats.population / 10000;

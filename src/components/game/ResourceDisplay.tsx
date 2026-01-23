@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ResourceCategory, ResourceRegistry, type ResourceAmount } from "@/lib/game-engine/ResourceTypes";
 import { calculateProductionForDisplay, calculateConsumptionForDisplay, resourcesToArray } from "@/lib/game-engine/EconomicClientUtils";
 import { ECONOMIC_BALANCE } from "@/lib/game-engine/EconomicBalance";
+import { ResourceProduction } from "@/lib/game-engine/ResourceProduction";
 import type { Country, CountryStats } from "@/types/country";
 import { Tooltip } from "./Tooltip";
 
@@ -73,7 +74,7 @@ export function ResourceDisplay({ country, stats, resources }: ResourceDisplayPr
     if (!definition) return "";
     
     const popUnits = stats.population / 10000;
-    const techMult = ECONOMIC_BALANCE.TECHNOLOGY[`LEVEL_${Math.min(Math.max(0, Math.floor(stats.technologyLevel)), 5)}_MULTIPLIER` as keyof typeof ECONOMIC_BALANCE.TECHNOLOGY] || 1;
+    const techMult = ResourceProduction.getTechnologyMultiplier(stats.technologyLevel);
     
     // Resource purposes and requirements from plan
     const resourceInfo: Record<string, { purpose: string; usedFor: string[] }> = {
@@ -87,7 +88,7 @@ export function ResourceDisplay({ country, stats, resources }: ResourceDisplayPr
       },
       iron: {
         purpose: "Military equipment and weapons",
-        usedFor: ["Military recruitment (all tech levels)", "Steel production"]
+        usedFor: ["Military recruitment (all tech levels)"]
       },
       oil: {
         purpose: "Advanced military and energy",
@@ -107,7 +108,7 @@ export function ResourceDisplay({ country, stats, resources }: ResourceDisplayPr
       },
       coal: {
         purpose: "Energy and production",
-        usedFor: ["Research (all levels)", "Infrastructure level 2+", "Steel production"]
+        usedFor: ["Research (all levels)", "Infrastructure level 2+"]
       }
     };
     
@@ -142,8 +143,8 @@ export function ResourceDisplay({ country, stats, resources }: ResourceDisplayPr
   };
 
   const getTechBonusTooltip = () => {
-    const techLevel = Math.min(Math.max(0, Math.floor(stats.technologyLevel)), 5);
-    const mult = ECONOMIC_BALANCE.TECHNOLOGY[`LEVEL_${techLevel}_MULTIPLIER` as keyof typeof ECONOMIC_BALANCE.TECHNOLOGY] || 1;
+    const techLevel = Math.max(0, Math.floor(stats.technologyLevel));
+    const mult = ResourceProduction.getTechnologyMultiplier(techLevel);
     return `Technology Level ${techLevel}: ${(mult * 100).toFixed(0)}% production multiplier\n\nFormula: Base production × ${mult.toFixed(2)}x`;
   };
 

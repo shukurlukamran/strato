@@ -190,12 +190,26 @@ export class ResourceProduction {
   
   /**
    * Technology multiplier (public for use in other systems)
+   * Supports unlimited tech levels with diminishing returns after level 5
    */
   static getTechnologyMultiplier(techLevel: number): number {
     const multipliers = ECONOMIC_BALANCE.TECHNOLOGY;
-    const level = Math.min(Math.max(0, Math.floor(techLevel)), 5);
-    const key = `LEVEL_${level}_MULTIPLIER` as keyof typeof multipliers;
-    return multipliers[key] || 1.0;
+    const level = Math.max(0, Math.floor(techLevel));
+    
+    // Levels 0-5: use discrete multipliers
+    if (level <= 5) {
+      const key = `LEVEL_${level}_MULTIPLIER` as keyof typeof multipliers;
+      return multipliers[key] || 1.0;
+    }
+    
+    // Level 6+: use logarithmic scaling (diminishing returns)
+    // Formula: 3.0 + log2(level - 4) * 0.25
+    // Level 6: 3.0 + log2(2) * 0.25 = 3.25x (+8%)
+    // Level 7: 3.0 + log2(3) * 0.25 = 3.40x (+5%)
+    // Level 8: 3.0 + log2(4) * 0.25 = 3.50x (+3%)
+    // Level 10: 3.0 + log2(6) * 0.25 = 3.65x
+    // Level 20: 3.0 + log2(16) * 0.25 = 4.0x
+    return 3.0 + Math.log2(level - 4) * 0.25;
   }
   
   private static calculateBaseProduction(stats: CountryStats): number {

@@ -154,9 +154,17 @@ export async function POST(req: Request) {
         const requiredResources = ResourceCost.calculateResearchResourceCost(countryStats);
         resourceCostInfo = ResourceCost.checkResourceAffordability(requiredResources, currentResources);
         
-        // NEW FORMULA: Base cost with exponential growth
-        const baseCost = ECONOMIC_BALANCE.UPGRADES.TECH_BASE_COST * 
-                        Math.pow(ECONOMIC_BALANCE.UPGRADES.TECH_COST_MULTIPLIER, techLevel);
+        // NEW FORMULA: Base cost with exponential growth for levels 0-5, gentler scaling for 6+
+        let baseCost: number;
+        if (techLevel <= 5) {
+          baseCost = ECONOMIC_BALANCE.UPGRADES.TECH_BASE_COST * 
+                    Math.pow(ECONOMIC_BALANCE.UPGRADES.TECH_COST_MULTIPLIER, techLevel);
+        } else {
+          // After level 5: baseCost = level5Cost × 1.20^(level - 5)
+          const level5Cost = ECONOMIC_BALANCE.UPGRADES.TECH_BASE_COST * 
+                            Math.pow(ECONOMIC_BALANCE.UPGRADES.TECH_COST_MULTIPLIER, 5);
+          baseCost = level5Cost * Math.pow(1.20, techLevel - 5);
+        }
         
         // Profile modifier (e.g., Tech Hub gets 25% discount)
         const profileModifier = getProfileTechCostModifier(resourceProfile);

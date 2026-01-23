@@ -568,11 +568,11 @@ export class EconomicAI {
     if (step.execution.actionType === "research") {
       if (bans.banTechUpgrades) return null;
       if (!analysis.canAffordResearch) return null;
-      if (stats.technologyLevel >= 5) return null;
+      // No cap on tech level - unlimited upgrades supported
 
       const desired = Number((step.execution.actionData as any)?.targetLevel ?? stats.technologyLevel + 1);
       const targetLevel =
-        Number.isFinite(desired) && desired > stats.technologyLevel ? Math.min(5, Math.floor(desired)) : stats.technologyLevel + 1;
+        Number.isFinite(desired) && desired > stats.technologyLevel ? Math.floor(desired) : stats.technologyLevel + 1;
       const cost = ActionResolver.calculateResearchCost(stats.technologyLevel);
 
       return {

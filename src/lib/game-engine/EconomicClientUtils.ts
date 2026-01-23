@@ -146,12 +146,29 @@ export function calculateTradeCapacityForDisplay(stats: CountryStats): number {
 
 /**
  * Calculate research cost for display with all modifiers
+ * Supports unlimited tech levels with adjusted cost scaling after level 5
  */
 export function calculateResearchCostForDisplay(stats: CountryStats): { cost: number; reductionPercent: number } {
   const techLevel = Math.floor(Number(stats.technologyLevel));
   const profileTechCostMultiplier = getProfileTechCostModifier(stats.resourceProfile);
   const researchSpeedBonus = Math.min(techLevel * ECONOMIC_BALANCE.TECHNOLOGY.RESEARCH_SPEED_BONUS_PER_LEVEL, ECONOMIC_BALANCE.TECHNOLOGY.MAX_RESEARCH_SPEED_BONUS);
-  const cost = Math.floor(ECONOMIC_BALANCE.UPGRADES.TECH_BASE_COST * Math.pow(ECONOMIC_BALANCE.UPGRADES.TECH_COST_MULTIPLIER, techLevel) * profileTechCostMultiplier * (1 - researchSpeedBonus));
+  
+  // Cost scaling: levels 0-5 use exponential, levels 6+ use gentler scaling
+  let baseCost: number;
+  if (techLevel <= 5) {
+    baseCost = ECONOMIC_BALANCE.UPGRADES.TECH_BASE_COST * Math.pow(ECONOMIC_BALANCE.UPGRADES.TECH_COST_MULTIPLIER, techLevel);
+  } else {
+    // After level 5: baseCost = 1097.5 × 1.20^(level - 5)
+    // Level 5 cost: 500 × 1.30^5 = 1,857
+    // Level 6: 1097.5 × 1.20^1 = 1,317
+    // Level 7: 1097.5 × 1.20^2 = 1,580
+    // Level 10: 1097.5 × 1.20^5 = 2,730
+    // Level 20: 1097.5 × 1.20^15 = 26,000
+    const level5Cost = ECONOMIC_BALANCE.UPGRADES.TECH_BASE_COST * Math.pow(ECONOMIC_BALANCE.UPGRADES.TECH_COST_MULTIPLIER, 5);
+    baseCost = level5Cost * Math.pow(1.20, techLevel - 5);
+  }
+  
+  const cost = Math.floor(baseCost * profileTechCostMultiplier * (1 - researchSpeedBonus));
   
   return { cost, reductionPercent: researchSpeedBonus * 100 };
 }
