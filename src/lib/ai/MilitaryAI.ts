@@ -6,6 +6,7 @@ import { RuleBasedAI } from "./RuleBasedAI";
 import { DefaultPersonality, type AIPersonality } from "./Personality";
 import { calculateCityValue } from "@/types/city";
 import { MilitaryCalculator } from "@/lib/game-engine/MilitaryCalculator";
+import { ECONOMIC_BALANCE } from "@/lib/game-engine/EconomicBalance";
 import {
   extractLLMBans,
   extractLLMBansFromProhibitTokens,
