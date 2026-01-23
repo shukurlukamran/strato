@@ -246,8 +246,15 @@ DEAL TYPES:
 - "custom": Complex multi-term agreement
 
 
+AVAILABLE RESOURCES (8 types):
+- Basic: "food" (population survival), "timber" (construction)
+- Strategic: "iron" (military), "oil" (advanced military/energy)
+- Economic: "gold" (diplomacy/luxury), "copper" (research/trade)
+- Industrial: "steel" (tech/infrastructure), "coal" (energy/research)
+
+
 COMMITMENT TYPES:
-- "resource_transfer": Transfer a resource (oil, minerals, food, etc.)
+- "resource_transfer": Transfer a resource (use resource names from list above)
 - "budget_transfer": Transfer budget/credits
 - "military_equipment_transfer": Transfer military equipment
 - "diplomatic_commitment": Change in diplomatic relations

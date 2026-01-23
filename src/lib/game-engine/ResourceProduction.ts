@@ -81,7 +81,7 @@ export class ResourceProduction {
   }
   
   /**
-   * Food production based on population
+   * Basic resources production (food, timber)
    */
   private static produceBasicResources(
     stats: CountryStats,
@@ -99,30 +99,18 @@ export class ResourceProduction {
         )
       },
       {
-        resourceId: 'water',
-        amount: Math.floor(populationUnits * 0.5 * multiplier)
-      },
-      {
         resourceId: 'timber',
         amount: Math.floor(
           ECONOMIC_BALANCE.PRODUCTION.RESOURCE_EXTRACTION_RATE * 
           multiplier * 
-          0.8
-        )
-      },
-      {
-        resourceId: 'stone',
-        amount: Math.floor(
-          ECONOMIC_BALANCE.PRODUCTION.RESOURCE_EXTRACTION_RATE * 
-          multiplier * 
-          0.6
+          1.0 // Increased from 0.8 to compensate for removed stone
         )
       }
     ];
   }
   
   /**
-   * Strategic resource extraction
+   * Strategic resource extraction (iron, oil)
    */
   private static produceStrategicResources(
     stats: CountryStats,
@@ -134,21 +122,17 @@ export class ResourceProduction {
     return [
       {
         resourceId: 'iron',
-        amount: Math.floor(baseExtraction * multiplier * 0.7)
+        amount: Math.floor(baseExtraction * multiplier * 0.8) // Increased from 0.7
       },
       {
         resourceId: 'oil',
-        amount: Math.floor(baseExtraction * multiplier * 0.5)
-      },
-      {
-        resourceId: 'rare_earth',
-        amount: Math.floor(baseExtraction * multiplier * 0.3)
+        amount: Math.floor(baseExtraction * multiplier * 0.5) // Keep same
       }
     ];
   }
   
   /**
-   * Industrial production (requires basic resources as input)
+   * Industrial production (steel, coal)
    */
   private static produceIndustrialResources(
     stats: CountryStats,
@@ -159,21 +143,17 @@ export class ResourceProduction {
     return [
       {
         resourceId: 'coal',
-        amount: Math.floor(industrialOutput * multiplier * 0.8)
+        amount: Math.floor(industrialOutput * multiplier * 0.9) // Increased from 0.8
       },
       {
         resourceId: 'steel',
-        amount: Math.floor(industrialOutput * multiplier * 0.5) // Requires iron
-      },
-      {
-        resourceId: 'aluminum',
-        amount: Math.floor(industrialOutput * multiplier * 0.4)
+        amount: Math.floor(industrialOutput * multiplier * 0.6) // Increased from 0.5 to compensate for removed aluminum
       }
     ];
   }
   
   /**
-   * Economic resources (luxury/trade goods)
+   * Economic resources (gold, copper)
    */
   private static produceEconomicResources(
     stats: CountryStats,
@@ -182,11 +162,11 @@ export class ResourceProduction {
     return [
       {
         resourceId: 'gold',
-        amount: Math.floor(5 * multiplier * 0.3)
+        amount: Math.floor(5 * multiplier * 0.4) // Increased from 0.3 to compensate for removed gems/silver
       },
       {
-        resourceId: 'gems',
-        amount: Math.floor(3 * multiplier * 0.2)
+        resourceId: 'copper',
+        amount: Math.floor(8 * multiplier * 0.4) // New production rate for copper
       }
     ];
   }

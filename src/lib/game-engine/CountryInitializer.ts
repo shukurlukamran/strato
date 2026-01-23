@@ -131,6 +131,7 @@ export class CountryInitializer {
   
   /**
    * Distribute remaining credit value across resources randomly
+   * Updated for 8-resource system
    */
   private static distributeResourceValue(
     rng: () => number,
@@ -139,32 +140,24 @@ export class CountryInitializer {
   ): Record<string, number> {
     const resources: Record<string, number> = {
       food: existingFood,
-      water: 0,
       timber: 0,
-      stone: 0,
       iron: 0,
       oil: 0,
-      rare_earth: 0,
       gold: 0,
-      gems: 0,
-      coal: 0,
+      copper: 0,
       steel: 0,
-      aluminum: 0,
+      coal: 0,
     };
     
     // Define resource value weights (strategic resources worth more)
     const resourceTypes = [
-      { id: 'water', valuePerUnit: 0.1, weight: 2 },
-      { id: 'timber', valuePerUnit: 0.2, weight: 2 },
-      { id: 'stone', valuePerUnit: 0.3, weight: 2 },
+      { id: 'timber', valuePerUnit: 0.3, weight: 2 },    // Basic
       { id: 'iron', valuePerUnit: 3.0, weight: 3 },      // Strategic
-      { id: 'oil', valuePerUnit: 4.0, weight: 2 },       // Strategic
-      { id: 'rare_earth', valuePerUnit: 8.0, weight: 1 }, // Rare
-      { id: 'gold', valuePerUnit: 5.0, weight: 1 },      // Valuable
-      { id: 'gems', valuePerUnit: 6.0, weight: 1 },      // Valuable
-      { id: 'coal', valuePerUnit: 1.5, weight: 2 },
-      { id: 'steel', valuePerUnit: 3.5, weight: 2 },
-      { id: 'aluminum', valuePerUnit: 2.5, weight: 2 },
+      { id: 'oil', valuePerUnit: 4.0, weight: 2 },        // Strategic
+      { id: 'gold', valuePerUnit: 5.0, weight: 1 },       // Economic
+      { id: 'copper', valuePerUnit: 1.0, weight: 2 },      // Economic
+      { id: 'coal', valuePerUnit: 1.5, weight: 2 },       // Industrial
+      { id: 'steel', valuePerUnit: 3.5, weight: 2 },      // Industrial
     ];
     
     // Randomly allocate value to resources based on weights
@@ -186,6 +179,7 @@ export class CountryInitializer {
   
   /**
    * Get balanced default starting profile
+   * Updated for 8-resource system
    */
   private static getBalancedDefault(): StartingProfile {
     // Use "Balanced Nation" profile as default
@@ -199,17 +193,13 @@ export class CountryInitializer {
       militaryStrength: 40,
       resources: {
         food: 300,
-        water: 150,
-        timber: 100,
-        stone: 80,
+        timber: 120,
         iron: 50,
         oil: 30,
-        rare_earth: 10,
         gold: 15,
-        gems: 8,
-        coal: 40,
+        copper: 40,
         steel: 25,
-        aluminum: 20,
+        coal: 40,
       },
       resourceProfile: balancedProfile,
     };
@@ -392,17 +382,13 @@ export const COUNTRY_ARCHETYPES = {
       militaryStrength: 20,    // Weak military
       resources: { 
         food: 500, 
-        water: 200,
-        timber: 120,
-        stone: 100,
+        timber: 150,
         iron: 20,
         oil: 15,
-        rare_earth: 8,
-        gold: 25,
-        gems: 15,
+        gold: 30,
+        copper: 50,
+        steel: 20,
         coal: 50,
-        steel: 15,
-        aluminum: 25,
       }
     }
   },
@@ -418,17 +404,13 @@ export const COUNTRY_ARCHETYPES = {
       militaryStrength: 60,     // Strong military
       resources: { 
         food: 300,
-        water: 120,
-        timber: 80,
-        stone: 100,
+        timber: 100,
         iron: 80,
-        oil: 45,
-        rare_earth: 5,
+        oil: 50,
         gold: 10,
-        gems: 5,
+        copper: 20,
+        steel: 45,
         coal: 60,
-        steel: 40,
-        aluminum: 30,
       }
     }
   },
@@ -444,17 +426,13 @@ export const COUNTRY_ARCHETYPES = {
       militaryStrength: 30,
       resources: { 
         food: 350,
-        water: 140,
-        timber: 90,
-        stone: 70,
+        timber: 110,
         iron: 40,
         oil: 35,
-        rare_earth: 25,
         gold: 20,
-        gems: 12,
+        copper: 45,
+        steel: 35,
         coal: 45,
-        steel: 30,
-        aluminum: 28,
       }
     }
   },
@@ -470,17 +448,13 @@ export const COUNTRY_ARCHETYPES = {
       militaryStrength: 40,
       resources: { 
         food: 300,
-        water: 150,
-        timber: 100,
-        stone: 80,
+        timber: 120,
         iron: 50,
         oil: 30,
-        rare_earth: 10,
         gold: 15,
-        gems: 8,
-        coal: 40,
+        copper: 40,
         steel: 25,
-        aluminum: 20,
+        coal: 40,
       }
     }
   },
@@ -496,17 +470,13 @@ export const COUNTRY_ARCHETYPES = {
       militaryStrength: 35,
       resources: { 
         food: 400,
-        water: 180,
-        timber: 120,
-        stone: 90,
+        timber: 130,
         iron: 30,
         oil: 20,
-        rare_earth: 5,
         gold: 8,
-        gems: 3,
+        copper: 25,
+        steel: 12,
         coal: 30,
-        steel: 10,
-        aluminum: 12,
       }
     }
   }

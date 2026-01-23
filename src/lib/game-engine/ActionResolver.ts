@@ -4,6 +4,7 @@ import { GameState } from "@/lib/game-engine/GameState";
 import { ECONOMIC_BALANCE } from "./EconomicBalance";
 import { CombatResolver } from "./CombatResolver";
 import { CityTransfer } from "./CityTransfer";
+import { ResourceCost } from "./ResourceCost";
 
 export class ActionResolver {
   /**
@@ -25,6 +26,8 @@ export class ActionResolver {
   /**
    * Resolve an action (including combat for attack actions)
    * Returns the updated action with results
+   * NOTE: Resource costs are handled at action submission time (immediate actions),
+   * so this resolver doesn't need to deduct resources for turn-based actions anymore.
    */
   resolve(state: GameState, action: GameAction): GameAction {
     if (!state.data.countryStatsByCountryId[action.countryId]) {
@@ -43,6 +46,7 @@ export class ActionResolver {
     let next: CountryStats = { ...prev };
 
     // Apply action effects and deduct cost
+    // Resources are already deducted at submission time for immediate actions
     if (action.actionType === "research") {
       // Technology upgrade: increase by 1 level
       next = {

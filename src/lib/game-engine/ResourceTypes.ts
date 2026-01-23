@@ -58,9 +58,9 @@ export class ResourceRegistry {
   }
 }
 
-// Initialize default resources
+// Initialize default resources (8 resources total - 2 per category)
 export const DEFAULT_RESOURCES: ResourceDefinition[] = [
-  // BASIC Resources
+  // BASIC Resources (2)
   {
     id: 'food',
     name: 'Food',
@@ -69,17 +69,7 @@ export const DEFAULT_RESOURCES: ResourceDefinition[] = [
     productionDifficulty: 0.3,
     storageDecay: 0.1, // 10% spoils per turn
     tradeable: true,
-    description: 'Essential for population growth and maintenance'
-  },
-  {
-    id: 'water',
-    name: 'Water',
-    category: ResourceCategory.BASIC,
-    baseValue: 1,
-    productionDifficulty: 0.2,
-    storageDecay: 0.05,
-    tradeable: true,
-    description: 'Population health, agriculture'
+    description: 'Essential for population survival and growth. Consumed by population each turn.'
   },
   {
     id: 'timber',
@@ -89,20 +79,10 @@ export const DEFAULT_RESOURCES: ResourceDefinition[] = [
     productionDifficulty: 0.4,
     storageDecay: 0,
     tradeable: true,
-    description: 'Construction, basic production'
-  },
-  {
-    id: 'stone',
-    name: 'Stone',
-    category: ResourceCategory.BASIC,
-    baseValue: 4,
-    productionDifficulty: 0.5,
-    storageDecay: 0,
-    tradeable: true,
-    description: 'Infrastructure, fortifications'
+    description: 'Basic construction material. Required for all infrastructure levels and early military.'
   },
   
-  // STRATEGIC Resources
+  // STRATEGIC Resources (2)
   {
     id: 'iron',
     name: 'Iron',
@@ -111,7 +91,7 @@ export const DEFAULT_RESOURCES: ResourceDefinition[] = [
     productionDifficulty: 0.6,
     storageDecay: 0,
     tradeable: true,
-    description: 'Required for military equipment production'
+    description: 'Core military resource. Required for all military recruitment and steel production.'
   },
   {
     id: 'oil',
@@ -121,30 +101,10 @@ export const DEFAULT_RESOURCES: ResourceDefinition[] = [
     productionDifficulty: 0.7,
     storageDecay: 0,
     tradeable: true,
-    description: 'Advanced military units, energy'
-  },
-  {
-    id: 'uranium',
-    name: 'Uranium',
-    category: ResourceCategory.STRATEGIC,
-    baseValue: 50,
-    productionDifficulty: 0.9,
-    storageDecay: 0,
-    tradeable: false,
-    description: 'Nuclear capabilities (future)'
-  },
-  {
-    id: 'rare_earth',
-    name: 'Rare Earth',
-    category: ResourceCategory.STRATEGIC,
-    baseValue: 25,
-    productionDifficulty: 0.8,
-    storageDecay: 0,
-    tradeable: true,
-    description: 'Advanced technology research'
+    description: 'Advanced military and energy. Required for tech 2+ military and high-level infrastructure.'
   },
   
-  // ECONOMIC Resources
+  // ECONOMIC Resources (2)
   {
     id: 'gold',
     name: 'Gold',
@@ -153,27 +113,7 @@ export const DEFAULT_RESOURCES: ResourceDefinition[] = [
     productionDifficulty: 0.5,
     storageDecay: 0,
     tradeable: true,
-    description: 'Luxury goods, diplomatic influence'
-  },
-  {
-    id: 'silver',
-    name: 'Silver',
-    category: ResourceCategory.ECONOMIC,
-    baseValue: 8,
-    productionDifficulty: 0.4,
-    storageDecay: 0,
-    tradeable: true,
-    description: 'Currency backing, trade bonus'
-  },
-  {
-    id: 'gems',
-    name: 'Gems',
-    category: ResourceCategory.ECONOMIC,
-    baseValue: 30,
-    productionDifficulty: 0.6,
-    storageDecay: 0,
-    tradeable: true,
-    description: 'High-value trade commodity'
+    description: 'Luxury goods and diplomatic influence. High-value trade commodity for diplomacy.'
   },
   {
     id: 'copper',
@@ -183,20 +123,10 @@ export const DEFAULT_RESOURCES: ResourceDefinition[] = [
     productionDifficulty: 0.3,
     storageDecay: 0,
     tradeable: true,
-    description: 'Industrial applications'
+    description: 'Research and trade. Required for technology research (all levels) and industrial applications.'
   },
   
-  // INDUSTRIAL Resources
-  {
-    id: 'coal',
-    name: 'Coal',
-    category: ResourceCategory.INDUSTRIAL,
-    baseValue: 6,
-    productionDifficulty: 0.5,
-    storageDecay: 0,
-    tradeable: true,
-    description: 'Energy generation, production boost'
-  },
+  // INDUSTRIAL Resources (2)
   {
     id: 'steel',
     name: 'Steel',
@@ -205,27 +135,17 @@ export const DEFAULT_RESOURCES: ResourceDefinition[] = [
     productionDifficulty: 0.7,
     storageDecay: 0,
     tradeable: true,
-    description: 'Advanced construction, military'
+    description: 'Advanced construction and military. Required for tech upgrades, infrastructure 2+, and advanced military.'
   },
   {
-    id: 'aluminum',
-    name: 'Aluminum',
+    id: 'coal',
+    name: 'Coal',
     category: ResourceCategory.INDUSTRIAL,
-    baseValue: 9,
-    productionDifficulty: 0.6,
+    baseValue: 6,
+    productionDifficulty: 0.5,
     storageDecay: 0,
     tradeable: true,
-    description: 'Aircraft, modern equipment'
-  },
-  {
-    id: 'electronics',
-    name: 'Electronics',
-    category: ResourceCategory.INDUSTRIAL,
-    baseValue: 18,
-    productionDifficulty: 0.8,
-    storageDecay: 0,
-    tradeable: true,
-    description: 'Modern technology'
+    description: 'Energy and production. Required for research, infrastructure 2+, and industrial production boost.'
   }
 ];
 

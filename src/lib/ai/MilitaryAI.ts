@@ -87,8 +87,8 @@ export class MilitaryAI {
       : 0;
     
     if (!bans.banRecruitment && recruitAmount > 0) {
-      // Use STANDARDIZED cost: 50 budget per strength point (same as player)
-      const costPerStrength = 50; // ECONOMIC_BALANCE.MILITARY.COST_PER_STRENGTH_POINT
+      // Use STANDARDIZED cost from ECONOMIC_BALANCE (updated for faster economy)
+      const costPerStrength = ECONOMIC_BALANCE.MILITARY.COST_PER_STRENGTH_POINT; // 30 per point
       const alreadyHasRecruit = state.pendingActions.some(
         (a) =>
           a.countryId === countryId &&

@@ -21,57 +21,57 @@ export const RESOURCE_PROFILES: ResourceProfile[] = [
     name: "Oil Kingdom",
     description: "Rich in oil deposits, lacks precious metals",
     modifiers: [
-      { resourceId: 'oil', multiplier: 2.5, startingBonus: 150 },           // 250% oil production
-      { resourceId: 'coal', multiplier: 1.5, startingBonus: 80 },           // 150% coal
-      { resourceId: 'gold', multiplier: 0.4, startingBonus: -10 },          // 40% gold (penalty)
-      { resourceId: 'gems', multiplier: 0.3, startingBonus: -5 },           // 30% gems (penalty)
+      { resourceId: 'oil', multiplier: 2.5, startingBonus: 150 },
+      { resourceId: 'coal', multiplier: 1.5, startingBonus: 80 },
+      { resourceId: 'gold', multiplier: 0.4, startingBonus: -10 },
+      { resourceId: 'copper', multiplier: 0.7, startingBonus: -5 },
     ]
   },
   
   {
-    name: "Agriculture",
+    name: "Agricultural Hub",
     description: "Fertile lands, abundant food and timber",
     modifiers: [
-      { resourceId: 'food', multiplier: 1.8, startingBonus: 300 },          // 180% food
-      { resourceId: 'timber', multiplier: 2.0, startingBonus: 150 },        // 200% timber
-      { resourceId: 'water', multiplier: 1.6, startingBonus: 100 },         // 160% water
-      { resourceId: 'iron', multiplier: 0.5, startingBonus: -30 },          // 50% iron (penalty)
-      { resourceId: 'steel', multiplier: 0.4, startingBonus: -15 },         // 40% steel (penalty)
+      { resourceId: 'food', multiplier: 2.0, startingBonus: 300 },
+      { resourceId: 'timber', multiplier: 1.8, startingBonus: 150 },
+      { resourceId: 'iron', multiplier: 0.6, startingBonus: -30 },
+      { resourceId: 'steel', multiplier: 0.5, startingBonus: -15 },
     ]
   },
   
   {
     name: "Mining Empire",
-    description: "Rich in iron, stone, and rare earth minerals",
+    description: "Rich in iron, copper, and steel production",
     modifiers: [
-      { resourceId: 'iron', multiplier: 2.2, startingBonus: 120 },          // 220% iron
-      { resourceId: 'stone', multiplier: 2.0, startingBonus: 100 },         // 200% stone
-      { resourceId: 'rare_earth', multiplier: 2.5, startingBonus: 40 },     // 250% rare earth
-      { resourceId: 'food', multiplier: 0.6, startingBonus: -100 },         // 60% food (penalty)
-      { resourceId: 'timber', multiplier: 0.5, startingBonus: -50 },        // 50% timber (penalty)
+      { resourceId: 'iron', multiplier: 2.2, startingBonus: 120 },
+      { resourceId: 'copper', multiplier: 1.8, startingBonus: 80 },
+      { resourceId: 'steel', multiplier: 1.5, startingBonus: 60 },
+      { resourceId: 'food', multiplier: 0.7, startingBonus: -100 },
+      { resourceId: 'timber', multiplier: 0.6, startingBonus: -50 },
     ]
   },
   
   {
-    name: "Technological Hub",
-    description: "Advanced industry, rich in aluminum and electronics components",
+    name: "Tech Innovator",
+    description: "Advanced industry, rich in copper and steel",
     modifiers: [
-      { resourceId: 'aluminum', multiplier: 2.3, startingBonus: 80 },       // 230% aluminum
-      { resourceId: 'steel', multiplier: 1.8, startingBonus: 60 },          // 180% steel
-      { resourceId: 'rare_earth', multiplier: 1.6, startingBonus: 25 },     // 160% rare earth
-      { resourceId: 'coal', multiplier: 0.6, startingBonus: -30 },          // 60% coal (penalty)
-      { resourceId: 'oil', multiplier: 0.5, startingBonus: -20 },           // 50% oil (penalty)
+      { resourceId: 'copper', multiplier: 1.8, startingBonus: 60 },
+      { resourceId: 'steel', multiplier: 1.6, startingBonus: 50 },
+      { resourceId: 'coal', multiplier: 1.5, startingBonus: 40 },
+      { resourceId: 'timber', multiplier: 0.8, startingBonus: -20 },
+      { resourceId: 'oil', multiplier: 0.7, startingBonus: -15 },
     ]
   },
   
   {
-    name: "Precious Metals Trader",
-    description: "Abundant gold, gems, and luxury resources",
+    name: "Trade Hub",
+    description: "Abundant gold and copper for commerce",
     modifiers: [
-      { resourceId: 'gold', multiplier: 3.0, startingBonus: 60 },           // 300% gold
-      { resourceId: 'gems', multiplier: 3.5, startingBonus: 35 },           // 350% gems
-      { resourceId: 'iron', multiplier: 0.6, startingBonus: -25 },          // 60% iron (penalty)
-      { resourceId: 'coal', multiplier: 0.5, startingBonus: -25 },          // 50% coal (penalty)
+      { resourceId: 'gold', multiplier: 2.5, startingBonus: 60 },
+      { resourceId: 'copper', multiplier: 2.0, startingBonus: 50 },
+      { resourceId: 'food', multiplier: 1.3, startingBonus: 80 },
+      { resourceId: 'iron', multiplier: 0.7, startingBonus: -25 },
+      { resourceId: 'oil', multiplier: 0.6, startingBonus: -20 },
     ]
   },
   
@@ -79,33 +79,33 @@ export const RESOURCE_PROFILES: ResourceProfile[] = [
     name: "Balanced Nation",
     description: "No major resource advantages or disadvantages",
     modifiers: [
-      { resourceId: 'food', multiplier: 1.1, startingBonus: 50 },           // 110% food (slight bonus)
-      { resourceId: 'iron', multiplier: 1.1, startingBonus: 10 },           // 110% iron (slight bonus)
-      { resourceId: 'gold', multiplier: 0.9, startingBonus: -5 },           // 90% gold (slight penalty)
+      { resourceId: 'food', multiplier: 1.1, startingBonus: 50 },
+      { resourceId: 'iron', multiplier: 1.1, startingBonus: 10 },
+      { resourceId: 'gold', multiplier: 0.9, startingBonus: -5 },
     ]
   },
   
   {
-    name: "Industrial Complex",
+    name: "Industrial Powerhouse",
     description: "Coal and steel production powerhouse",
     modifiers: [
-      { resourceId: 'coal', multiplier: 2.5, startingBonus: 150 },          // 250% coal
-      { resourceId: 'steel', multiplier: 2.2, startingBonus: 80 },          // 220% steel
-      { resourceId: 'iron', multiplier: 1.5, startingBonus: 60 },           // 150% iron
-      { resourceId: 'food', multiplier: 0.7, startingBonus: -80 },          // 70% food (penalty)
-      { resourceId: 'water', multiplier: 0.6, startingBonus: -40 },         // 60% water (penalty)
+      { resourceId: 'coal', multiplier: 2.5, startingBonus: 150 },
+      { resourceId: 'steel', multiplier: 2.3, startingBonus: 80 },
+      { resourceId: 'iron', multiplier: 1.4, startingBonus: 60 },
+      { resourceId: 'food', multiplier: 0.8, startingBonus: -80 },
+      { resourceId: 'timber', multiplier: 0.7, startingBonus: -40 },
     ]
   },
   
   {
-    name: "Coastal Trading Hub",
-    description: "Diverse resources from trade routes",
+    name: "Military State",
+    description: "Strong in iron and oil for military dominance",
     modifiers: [
-      { resourceId: 'water', multiplier: 1.8, startingBonus: 120 },         // 180% water
-      { resourceId: 'food', multiplier: 1.4, startingBonus: 100 },          // 140% food (fishing)
-      { resourceId: 'gold', multiplier: 1.5, startingBonus: 30 },           // 150% gold (trade)
-      { resourceId: 'rare_earth', multiplier: 0.5, startingBonus: -10 },    // 50% rare earth (penalty)
-      { resourceId: 'stone', multiplier: 0.6, startingBonus: -40 },         // 60% stone (penalty)
+      { resourceId: 'iron', multiplier: 2.0, startingBonus: 100 },
+      { resourceId: 'oil', multiplier: 1.6, startingBonus: 60 },
+      { resourceId: 'steel', multiplier: 1.4, startingBonus: 40 },
+      { resourceId: 'gold', multiplier: 0.6, startingBonus: -20 },
+      { resourceId: 'copper', multiplier: 0.7, startingBonus: -15 },
     ]
   }
 ];

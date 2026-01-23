@@ -5,16 +5,16 @@ import { createPortal } from "react-dom";
 import { RESOURCE_PROFILES } from "@/lib/game-engine/ResourceProfile";
 import { getAllProfileModifiers } from "@/lib/game-engine/ProfileModifiers";
 
-// Gameplay guidance for each profile
+// Gameplay guidance for each profile (8-resource system)
 const PROFILE_GUIDANCE: Record<string, string> = {
   "Oil Kingdom": "Focus on exporting oil and coal to fund expensive upgrades. Build infrastructure early to maximize trade capacity. Military is slightly cheaper, but tech upgrades are expensive.",
-  "Agriculture": "Excellent for population growth and food security. Export surplus food and timber. Tech upgrades are expensive, so focus on infrastructure and trade instead.",
-  "Mining Empire": "Strong military recruitment and resource extraction. Export iron and rare earth minerals. Tech upgrades are expensive, but military is cheaper - perfect for aggressive expansion.",
-  "Technological Hub": "Best for tech-focused strategies. Research is 25% cheaper! Military recruitment is also cheaper. Focus on reaching high tech levels quickly for production and military bonuses.",
-  "Precious Metals Trader": "Wealthy but expensive upgrades. Export gold and gems for high trade value. All upgrades cost 20% more, so focus on trade efficiency and infrastructure for capacity.",
+  "Agricultural Hub": "Excellent for population growth and food security. Export surplus food and timber. Tech upgrades are expensive, so focus on infrastructure and trade instead.",
+  "Mining Empire": "Strong military recruitment and resource extraction. Export iron, copper, and steel. Tech upgrades are expensive, but military is cheaper - perfect for aggressive expansion.",
+  "Tech Innovator": "Best for tech-focused strategies. Research is 25% cheaper! Military recruitment is also cheaper. Focus on reaching high tech levels quickly for production and military bonuses.",
+  "Trade Hub": "Wealthy with trade focus. Export gold and copper for high trade value. Infrastructure is 15% cheaper and trade revenue is 25% higher. Focus on making many trade deals.",
   "Balanced Nation": "Versatile profile with no major weaknesses. Standard costs across the board. Good for learning the game or flexible strategies that adapt to the situation.",
-  "Industrial Complex": "Infrastructure is 20% cheaper! Perfect for building capacity and trade. Export manufactured goods (coal, steel). Focus on infrastructure to maximize trade deals and population capacity.",
-  "Coastal Trading Hub": "Trade powerhouse! Infrastructure is 15% cheaper and trade revenue is 25% higher. Focus on making many trade deals and building infrastructure for maximum trade capacity."
+  "Industrial Powerhouse": "Infrastructure is 20% cheaper! Perfect for building capacity and trade. Export manufactured goods (coal, steel). Focus on infrastructure to maximize trade deals and population capacity.",
+  "Military State": "Military-focused profile. Military recruitment is 15% cheaper and military effectiveness is 10% higher. Perfect for aggressive expansion strategies."
 };
 
 export function AllProfilesInfo() {

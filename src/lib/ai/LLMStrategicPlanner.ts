@@ -82,10 +82,26 @@ export interface LLMCostTracking {
  */
 const CACHED_GAME_RULES = `
 EXECUTABLE ACTIONS (only these can be done):
-1. TECHNOLOGY UPGRADE: Boosts production (1.25x→3.0x) & military (+20%/level). Cost: 800×1.35^level×profile
-2. INFRASTRUCTURE UPGRADE: Boosts tax (+12%/level) & capacity (200k+50k×level). Cost: 700×1.30^level×profile
-3. RECRUIT MILITARY: Add strength. Cost: 50/point
+1. TECHNOLOGY UPGRADE: Boosts production (1.25x→3.0x) & military (+20%/level). Cost: 500×1.30^level×profile
+2. INFRASTRUCTURE UPGRADE: Boosts tax (+12%/level) & capacity (200k+50k×level). Cost: 450×1.25^level×profile
+3. RECRUIT MILITARY: Add strength. Cost: 30/point (15 units standard)
 4. ATTACK CITY: Conquer enemies to expand territory. Success requires strength advantage. Cost: 100 base + 50/strength allocated
+
+RESOURCES (8 types, simpler system):
+- Basic: Food (pop survival), Timber (infra/military)
+- Strategic: Iron (military), Oil (adv military)
+- Economic: Gold (diplomacy), Copper (research)
+- Industrial: Steel (tech/infra), Coal (energy/research)
+
+SHORTAGE PENALTY: Missing resources increase budget cost (+40%/resource, max 2.5x)
+→ Plan around resource availability or accept higher costs
+→ Trade deals can secure missing resources
+
+RESOURCE STRATEGY:
+- Early game: Secure Food + Timber for growth
+- Military focus: Need Iron (always) + Oil (tech 2+)
+- Tech focus: Need Copper + Coal + Steel
+- Trade focus: Gold valuable for diplomacy
 
 WINNING STRATEGIES:
 - Economic: Build tech + infra for long-term dominance
@@ -93,9 +109,9 @@ WINNING STRATEGIES:
 - Balanced: Alternate economic growth with strategic conquests
 
 PROFILES:
-- Tech Hub: 0.75x tech, 0.90x military
-- Industrial: 0.80x infra
-- Coastal: 0.85x infra
+- Tech Innovator: 0.75x tech, 0.90x military
+- Industrial Powerhouse: 0.80x infra
+- Trade Hub: 0.85x infra, 1.25x trade
 - Others: 1.0-1.2x
 `;
 
@@ -433,6 +449,33 @@ export class LLMStrategicPlanner {
   }
   
   /**
+   * Generate compact resource string for LLM prompts (token-efficient)
+   * Format: "Fd200 T80 Fe40 !O !St" = Has food/timber/iron, needs oil/steel
+   */
+  private compactResourceString(resources: Record<string, number>): string {
+    const abbrev: Record<string, string> = {
+      food: 'Fd', timber: 'T', iron: 'Fe', oil: 'O',
+      gold: 'Au', copper: 'Cu', steel: 'St', coal: 'C'
+    };
+    
+    const parts: string[] = [];
+    for (const [id, amt] of Object.entries(resources)) {
+      if (amt > 10) {
+        // Only show resources with meaningful amounts
+        parts.push(`${abbrev[id] || id}${Math.floor(amt)}`);
+      } else if (amt === 0) {
+        // Show missing critical resources (optional - can be removed to save tokens)
+        // For now, only show if it's a strategic resource
+        if (['iron', 'oil', 'steel', 'coal'].includes(id)) {
+          parts.push(`!${abbrev[id] || id}`);
+        }
+      }
+    }
+    
+    return parts.length > 0 ? parts.join(' ') : 'None';
+  }
+  
+  /**
    * Build strategic analysis prompt with rich context
    */
   private buildStrategicPrompt(
@@ -449,9 +492,13 @@ export class LLMStrategicPlanner {
     // Get neighbor information
     const neighbors = this.getNeighborsSummary(state, countryId, stats);
     
+    // Get compact resource string
+    const resourcesStr = this.compactResourceString(stats.resources || {});
+    
     return `${CACHED_GAME_RULES}
 
 ${country.name} (T${state.turn}): Pop ${(stats.population/1000).toFixed(0)}k | $${(stats.budget).toFixed(0)} | Tech L${stats.technologyLevel} | Infra L${stats.infrastructureLevel || 0} | Mil ${stats.militaryStrength} | ${stats.resourceProfile?.name || "Balanced"}
+Resources: ${resourcesStr}
 Income: $${economicAnalysis.netIncome}/t | ${economicAnalysis.isUnderDefended ? 'UNDER-DEFENDED' : 'OK'} | ${economicAnalysis.turnsUntilBankrupt !== null ? `Bankrupt in ${economicAnalysis.turnsUntilBankrupt}t` : 'Stable'}
 
 NEIGHBORS: ${neighbors}
@@ -725,9 +772,12 @@ RULES:
       const economicAnalysis = RuleBasedAI.analyzeEconomicSituation(state, countryId, stats);
       const neighbors = this.getNeighborsSummary(state, countryId, stats);
       
+      const resourcesStr = this.compactResourceString(stats.resources || {});
+      
       return `
 ### ${country.name} (ID: ${countryId})
 Pop: ${(stats.population/1000).toFixed(0)}k | $${(stats.budget).toFixed(0)} | Tech L${stats.technologyLevel} | Infra L${stats.infrastructureLevel || 0} | Mil ${stats.militaryStrength} | ${stats.resourceProfile?.name || "Balanced"}
+Resources: ${resourcesStr}
 Income: $${economicAnalysis.netIncome}/t | ${economicAnalysis.isUnderDefended ? 'UNDER-DEFENDED' : 'OK'} | ${economicAnalysis.turnsUntilBankrupt !== null ? `Bankrupt in ${economicAnalysis.turnsUntilBankrupt}t` : 'Stable'}
 Neighbors: ${neighbors.split('\n').join('; ')}`;
     }).join('\n');

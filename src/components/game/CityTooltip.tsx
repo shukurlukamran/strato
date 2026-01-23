@@ -20,20 +20,16 @@ interface CityTooltipProps {
 export function CityTooltip({ city, country, canAttack, onAttack, onClose, position }: CityTooltipProps) {
   const cityValue = calculateCityValue(city);
   
-  // Resource icons (simple emoji representation)
+  // Resource icons (8-resource system)
   const resourceIcons: Record<string, string> = {
-    oil: "🛢️",
-    gems: "💎",
-    coal: "⚫",
-    iron: "⛏️",
-    gold: "🥇",
     food: "🌾",
-    water: "💧",
     timber: "🪵",
-    stone: "🪨",
-    rare_earth: "✨",
+    iron: "⚙️",
+    oil: "🛢️",
+    gold: "🥇",
+    copper: "🔶",
     steel: "🔩",
-    aluminum: "⚙️",
+    coal: "⚫",
   };
 
   return (

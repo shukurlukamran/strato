@@ -12,9 +12,9 @@
 export const ECONOMIC_BALANCE = {
   // Budget Generation
   BUDGET: {
-    BASE_TAX_PER_CITIZEN: 18,          // Base tax income per population unit (10k pop) - INCREASED for better cash flow
-    INFRASTRUCTURE_TAX_EFFICIENCY: 0.15, // +15% tax collection per infrastructure level - INCREASED for scaling
-    TRADE_INCOME_MULTIPLIER: 0.15,     // 15% of total trade value per turn - INCREASED
+    BASE_TAX_PER_CITIZEN: 22,          // Base tax income per population unit (10k pop) - INCREASED +22% for faster economy
+    INFRASTRUCTURE_TAX_EFFICIENCY: 0.15, // +15% tax collection per infrastructure level
+    TRADE_INCOME_MULTIPLIER: 0.20,     // 20% of total trade value per turn - INCREASED +33% for faster economy
   },
   
   // Resource Production
@@ -82,17 +82,27 @@ export const ECONOMIC_BALANCE = {
   
   // Military
   MILITARY: {
-    COST_PER_STRENGTH_POINT: 40,       // Standard cost per military strength point - REDUCED from 50
-    RECRUIT_AMOUNT_STANDARD: 10,       // Standard recruitment amount per action
-    RECRUIT_COST_STANDARD: 400,        // Standard cost (40 * 10 = 400) - REDUCED from 500
+    COST_PER_STRENGTH_POINT: 30,       // Standard cost per military strength point - REDUCED -25% for faster economy
+    RECRUIT_AMOUNT_STANDARD: 15,       // Standard recruitment amount per action - INCREASED +50% for faster armies
+    RECRUIT_COST_STANDARD: 450,        // Standard cost (30 * 15 = 450)
   },
   
-  // Upgrade Costs
+  // Upgrade Costs (Accelerated for faster gameplay)
   UPGRADES: {
-    TECH_BASE_COST: 700,               // Base cost for technology upgrade - REDUCED from 800
-    TECH_COST_MULTIPLIER: 1.30,        // Cost increases per level - REDUCED from 1.35
+    TECH_BASE_COST: 500,               // Base cost for technology upgrade - REDUCED -29% for faster economy
+    TECH_COST_MULTIPLIER: 1.30,        // Cost increases per level
     
-    INFRA_BASE_COST: 600,              // Base cost for infrastructure upgrade - REDUCED from 700
-    INFRA_COST_MULTIPLIER: 1.25,       // Cost increases per level - REDUCED from 1.30
+    INFRA_BASE_COST: 450,              // Base cost for infrastructure upgrade - REDUCED -25% for faster economy
+    INFRA_COST_MULTIPLIER: 1.25,       // Cost increases per level
+  },
+  
+  // Resource Costs (8-resource system)
+  RESOURCE_COSTS: {
+    // Resource shortage penalty
+    SHORTAGE_COST_PENALTY_PER_RESOURCE: 0.4, // +40% budget cost per missing resource type - REDUCED -20%
+    MAX_SHORTAGE_PENALTY: 2.5,                // Maximum 2.5x cost when missing resources - REDUCED from 3.0
+    
+    // Note: Actual resource requirements are calculated in ResourceCost.ts
+    // These constants are kept for reference but not actively used
   }
 } as const;

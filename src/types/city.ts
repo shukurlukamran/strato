@@ -35,17 +35,17 @@ export function calculateCityValue(city: City): number {
   // Population value: 1 point per 1000 population
   value += city.population / 1000;
   
-  // Resource value: weighted by resource type
+  // Resource value: weighted by resource type (8-resource system)
   // These weights should align with game balance
   const RESOURCE_VALUES: Record<string, number> = {
-    oil: 15,
-    gems: 20,
-    coal: 10,
-    iron: 12,
-    gold: 25,
     food: 8,
-    wood: 8,
-    stone: 10,
+    timber: 6,
+    iron: 10,
+    oil: 15,
+    gold: 20,
+    copper: 8,
+    steel: 12,
+    coal: 10,
   };
   
   for (const [resource, amount] of Object.entries(city.perTurnResources)) {

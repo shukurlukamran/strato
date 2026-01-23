@@ -14,26 +14,18 @@ interface ResourceDisplayProps {
 }
   
   const resourceIcons: Record<string, string> = {
-  // Basic
+  // Basic (2)
   food: "🌾",
-  water: "💧",
   timber: "🪵",
-  stone: "🪨",
-  // Strategic
+  // Strategic (2)
   iron: "⚙️",
-    oil: "🛢️",
-  uranium: "☢️",
-  rare_earth: "💎",
-  // Economic
+  oil: "🛢️",
+  // Economic (2)
   gold: "🥇",
-  silver: "🥈",
-  gems: "💠",
   copper: "🔶",
-  // Industrial
+  // Industrial (2)
   coal: "⚫",
   steel: "🔩",
-  aluminum: "✈️",
-  electronics: "💻",
 };
 
 const categoryLabels: Record<ResourceCategory, string> = {

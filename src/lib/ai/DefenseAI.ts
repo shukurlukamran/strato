@@ -109,7 +109,7 @@ export class DefenseAI {
     // Resource value consideration - defend high-value resource cities more
     const hasValuableResources = Object.entries(city.perTurnResources).some(
       ([resource, amount]) => 
-        ['oil', 'uranium', 'raremetals', 'gems'].includes(resource.toLowerCase()) && amount > 3
+        ['oil', 'gold', 'steel'].includes(resource.toLowerCase()) && amount > 3
     );
     if (hasValuableResources) {
       baseAllocation += 0.08;
@@ -157,16 +157,16 @@ export class DefenseAI {
     // Population value (1 point per 1000 population)
     value += city.population / 1000;
     
-    // Resource value (weighted by resource importance)
+    // Resource value (weighted by resource importance - 8-resource system)
     const resourceValues: Record<string, number> = {
       oil: 15,
-      uranium: 20,
-      raremetals: 18,
-      gems: 12,
+      gold: 20,
+      steel: 12,
       coal: 10,
       iron: 10,
+      copper: 8,
       food: 8,
-      wood: 6,
+      timber: 6,
     };
     
     for (const [resource, amount] of Object.entries(city.perTurnResources)) {

@@ -8,6 +8,7 @@ import {
   calculateInfrastructureCostForDisplay,
   calculateMilitaryRecruitmentCostForDisplay 
 } from "@/lib/game-engine/EconomicClientUtils";
+import { ResourceCostClient } from "@/lib/game-engine/ResourceCostClient";
 
 interface ActionPanelProps {
   country: Country | null;
@@ -79,9 +80,17 @@ export function ActionPanel({
       // Update stats locally without page reload
       onStatsUpdate(data.updatedStats);
       
+      // Build success message with resource cost info
+      let successMsg = `${actionType.charAt(0).toUpperCase() + actionType.slice(1)} successful! Cost: $${data.cost.toLocaleString()}`;
+      if (data.resourceCost && data.resourceCost.shortage) {
+        successMsg += ` (+${((data.resourceCost.penaltyMultiplier - 1) * 100).toFixed(0)}% due to resource shortage)`;
+      } else if (data.resourceCost && data.resourceCost.required.length > 0) {
+        successMsg += ` (Resources consumed ✓)`;
+      }
+      
       setMessage({ 
         type: 'success', 
-        text: `${actionType.charAt(0).toUpperCase() + actionType.slice(1)} successful! Cost: $${data.cost.toLocaleString()}` 
+        text: successMsg
       });
 
       // Clear success message after 3 seconds
@@ -106,6 +115,20 @@ export function ActionPanel({
   const { cost: militaryCost, reductionPercent: militaryReduction } = calculateMilitaryRecruitmentCostForDisplay(stats, militaryAmount);
   
   const currentBudget = Number(stats.budget);
+  
+  // Calculate resource costs and affordability
+  const researchResourceCost = ResourceCostClient.getResearchResourceCost(stats);
+  const infraResourceCost = ResourceCostClient.getInfrastructureResourceCost(stats);
+  const militaryResourceCost = ResourceCostClient.getMilitaryResourceCost(militaryAmount, stats);
+  
+  // Calculate adjusted costs with resource shortage penalties
+  const researchPenalty = ResourceCostClient.calculatePenaltyMultiplier(researchResourceCost.missing.length);
+  const infraPenalty = ResourceCostClient.calculatePenaltyMultiplier(infraResourceCost.missing.length);
+  const militaryPenalty = ResourceCostClient.calculatePenaltyMultiplier(militaryResourceCost.missing.length);
+  
+  const adjustedTechCost = Math.floor(techCost * researchPenalty);
+  const adjustedInfraCost = Math.floor(infraCost * infraPenalty);
+  const adjustedMilitaryCost = Math.floor(militaryCost * militaryPenalty);
 
   return (
     <div className="rounded-lg border border-white/10 bg-gradient-to-br from-slate-800/90 to-slate-900/90 p-4 shadow-lg">
@@ -132,13 +155,13 @@ export function ActionPanel({
 
           <div className="space-y-2">
             {/* Research Technology */}
-            <Tooltip content={`🔬 RESEARCH TECHNOLOGY\n\nBoost your resource production and military power!\n\n📈 CURRENT → NEXT LEVEL:\nLevel ${techLevel} → ${techLevel + 1}\n\n✨ BENEFITS GAINED:\n• Resource Production: Better multiplier\n• Military Effectiveness: +20% combat power\n• Military Recruitment: -5% cost\n• Future Research: -3% cost${techLevel >= 5 ? '\n\n⚠️ MAX LEVEL REACHED!' : ''}\n\n💰 UPGRADE COST:\nBase Cost: $${(700 * Math.pow(1.30, techLevel)).toFixed(0)}${techReduction > 0 ? `\nResearch Discount: -${techReduction.toFixed(1)}% (from tech)` : ''}${stats.resourceProfile ? `\nProfile Modifier: ${stats.resourceProfile.name === 'Technological Hub' ? '-25% ✓' : stats.resourceProfile.name === 'Agriculture' || stats.resourceProfile.name === 'Mining Empire' ? '+15% ⚠' : stats.resourceProfile.name === 'Precious Metals Trader' ? '+20% ⚠' : 'Standard'}` : ''}\n\nTotal Cost: $${techCost.toLocaleString()}\n\n💡 Technology affects: Production, Military, Research speed`}>
+            <Tooltip content={`🔬 RESEARCH TECHNOLOGY\n\nBoost your resource production and military power!\n\n📈 CURRENT → NEXT LEVEL:\nLevel ${techLevel} → ${techLevel + 1}\n\n✨ BENEFITS GAINED:\n• Resource Production: Better multiplier\n• Military Effectiveness: +20% combat power\n• Military Recruitment: -5% cost\n• Future Research: -3% cost${techLevel >= 5 ? '\n\n⚠️ MAX LEVEL REACHED!' : ''}\n\n💰 UPGRADE COST:\nBase Cost: $${(700 * Math.pow(1.30, techLevel)).toFixed(0)}${techReduction > 0 ? `\nResearch Discount: -${techReduction.toFixed(1)}% (from tech)` : ''}${stats.resourceProfile ? `\nProfile Modifier: ${stats.resourceProfile.name === 'Technological Hub' ? '-25% ✓' : stats.resourceProfile.name === 'Agriculture' || stats.resourceProfile.name === 'Mining Empire' ? '+15% ⚠' : stats.resourceProfile.name === 'Precious Metals Trader' ? '+20% ⚠' : 'Standard'}` : ''}\n${researchResourceCost.missing.length > 0 ? `\n⚠️ RESOURCE SHORTAGE PENALTY: +${((researchPenalty - 1) * 100).toFixed(0)}%` : ''}\n\nTotal Cost: $${adjustedTechCost.toLocaleString()}\n\n📦 RESOURCE REQUIREMENTS:\n${researchResourceCost.formatted}\n${researchResourceCost.missing.length > 0 ? '\n⚠️ Missing resources increase budget cost!' : '\n✓ All resources available!'}\n\n💡 Technology affects: Production, Military, Research speed`}>
               <button
                 type="button"
-                disabled={loading !== null || currentBudget < techCost}
+                disabled={loading !== null || currentBudget < adjustedTechCost}
                 onClick={() => handleAction("research")}
                 className={`w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-all ${
-                  currentBudget < techCost
+                  currentBudget < adjustedTechCost
                     ? "cursor-not-allowed bg-slate-700/50 opacity-50"
                     : loading === "research"
                     ? "bg-purple-600/50"
@@ -147,7 +170,10 @@ export function ActionPanel({
               >
                 <div className="flex items-center justify-between">
                   <span>🔬 Research Technology</span>
-                  <span className="text-xs opacity-90">${techCost.toLocaleString()}</span>
+                  <span className={`text-xs opacity-90 ${researchResourceCost.missing.length > 0 ? 'text-orange-300' : ''}`}>
+                    ${adjustedTechCost.toLocaleString()}
+                    {researchResourceCost.missing.length > 0 && ' ⚠️'}
+                  </span>
                 </div>
                 <div className="mt-1 text-xs opacity-75">
                   Level {techLevel} → {techLevel + 1}
@@ -156,13 +182,13 @@ export function ActionPanel({
             </Tooltip>
 
             {/* Build Infrastructure */}
-            <Tooltip content={`🏗️ BUILD INFRASTRUCTURE\n\nExpand your capacity and administrative efficiency!\n\n📈 CURRENT → NEXT LEVEL:\nLevel ${infraLevel} → ${infraLevel + 1}\n\n✨ BENEFITS GAINED:\n• Tax Collection: +15% efficiency\n• Population Capacity: +50,000 citizens\n• Trade Capacity: +1 deal per turn\n• Trade Efficiency: +10% trade value\n\n💰 UPGRADE COST:\nBase Cost: $${(600 * Math.pow(1.25, infraLevel)).toFixed(0)}${stats.resourceProfile ? `\nProfile Modifier: ${stats.resourceProfile.name === 'Industrial Complex' ? '-20% ✓' : stats.resourceProfile.name === 'Coastal Trading Hub' ? '-15% ✓' : stats.resourceProfile.name === 'Mining Empire' ? '+10% ⚠' : stats.resourceProfile.name === 'Precious Metals Trader' ? '+20% ⚠' : 'Standard'}` : ''}\n\nTotal Cost: $${infraCost.toLocaleString()}\n\n📉 MAINTENANCE ADDED:\n+$25 per turn (ongoing cost)\n\n💡 Infrastructure affects: Tax, Capacity, Trade\n${stats.population > (200000 + infraLevel * 50000) ? '\n⚠️ YOU ARE OVERCROWDED! Build ASAP!' : ''}`}>
+            <Tooltip content={`🏗️ BUILD INFRASTRUCTURE\n\nExpand your capacity and administrative efficiency!\n\n📈 CURRENT → NEXT LEVEL:\nLevel ${infraLevel} → ${infraLevel + 1}\n\n✨ BENEFITS GAINED:\n• Tax Collection: +15% efficiency\n• Population Capacity: +50,000 citizens\n• Trade Capacity: +1 deal per turn\n• Trade Efficiency: +10% trade value\n\n💰 UPGRADE COST:\nBase Cost: $${(600 * Math.pow(1.25, infraLevel)).toFixed(0)}${stats.resourceProfile ? `\nProfile Modifier: ${stats.resourceProfile.name === 'Industrial Complex' ? '-20% ✓' : stats.resourceProfile.name === 'Coastal Trading Hub' ? '-15% ✓' : stats.resourceProfile.name === 'Mining Empire' ? '+10% ⚠' : stats.resourceProfile.name === 'Precious Metals Trader' ? '+20% ⚠' : 'Standard'}` : ''}${infraResourceCost.missing.length > 0 ? `\n⚠️ RESOURCE SHORTAGE PENALTY: +${((infraPenalty - 1) * 100).toFixed(0)}%` : ''}\n\nTotal Cost: $${adjustedInfraCost.toLocaleString()}\n\n📦 RESOURCE REQUIREMENTS:\n${infraResourceCost.formatted}\n${infraResourceCost.missing.length > 0 ? '\n⚠️ Missing resources increase budget cost!' : '\n✓ All resources available!'}\n\n📉 MAINTENANCE ADDED:\n+$25 per turn (ongoing cost)\n\n💡 Infrastructure affects: Tax, Capacity, Trade\n${stats.population > (200000 + infraLevel * 50000) ? '\n⚠️ YOU ARE OVERCROWDED! Build ASAP!' : ''}`}>
               <button
                 type="button"
-                disabled={loading !== null || currentBudget < infraCost}
+                disabled={loading !== null || currentBudget < adjustedInfraCost}
                 onClick={() => handleAction("infrastructure")}
                 className={`w-full rounded-lg px-4 py-2.5 text-sm font-semibold text-white shadow-lg transition-all ${
-                  currentBudget < infraCost
+                  currentBudget < adjustedInfraCost
                     ? "cursor-not-allowed bg-slate-700/50 opacity-50"
                     : loading === "infrastructure"
                     ? "bg-green-600/50"
@@ -171,7 +197,10 @@ export function ActionPanel({
               >
                 <div className="flex items-center justify-between">
                   <span>🏗️ Build Infrastructure</span>
-                  <span className="text-xs opacity-90">${infraCost.toLocaleString()}</span>
+                  <span className={`text-xs opacity-90 ${infraResourceCost.missing.length > 0 ? 'text-orange-300' : ''}`}>
+                    ${adjustedInfraCost.toLocaleString()}
+                    {infraResourceCost.missing.length > 0 && ' ⚠️'}
+                  </span>
                 </div>
                 <div className="mt-1 text-xs opacity-75">
                   Level {infraLevel} → {infraLevel + 1}
@@ -180,9 +209,9 @@ export function ActionPanel({
             </Tooltip>
 
             {/* Recruit Military */}
-            <Tooltip content={`⚔️ RECRUIT MILITARY\n\nBuild your military strength for defense and conquest!\n\n💪 RECRUITMENT:\nCurrent Strength: ${stats.militaryStrength}\nRecruiting: +${militaryAmount} strength\nNew Total: ${stats.militaryStrength + militaryAmount}\n\n💰 COST BREAKDOWN:\nBase: $${militaryAmount} × $40 = $${militaryAmount * 40}${militaryReduction > 0 ? `\nTech Discount: -${militaryReduction.toFixed(1)}% (Level ${stats.technologyLevel.toFixed(1)})` : ''}${stats.resourceProfile ? `\nProfile Modifier: ${stats.resourceProfile.name === 'Technological Hub' ? '-10% ✓' : stats.resourceProfile.name === 'Oil Kingdom' ? '+5% ⚠' : stats.resourceProfile.name === 'Precious Metals Trader' ? '+20% ⚠' : 'Standard'}` : ''}\n\nTotal Cost: $${militaryCost.toLocaleString()}\n\n📉 ONGOING UPKEEP:\n+$${(militaryAmount * 0.5).toFixed(1)} per turn ($0.50 per strength)\n\n⚡ TECH BONUS:\nYour military fights at ${(100 + stats.technologyLevel * 20).toFixed(0)}% effectiveness!\nEffective Power: ${Math.floor((stats.militaryStrength + militaryAmount) * (1 + stats.technologyLevel * 0.20))}\n\n💡 Higher tech = Cheaper recruitment + Stronger army!`}>
+            <Tooltip content={`⚔️ RECRUIT MILITARY\n\nBuild your military strength for defense and conquest!\n\n💪 RECRUITMENT:\nCurrent Strength: ${stats.militaryStrength}\nRecruiting: +${militaryAmount} strength\nNew Total: ${stats.militaryStrength + militaryAmount}\n\n💰 COST BREAKDOWN:\nBase: $${militaryAmount} × $40 = $${militaryAmount * 40}${militaryReduction > 0 ? `\nTech Discount: -${militaryReduction.toFixed(1)}% (Level ${stats.technologyLevel.toFixed(1)})` : ''}${stats.resourceProfile ? `\nProfile Modifier: ${stats.resourceProfile.name === 'Technological Hub' ? '-10% ✓' : stats.resourceProfile.name === 'Oil Kingdom' ? '+5% ⚠' : stats.resourceProfile.name === 'Precious Metals Trader' ? '+20% ⚠' : 'Standard'}` : ''}${militaryResourceCost.missing.length > 0 ? `\n⚠️ RESOURCE SHORTAGE PENALTY: +${((militaryPenalty - 1) * 100).toFixed(0)}%` : ''}\n\nTotal Cost: $${adjustedMilitaryCost.toLocaleString()}\n\n📦 RESOURCE REQUIREMENTS:\n${militaryResourceCost.formatted}\n${militaryResourceCost.missing.length > 0 ? '\n⚠️ Missing resources increase budget cost!' : '\n✓ All resources available!'}\n\n📉 ONGOING UPKEEP:\n+$${(militaryAmount * 0.5).toFixed(1)} per turn ($0.50 per strength)\n\n⚡ TECH BONUS:\nYour military fights at ${(100 + stats.technologyLevel * 20).toFixed(0)}% effectiveness!\nEffective Power: ${Math.floor((stats.militaryStrength + militaryAmount) * (1 + stats.technologyLevel * 0.20))}\n\n💡 Higher tech = Cheaper recruitment + Stronger army!`}>
               <div className={`w-full rounded-lg px-4 py-3 shadow-lg ${
-                currentBudget < militaryCost
+                currentBudget < adjustedMilitaryCost
                   ? "bg-slate-700/50 opacity-50"
                   : "bg-gradient-to-r from-red-600 to-red-700"
               }`}>
@@ -192,7 +221,10 @@ export function ActionPanel({
                     <label htmlFor="military-slider" className="text-sm font-semibold text-white">
                       ⚔️ Recruit Military
                     </label>
-                    <span className="text-xs text-white/90">${militaryCost.toLocaleString()}</span>
+                    <span className={`text-xs text-white/90 ${militaryResourceCost.missing.length > 0 ? 'text-orange-300' : ''}`}>
+                      ${adjustedMilitaryCost.toLocaleString()}
+                      {militaryResourceCost.missing.length > 0 && ' ⚠️'}
+                    </span>
                   </div>
                   
                   <div className="flex items-center gap-3">
@@ -223,10 +255,10 @@ export function ActionPanel({
                 {/* Action Button */}
                 <button
                   type="button"
-                  disabled={loading !== null || currentBudget < militaryCost}
+                  disabled={loading !== null || currentBudget < adjustedMilitaryCost}
                   onClick={() => handleAction("military")}
                   className={`w-full rounded px-3 py-2 text-sm font-semibold text-white transition-all ${
-                    currentBudget < militaryCost
+                    currentBudget < adjustedMilitaryCost
                       ? "cursor-not-allowed bg-slate-600/50"
                       : loading === "military"
                       ? "bg-red-800/50"

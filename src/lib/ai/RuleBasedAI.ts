@@ -413,7 +413,7 @@ export class RuleBasedAI {
     if (foodAmount > foodConsumption * 10) return true;
     if ((resources.oil || 0) > 100) return true;
     if ((resources.gold || 0) > 50) return true;
-    if ((resources.rare_earth || 0) > 50) return true;
+    if ((resources.steel || 0) > 50) return true; // Steel replaces rare_earth as advanced material
     
     return false;
   }
