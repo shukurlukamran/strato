@@ -7,7 +7,7 @@ import {
   getProfileInfraCostModifier 
 } from "@/lib/game-engine/ProfileModifiers";
 import { MilitaryCalculator } from "@/lib/game-engine/MilitaryCalculator";
-import { ResourceCost } from "@/lib/game-engine/ResourceCost";
+import { ResourceCost, type ResourceCostResult } from "@/lib/game-engine/ResourceCost";
 import type { ResourceProfile } from "@/lib/game-engine/ResourceProfile";
 
 const ActionRequestSchema = z.object({
@@ -130,7 +130,7 @@ export async function POST(req: Request) {
     // Define action costs and effects
     let cost = 0;
     let newStats: Partial<typeof stats> = {};
-    let resourceCostInfo: { required: any[]; missing: any[]; shortage: boolean; penaltyMultiplier: number } | null = null;
+    let resourceCostInfo: ResourceCostResult | null = null;
     
     // Parse resource profile for modifiers
     const resourceProfile = stats.resource_profile as ResourceProfile | null;
