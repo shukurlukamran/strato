@@ -853,21 +853,27 @@ export async function POST(req: Request) {
   }
 
   // Helper function to generate action summary message
-  function generateActionMessage(action: any, countryName: string): { type: string; message: string; data: any } | null {
+  function generateActionMessage(action: any, countryName: string, state: GameState): { type: string; message: string; data: any } | null {
     let actionMessage = "";
     let eventType = action.actionType;
     
     if (action.actionType === "research") {
-      actionMessage = `${countryName} researched technology`;
+      const countryStats = state.data.countryStatsByCountryId[action.countryId];
+      const techLevel = countryStats?.technologyLevel || 0;
+      actionMessage = `${countryName} researched technology Level ${techLevel}`;
     } else if (action.actionType === "infrastructure") {
       // Handle direct infrastructure actions (player actions via /api/actions)
-      actionMessage = `${countryName} built infrastructure`;
+      const countryStats = state.data.countryStatsByCountryId[action.countryId];
+      const infraLevel = countryStats?.infrastructureLevel || 0;
+      actionMessage = `${countryName} built infrastructure Level ${infraLevel}`;
       eventType = "economic"; // Group with economic actions for display
     } else if (action.actionType === "economic") {
       // Handle AI economic actions with subtypes
       const subType = (action.actionData as any)?.subType;
       if (subType === "infrastructure") {
-        actionMessage = `${countryName} built infrastructure`;
+        const countryStats = state.data.countryStatsByCountryId[action.countryId];
+        const infraLevel = countryStats?.infrastructureLevel || 0;
+        actionMessage = `${countryName} built infrastructure Level ${infraLevel}`;
       } else {
         actionMessage = `${countryName} improved economy`;
       }
@@ -911,7 +917,7 @@ export async function POST(req: Request) {
       createdAt: action.created_at,
     };
     
-    const event = generateActionMessage(actionData, country.name);
+    const event = generateActionMessage(actionData, country.name, state);
     if (event) {
       actionSummaryEvents.push(event);
     }
@@ -922,7 +928,7 @@ export async function POST(req: Request) {
     const country = state.data.countries.find(c => c.id === action.countryId);
     if (!country) continue;
     
-    const event = generateActionMessage(action, country.name);
+    const event = generateActionMessage(action, country.name, state);
     if (event) {
       actionSummaryEvents.push(event);
     }
