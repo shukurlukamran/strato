@@ -73,13 +73,14 @@ export function HistoryLog({ gameId, currentTurn }: HistoryLogProps) {
     );
   }
 
-  // Filter to only show relevant events (actions, deals, natural events)
+  // Filter to only show relevant events (actions, deals, natural events, statements)
   // Exclude economic events like population growth and treasury increases
   const actionEvents = history?.events.filter(e => e.type.startsWith('action')) || [];
   const dealEvents = history?.events.filter(e => e.type.startsWith('deal')) || [];
   const naturalEvents = history?.events.filter(e => e.type.startsWith('natural')) || [];
-  
-  const totalRelevantEvents = actionEvents.length + dealEvents.length + naturalEvents.length;
+  const statementEvents = history?.events.filter(e => e.type.startsWith('statement')) || [];
+
+  const totalRelevantEvents = actionEvents.length + dealEvents.length + naturalEvents.length + statementEvents.length;
 
   if (!history || totalRelevantEvents === 0) {
     return (
@@ -125,6 +126,16 @@ export function HistoryLog({ gameId, currentTurn }: HistoryLogProps) {
             ))}
           </div>
         )}
+
+        {/* Statement Events */}
+        {statementEvents.length > 0 && (
+          <div className="space-y-1.5">
+            <div className="mb-1 mt-3 text-xs font-medium text-cyan-400">World News</div>
+            {statementEvents.map((event, idx) => (
+              <EventItem key={`statement-${idx}`} event={event} />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -156,6 +167,12 @@ function EventItem({ event }: { event: HistoryEvent }) {
   } else if (event.type.startsWith('natural')) {
     icon = "🌍";
     textColor = "text-purple-300";
+  } else if (event.type === 'statement.intent') {
+    icon = "📢";
+    textColor = "text-cyan-300";
+  } else if (event.type === 'statement.rumor') {
+    icon = "📰";
+    textColor = "text-cyan-400";
   } else if (event.type.includes('error')) {
     icon = "⚠️";
     textColor = "text-red-400";

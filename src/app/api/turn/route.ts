@@ -4,6 +4,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { GameState } from "@/lib/game-engine/GameState";
 import { TurnProcessor } from "@/lib/game-engine/TurnProcessor";
 import { EconomicEngine } from "@/lib/game-engine/EconomicEngine";
+import { NarrativeEngine } from "@/lib/game-engine/NarrativeEngine";
 import { AIController } from "@/lib/ai/AIController";
 import { ActionPricing } from "@/lib/game-engine/ActionPricing";
 
@@ -909,6 +910,11 @@ export async function POST(req: Request) {
   // Include combat events with detailed outcomes
   const allEvents = [...combatEvents, ...actionSummaryEvents, ...result.events.filter(e => !e.type.startsWith('economic'))];
 
+  // Generate narrative statements for flavor text
+  const narrativeEngine = new NarrativeEngine();
+  const statementEvents = narrativeEngine.generateStatements(state.data.countries);
+  const allEventsWithStatements = [...allEvents, ...statementEvents];
+
   // Persist: mark executed actions, update stats, store snapshot, advance turn.
   // OPTIMIZED: Batch all updates together
   if (result.executedActions.length) {
@@ -976,7 +982,7 @@ export async function POST(req: Request) {
     game_id: gameId,
     turn,
     state_snapshot: state.data,
-    events: allEvents,
+    events: allEventsWithStatements,
     created_at: new Date().toISOString(),
   });
 
@@ -1076,6 +1082,6 @@ export async function POST(req: Request) {
 
   await supabase.from("games").update({ current_turn: turn + 1, updated_at: new Date().toISOString() }).eq("id", gameId);
 
-  return NextResponse.json({ ok: true, nextTurn: turn + 1, events: allEvents });
+  return NextResponse.json({ ok: true, nextTurn: turn + 1, events: allEventsWithStatements });
 }
 
