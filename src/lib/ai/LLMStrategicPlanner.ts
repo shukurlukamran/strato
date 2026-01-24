@@ -191,8 +191,16 @@ export class LLMStrategicPlanner {
   }
   
   /**
-   * BATCH analyze multiple countries in a SINGLE API call (80% cost reduction!)
-   * This is the most efficient way to get strategic analysis for all AI countries.
+   * BATCH analyze multiple countries in a SINGLE API call.
+   * 
+   * ⚠️ DEPRECATED: This method is prone to json_validate_failed errors from Groq
+   * when generating complex nested JSON for multiple countries. Replaced by parallel
+   * individual calls in turn/route.ts which are:
+   * - More reliable (simpler JSON = fewer validation failures)
+   * - Just as fast (parallel execution = 2-4s vs 3-4s for batch)
+   * - No extra cost (Grok doesn't charge per request)
+   * 
+   * Kept for reference but not actively used.
    */
   async analyzeSituationBatch(
     state: GameStateSnapshot,

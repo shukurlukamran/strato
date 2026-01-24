@@ -180,42 +180,57 @@ export async function POST(req: Request) {
   // LLM is used at turn 2, then every 10 turns (2, 10, 20, 30, 40...)
   const isLLMTurn = turn === 2 || (turn >= 10 && turn % 10 === 0);
   
-  console.log(`[Turn API] Processing turn ${turn}. LLM mode: ${isLLMTurn ? 'ENABLED (BATCH)' : 'DISABLED (using rule-based AI)'}`);
+  console.log(`[Turn API] Processing turn ${turn}. LLM mode: ${isLLMTurn ? 'ENABLED (PARALLEL)' : 'DISABLED (using rule-based AI)'}`);
   
-  // BATCH OPTIMIZATION: If it's an LLM turn, analyze ALL countries in ONE API call
+  // PARALLEL INDIVIDUAL LLM CALLS: More reliable than batch (avoids json_validate_failed)
+  // Grok doesn't charge per request, so parallel individual calls are optimal
   let batchAnalyses: Map<string, any> | null = null;
   if (isLLMTurn && aiCountries.length > 0) {
     try {
       const llmPlanner = new (await import("@/lib/ai/LLMStrategicPlanner")).LLMStrategicPlanner();
       
-      // Prepare all countries for batch analysis
-      const countriesForBatch = aiCountries.map(country => ({
+      // Prepare all countries for analysis
+      const countriesForAnalysis = aiCountries.map(country => ({
         countryId: country.id,
         stats: state.data.countryStatsByCountryId[country.id]
       })).filter(c => c.stats); // Only include countries with stats
       
-      if (countriesForBatch.length > 0) {
-        console.log(`[Turn API] 🚀 BATCH analyzing ${countriesForBatch.length} countries in SINGLE API call`);
-        console.log(`[Turn API] Requested country IDs: [${countriesForBatch.map(c => c.countryId.substring(0, 8)).join(', ')}...]`);
-        batchAnalyses = await llmPlanner.analyzeSituationBatch(state.data, countriesForBatch, cities);
+      if (countriesForAnalysis.length > 0) {
+        console.log(`[Turn API] 🚀 PARALLEL analyzing ${countriesForAnalysis.length} countries (individual calls for reliability)`);
+        console.log(`[Turn API] Country IDs: [${countriesForAnalysis.map(c => c.countryId.substring(0, 8)).join(', ')}...]`);
         
-        // Sanity logging: verify matching
-        const matchedCountries = Array.from(batchAnalyses.keys());
-        const requestedSet = new Set(countriesForBatch.map(c => c.countryId));
-        const allMatched = matchedCountries.every(id => requestedSet.has(id));
+        // Make all individual calls in parallel for best performance
+        const startTime = Date.now();
+        const analysisPromises = countriesForAnalysis.map(({ countryId, stats }) =>
+          llmPlanner.analyzeSituation(state.data, countryId, stats)
+            .then(analysis => ({ countryId, analysis }))
+            .catch(error => {
+              console.error(`[Turn API] Failed to analyze ${countryId}:`, error);
+              return { countryId, analysis: null };
+            })
+        );
         
-        console.log(`[Turn API] ✓ Batch analysis complete: ${batchAnalyses.size}/${countriesForBatch.length} matched`);
-        console.log(`[Turn API] Matched country IDs: [${matchedCountries.map(id => id.substring(0, 8)).join(', ')}${batchAnalyses.size !== countriesForBatch.length ? '...' : ''}]`);
+        const results = await Promise.all(analysisPromises);
+        const duration = Date.now() - startTime;
         
-        if (!allMatched) {
-          console.warn(`[Turn API] ⚠️ Some returned analyses don't match requested IDs; may indicate ID normalization issues`);
+        // Build results map
+        batchAnalyses = new Map();
+        let successCount = 0;
+        for (const { countryId, analysis } of results) {
+          if (analysis) {
+            batchAnalyses.set(countryId, analysis);
+            successCount++;
+          }
         }
-        if (batchAnalyses.size < countriesForBatch.length) {
-          console.warn(`[Turn API] ⚠️ Batch analysis returned fewer results than requested (${batchAnalyses.size}/${countriesForBatch.length})`);
+        
+        console.log(`[Turn API] ✓ Parallel analysis complete in ${duration}ms: ${successCount}/${countriesForAnalysis.length} succeeded`);
+        
+        if (successCount < countriesForAnalysis.length) {
+          console.warn(`[Turn API] ⚠️ ${countriesForAnalysis.length - successCount} countries failed analysis, will use cached plans`);
         }
       }
-    } catch (batchError) {
-      console.error(`[Turn API] Batch analysis failed, will use cached plans:`, batchError);
+    } catch (error) {
+      console.error(`[Turn API] Parallel analysis failed, will use cached plans:`, error);
     }
   }
   
