@@ -122,6 +122,7 @@ export class MilitaryAI {
             createdAt: new Date().toISOString(),
           });
           remainingBudget -= pricingResult.cost;
+        }
       }
     }
 
