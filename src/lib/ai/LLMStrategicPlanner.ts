@@ -232,15 +232,15 @@ export class LLMStrategicPlanner {
           messages: [
             {
               role: "system",
-              content: "You are a strategic AI advisor in a turn-based conquest game. Analyze each country's situation using the provided mechanics and context. Produce the best strategic plan considering economic growth, military security, and expansion opportunities. Return ONLY valid JSON, no explanations."
+              content: "You are a strategic AI advisor in a turn-based conquest game. Analyze each country's situation using the provided mechanics and context. Produce the best strategic plan considering economic growth, military security, and expansion opportunities. YOU MUST RESPOND WITH VALID JSON ONLY. NO MARKDOWN, NO EXPLANATIONS, ONLY JSON."
             },
             {
               role: "user",
               content: batchPrompt
             }
           ],
-          temperature: 0.5,  // Higher temperature for more varied/aggressive strategies
-          top_p: 0.95,
+          temperature: 0.4,  // Lower temperature for more reliable JSON in batch mode
+          top_p: 0.9,
           max_tokens: 8000,  // More tokens for multiple countries
           response_format: { type: "json_object" }  // Force JSON output
         })
@@ -314,6 +314,14 @@ export class LLMStrategicPlanner {
 
           if (analyses.size > 0) {
             console.log(`[LLM Planner] ✓ Retry successful: parsed ${analyses.size} countries`);
+            
+            // Validate retry quality
+            for (const [countryId, analysis] of analyses.entries()) {
+              const stepCount = analysis.planItems?.filter(i => i.kind === 'step').length || 0;
+              if (stepCount < 8) {
+                console.error(`[LLM Planner] ⚠️ RETRY QUALITY FAILURE: ${countryId} got only ${stepCount}/8 steps after retry`);
+              }
+            }
           } else {
             console.log(`[LLM Planner] ✗ Retry also failed, falling back to rule-based planning`);
           }
@@ -341,21 +349,46 @@ export class LLMStrategicPlanner {
           const planItemsCount = analysis.planItems?.length || 0;
           const executableSteps = analysis.planItems?.filter(item => item.kind === 'step' && item.execution).length || 0;
 
-          console.log(`[LLM Planner] ✓ ${country?.name || countryId}: ${analysis.strategicFocus} (${planSource}, ${planItemsCount} items, ${executableSteps} executable)`);
-          console.log(`[LLM Planner]   Rationale: ${analysis.rationale.substring(0, 80)}${analysis.rationale.length > 80 ? '...' : ''}`);
-          
-          // PHASE 4: Enhanced logging - show detailed step breakdown
+          // PHASE D: Enhanced logging for plan quality tracking
           if (analysis.planItems && analysis.planItems.length > 0) {
+            const steps = analysis.planItems.filter(i => i.kind === 'step');
+            const countryName = country?.name || countryId.substring(0, 8);
+            
+            // Count by action type
             const byType: Record<string, number> = {};
-            for (const item of analysis.planItems) {
-              if (item.kind === 'step' && item.execution) {
-                const type = item.execution.actionType;
+            const repeatableCount = steps.filter(s => s.stop_when && Object.keys(s.stop_when).length > 0).length;
+            
+            steps.forEach(step => {
+              if (step.execution?.actionType) {
+                const type = step.execution.actionType;
                 byType[type] = (byType[type] || 0) + 1;
               }
+            });
+            
+            const typeStr = Object.entries(byType)
+              .map(([type, count]) => `${type}=${count}`)
+              .join(', ');
+            
+            console.log(`[LLM Planner] ${countryName}: ${steps.length} steps | By Type: ${typeStr} | Repeatable: ${repeatableCount}`);
+            
+            // Quality warnings
+            if (steps.length < 8) {
+              console.warn(`[LLM Planner] ⚠️ QUALITY WARNING: ${countryName} has only ${steps.length}/8 steps (BELOW MINIMUM)`);
             }
-            const typeBreakdown = Object.entries(byType).map(([t, c]) => `${t}=${c}`).join(', ');
-            console.log(`[LLM Planner]   By Type: ${typeBreakdown || '(no executable steps)'}`);
+            
+            if (steps.length > 10) {
+              console.warn(`[LLM Planner] ⚠️ QUALITY WARNING: ${countryName} has ${steps.length}/10 steps (ABOVE MAXIMUM)`);
+            }
+            
+            const executableCount = steps.filter(s => s.execution).length;
+            if (executableCount < steps.length * 0.8) {
+              console.warn(`[LLM Planner] ⚠️ QUALITY WARNING: ${countryName} has only ${executableCount}/${steps.length} executable steps (low ratio)`);
+            }
+          } else {
+            console.log(`[LLM Planner] ✓ ${country?.name || countryId}: ${analysis.strategicFocus} (${planSource}, ${planItemsCount} items, ${executableSteps} executable)`);
           }
+          
+          console.log(`[LLM Planner]   Rationale: ${analysis.rationale.substring(0, 80)}${analysis.rationale.length > 80 ? '...' : ''}`)
 
           // Log recommended actions (always show in batch mode for Vercel visibility)
           if (analysis.recommendedActions.length > 0) {
@@ -375,6 +408,34 @@ export class LLMStrategicPlanner {
               }
             }
           }
+        }
+      }
+      
+      // PHASE D: Log batch summary statistics
+      if (results.size > 0) {
+        const stats = {
+          total: results.size,
+          withPlans: 0,
+          avgSteps: 0,
+          minSteps: Infinity,
+          maxSteps: 0,
+          lowQuality: 0, // < 8 steps
+        };
+        
+        for (const [countryId, analysis] of results.entries()) {
+          if (analysis.planItems && analysis.planItems.length > 0) {
+            stats.withPlans++;
+            const stepCount = analysis.planItems.filter(i => i.kind === 'step').length;
+            stats.avgSteps += stepCount;
+            stats.minSteps = Math.min(stats.minSteps, stepCount);
+            stats.maxSteps = Math.max(stats.maxSteps, stepCount);
+            if (stepCount < 8) stats.lowQuality++;
+          }
+        }
+        
+        if (stats.withPlans > 0) {
+          stats.avgSteps = Math.round(stats.avgSteps / stats.withPlans);
+          console.log(`[LLM Planner] 📊 Batch Summary: ${stats.total} countries | Avg steps: ${stats.avgSteps} | Range: ${stats.minSteps}-${stats.maxSteps} | Low quality: ${stats.lowQuality}`);
         }
       }
       
@@ -528,7 +589,13 @@ export class LLMStrategicPlanner {
             const retryResponseText = retryData.choices?.[0]?.message?.content || "";
             const analysis = this.parseStrategicAnalysis(retryResponseText, state.turn);
             
-            console.log(`[LLM Planner] ✓ Retry successful`);
+            // Validate retry quality
+            const stepCount = analysis.planItems?.filter(i => i.kind === 'step').length || 0;
+            if (stepCount < 8) {
+              console.error(`[LLM Planner] ⚠️ RETRY QUALITY FAILURE: ${countryId} got only ${stepCount}/8 steps after retry`);
+            } else {
+              console.log(`[LLM Planner] ✓ Retry successful with ${stepCount} steps`);
+            }
             
             // Cache and persist
             this.lastAnalysisCache.set(cacheKey, analysis);
@@ -573,23 +640,29 @@ export class LLMStrategicPlanner {
 Budget: $${stats.budget} | Tech L${stats.technologyLevel} | Mil ${stats.militaryStrength} (${economicAnalysis.effectiveMilitaryStrength} effective)
 Status: ${economicAnalysis.isUnderDefended ? 'Under-defended' : 'OK'} | ${economicAnalysis.turnsUntilBankrupt !== null ? `Bankrupt in ${economicAnalysis.turnsUntilBankrupt}t` : 'Stable'}
 
-CRITICAL: Military actions MUST have subType ("recruit" or "attack"), or they will be filtered out.
-
-PHASE 3: Plan must have 8-10 steps minimum (was 6-8).
+CRITICAL REQUIREMENTS FOR RETRY:
+1. EVERY country MUST have 8-10 action steps (MINIMUM 8, MAXIMUM 10)
+2. EVERY step MUST have complete execution object with actionType and actionData
+3. Military steps MUST have subType: "recruit" or "attack"
+4. Economic steps MUST have subType: "infrastructure" and targetLevel
+5. Research steps MUST have targetLevel
+6. NO escaped quotes, NO special characters, NO markdown
+7. NO extra fields outside the schema shown below
+8. Ensure ALL braces and brackets are properly closed
 
 Return ONLY this JSON:
 {
   "focus": "economy" or "military" or "balanced",
-  "rationale": "Brief reason (max 50 chars)",
+  "rationale": "Brief reason (max 80 chars)",
   "action_plan": [
-    {"id": "a1", "instruction": "Action 1", "execution": {"actionType": "research", "actionData": {"targetLevel": 2}}},
-    {"id": "a2", "instruction": "Military action", "execution": {"actionType": "military", "actionData": {"subType": "recruit", "amount": 15}}},
-    {"id": "a3", "instruction": "Economic action", "execution": {"actionType": "economic", "actionData": {"subType": "infrastructure", "targetLevel": 1}}},
-    {"id": "a4", "instruction": "Tech upgrade", "execution": {"actionType": "research", "actionData": {"targetLevel": 3}}},
-    {"id": "a5", "instruction": "More recruitment", "execution": {"actionType": "military", "actionData": {"subType": "recruit", "amount": 10}}},
-    {"id": "a6", "instruction": "Infrastructure expansion", "execution": {"actionType": "economic", "actionData": {"subType": "infrastructure", "targetLevel": 2}}},
-    {"id": "a7", "instruction": "Research advancement", "execution": {"actionType": "research", "actionData": {"targetLevel": 4}}},
-    {"id": "a8", "instruction": "Final military buildup", "execution": {"actionType": "military", "actionData": {"subType": "recruit", "amount": 10}}}
+    {"id": "step1", "instruction": "Research tech level 2", "execution": {"actionType": "research", "actionData": {"targetLevel": 2}}},
+    {"id": "step2", "instruction": "Recruit troops for defense", "execution": {"actionType": "military", "actionData": {"subType": "recruit", "amount": 15}}},
+    {"id": "step3", "instruction": "Upgrade infrastructure", "execution": {"actionType": "economic", "actionData": {"subType": "infrastructure", "targetLevel": 2}}},
+    {"id": "step4", "instruction": "Research tech level 3", "execution": {"actionType": "research", "actionData": {"targetLevel": 3}}},
+    {"id": "step5", "instruction": "More recruitment", "execution": {"actionType": "military", "actionData": {"subType": "recruit", "amount": 10}}},
+    {"id": "step6", "instruction": "Attack if strong enough", "execution": {"actionType": "military", "actionData": {"subType": "attack", "targetCityId": "CITY_UUID_FROM_CANDIDATES", "allocatedStrength": 25}}},
+    {"id": "step7", "instruction": "Upgrade infrastructure again", "execution": {"actionType": "economic", "actionData": {"subType": "infrastructure", "targetLevel": 3}}},
+    {"id": "step8", "instruction": "Final tech push", "execution": {"actionType": "research", "actionData": {"targetLevel": 4}}}
   ],
   "risks": ["Risk 1"],
   "diplomacy": {},
@@ -665,38 +738,46 @@ Return ONLY this JSON:
 
     return `${CACHED_GAME_RULES}
 
-RETRY MODE: Previous batch parsing failed. Provide simpler JSON response.
+PREVIOUS ATTEMPT FAILED JSON VALIDATION. THIS IS A RETRY.
 
-COUNTRIES: ${countrySummaries}
+Return ONLY this JSON structure. NO markdown formatting. NO code blocks. NO explanatory text. JUST THE JSON:
 
-CRITICAL REQUIREMENTS (PHASE 3 - UPDATED):
-1. EVERY step MUST have valid "execution" object
-2. Military steps MUST specify subType: "recruit" or "attack"
-   - ❌ WRONG: {"actionType": "military", "actionData": {"amount": 15}}
-   - ✅ CORRECT: {"actionType": "military", "actionData": {"subType": "recruit", "amount": 15}}
-3. Plan MUST have 8-10 steps minimum (UPDATED from 6-8)
-4. countryId MUST match exactly (case-sensitive)
-
-Return ONLY this JSON structure (8-10 steps REQUIRED):
 {
   "countries": [
     {
-      "countryId": "country_id",
-      "focus": "economy|balanced|military",
-      "rationale": "Brief reason",
+      "countryId": "EXACT_UUID_FROM_REQUEST",
+      "focus": "economy|military|balanced",
+      "rationale": "Brief reason max 80 chars",
       "action_plan": [
-        {"id": "action_id", "instruction": "Action description", "execution": {"actionType": "research|economic|military", "actionData": {"subType": "..."}}},
-        {"id": "action_id2", "instruction": "Action 2", "execution": {"actionType": "research|economic|military", "actionData": {"subType": "..."}}},
-        {"id": "action_id3", "instruction": "Action 3", "execution": {"actionType": "research|economic|military", "actionData": {"subType": "..."}}},
-        {"id": "action_id4", "instruction": "Action 4", "execution": {"actionType": "research|economic|military", "actionData": {"subType": "..."}}},
-        {"id": "action_id5", "instruction": "Action 5", "execution": {"actionType": "research|economic|military", "actionData": {"subType": "..."}}},
-        {"id": "action_id6", "instruction": "Action 6", "execution": {"actionType": "research|economic|military", "actionData": {"subType": "..."}}},
-        {"id": "action_id7", "instruction": "Action 7", "execution": {"actionType": "research|economic|military", "actionData": {"subType": "..."}}},
-        {"id": "action_id8", "instruction": "Action 8", "execution": {"actionType": "research|economic|military", "actionData": {"subType": "..."}}}
-      ]
+        {"id":"step1","instruction":"Research tech level 2","execution":{"actionType":"research","actionData":{"targetLevel":2}}},
+        {"id":"step2","instruction":"Recruit troops for defense","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":15}}},
+        {"id":"step3","instruction":"Upgrade infrastructure","execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}},
+        {"id":"step4","instruction":"Research tech level 3","execution":{"actionType":"research","actionData":{"targetLevel":3}}},
+        {"id":"step5","instruction":"More recruitment","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}},
+        {"id":"step6","instruction":"Attack if strong enough","execution":{"actionType":"military","actionData":{"subType":"attack","targetCityId":"CITY_UUID_FROM_CANDIDATES","allocatedStrength":25}}},
+        {"id":"step7","instruction":"Upgrade infrastructure again","execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":3}}},
+        {"id":"step8","instruction":"Final tech push","execution":{"actionType":"research","actionData":{"targetLevel":4}}}
+      ],
+      "diplomacy": {}
     }
   ]
-}`;
+}
+
+CRITICAL REQUIREMENTS FOR RETRY:
+1. EVERY country MUST have 8-10 action steps (MINIMUM 8, MAXIMUM 10)
+2. EVERY step MUST have complete execution object with actionType and actionData
+3. Military steps MUST have subType: "recruit" or "attack"
+4. Economic steps MUST have subType: "infrastructure" and targetLevel
+5. Research steps MUST have targetLevel
+6. Use EXACT countryId from the request (full UUID, no abbreviations)
+7. NO escaped quotes, NO special characters, NO markdown
+8. NO extra fields outside the schema shown above
+9. Ensure ALL braces and brackets are properly closed
+
+COUNTRIES TO ANALYZE:
+${countrySummaries}
+
+Return ONLY the JSON. Nothing else.`;
   }
 
   /**
@@ -863,6 +944,12 @@ NEIGHBORS: ${neighbors}
 Plan ${this.LLM_CALL_FREQUENCY} turns (2-3 actions/turn, capped per turn). Include at least one fallback step with "when" condition. Consider BOTH economic AND military strategies.
 IMPORTANT: Use "stop_when" conditions (e.g., stop_when: {tech_level_gte: X}) to allow steps to repeat across multiple turns. Steps without stop_when are executed only once.
 
+CRITICAL REQUIREMENT: You MUST generate between 8-10 action steps. Plans with fewer than 8 steps will be marked as LOW QUALITY and may fail validation.
+- If a country is wealthy/stable: Add economic diversification (multiple infra upgrades, trading strategies)
+- If a country is weak: Add defensive military steps + economic recovery steps (infrastructure, resource management)
+- If a country is aggressive: Add attack sequences with preparatory recruitment
+- Use repeatable steps (with stop_when) to ensure plan longevity across multiple turns
+
 JSON ONLY - EXAMPLE STRATEGIES:
 
 ECONOMIC FOCUS:
@@ -897,8 +984,10 @@ REQUIRED STRUCTURE:
   "focus": "economy"|"military"|"balanced",
   "rationale": "Brief strategic reasoning",
   "action_plan": [
-    // 6-8 executable steps. Use stop_when to allow repeatable steps, omit for one-time steps.
-    // Example: {"id":"id","instruction":"...","stop_when":{"tech_level_gte":X},"execution":{...}}
+    // REQUIRED: 8-10 executable steps (minimum 8, maximum 10)
+    // Use stop_when to allow repeatable steps, omit for one-time steps
+    // Example repeatable: {"id":"tech3","instruction":"Upgrade tech to L3","stop_when":{"tech_level_gte":3},"execution":{"actionType":"research","actionData":{"targetLevel":3}}}
+    // Example one-time: {"id":"attack1","instruction":"Attack weak neighbor","execution":{"actionType":"military","actionData":{"subType":"attack","targetCityId":"UUID","allocatedStrength":30}}}
   ],
   "risks": ["Top risk #1", "Top risk #2"],
   "plan_rationale": "Why these specific steps",
@@ -921,7 +1010,7 @@ VALIDATION CHECKLIST (verify before responding):
 ✓ Military steps have execution.actionData.subType as "recruit" or "attack"
 ✓ Economic steps have execution.actionData.subType as "infrastructure"
 ✓ Research steps have execution.actionData.targetLevel
-✓ Plan has 6-8 total steps
+✓ Plan has 8-10 total steps (REQUIRED: minimum 8, maximum 10)
 ✓ countryId matches exactly one of the provided IDs (case-sensitive)
 
 BE LLM-LED: Choose the best strategy yourself. Only validate executability at engine boundary.`;
@@ -1184,14 +1273,11 @@ ${countryPrompts}
 CRITICAL CONSTRAINT: countryId MUST be exactly one of these values:
 ${countries.map(c => `  - ${c.countryId}`).join('\n')}
 
-CRITICAL JSON RULES - MUST FOLLOW OR JSON WILL FAIL:
-1. Return ONLY this exact structure - NO extra fields, NO nested objects outside schema
-2. Every country MUST have these exact fields: countryId, focus, rationale, action_plan, diplomacy
-3. action_plan MUST be array of objects with: id, instruction, execution (with actionType + actionData)
-4. NO string keys with special characters
-5. NO incomplete objects or partial JSON arrays
-6. Every execution object MUST have complete actionType and actionData fields
-7. No escaped quotes inside strings - use simple text only
+JSON RULES:
+1. Return ONLY JSON with "countries" array
+2. Each country: countryId, focus, rationale, action_plan (8-10 items), diplomacy
+3. Each action: id, instruction, execution (actionType + actionData)
+4. Use exact countryId from list above (full UUID)
 
 EXAMPLE (COPY THIS EXACT STRUCTURE):
 {
