@@ -67,9 +67,6 @@ Fresh LLM: balanced - Strong enough to attack Aurum, invest in infra
 - Countries are able to buy/sell resources from/to black market at significantly worse rates than they would be able to get via trading with other countries. (When implementing this, remove allowing increase of infra and tech with penalty when resources are missing - game shouldn't allow these upgrades if resource requirements aren't met - now countries and players can buy them from black market too so they have option)
 - History log should include any deals realized with details, including black market trades.
 
-In Defense window when player is attacked:
-- "Allocated strength (58) exceeds effective military strength (56)" error after submitting the defense allocation even though effective military strength was 58, not 56.
-
 - Prevent cheating in the chat deals (you can get money for technology level now, but tech level isn't actually transferred, for example)
 - Prevent abuse in the LLM chat (It shouldn't be possible to use it for anything unrelated to game - we also need to have some hard limits to prevent spamming, but this limit shouldn't interrupt gameplay. And negotiations may even cost some small money in the game to slightly discourage people to overuse it unnecessarily - Come up with a rational fair plan)
 - Borders are sometimes messed up, especially when cities are captured. Sometimes there are some blank areas that doesn't belong to any country. We need to make these super defined with almost no place for error. 
@@ -86,10 +83,11 @@ In Defense window when player is attacked:
 - Taking back your captured city shouldn't be condemned by other countries as an act of aggression.
 - By turn 15-20, everyone is hostile to one another. We don't wanna discourage military actions much as the gameplay should be led by LLM strategy. But we should do something (such as implementing peace and non-agression treaties for X amount of turns as part of Deals)
 - Implement non-aggression deal (currently our deals only support single-turn deals though), alliance, etc.
+- Players have advantage in attack/defense logic: Player attacks are resolved in the next turn, AI attacks gives 1 turn to Player for defense allocation. Solution: When player ends turn, after AI countries made their moves, before moving to the next turn, if there's any attack on player, stay in the same turn and require the player to allocate defense on the same turn, and end turn once the defense allocation has been done by player for all incoming attacks.
 -------
 
 Analyze root causes of these, understand what is happening, and then implement fixes. 
 
 Make sure everything we build is aligned with LLM in both Deals chat and End turn decisions and anywhere else it may be used, and also with Supabase database.
 
-Analyze root causes of these, understand what is happening, and create a concise plan with no fillers for the implementation for helping other AI models to build it.
+Analyze root causes of these, understand what is happening, and create a concise plan with no fillers or bullshit for the implementation for helping other AI models to build it.
