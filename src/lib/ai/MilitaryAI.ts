@@ -940,7 +940,7 @@ Your decision:`;
       
       // Enhanced diagnostics: show why steps were filtered
       const reasons = { wrongDomain: 0, noExecution: 0, alreadyDone: 0, gatingFailed: 0, wrongSubType: 0, banned: 0 };
-      const wrongDomainSteps: string[] = [];
+      const wrongDomainSteps: Array<{id: string, type: string}> = [];
       
       for (const s of steps) {
         if (!s.execution) {
@@ -949,7 +949,7 @@ Your decision:`;
         }
         if (s.execution.actionType !== "military") {
           reasons.wrongDomain++;
-          wrongDomainSteps.push(`${s.id}:${s.execution.actionType}`);
+          wrongDomainSteps.push({id: s.id, type: s.execution.actionType});
           continue;
         }
         if (this.isStopConditionMet(s.stop_when, stats)) {
@@ -977,7 +977,11 @@ Your decision:`;
       
       console.log(`[LLM Plan Debug] Step filtering breakdown (${requiredSubType}):`, reasons);
       if (wrongDomainSteps.length > 0) {
-        console.log(`[LLM Plan Debug] ⚠️ ${wrongDomainSteps.length} steps wrong actionType (expected military):`, wrongDomainSteps.join(', '));
+        // PHASE 4: Enhanced filtering log for military AI
+        console.log(`[Military AI] ⚠️ Filtered ${wrongDomainSteps.length} steps with wrong actionType (expected military):`);
+        wrongDomainSteps.forEach(step => {
+          console.log(`[Military AI]   - ${step.id}: ${step.type}`);
+        });
       }
     }
     return null;

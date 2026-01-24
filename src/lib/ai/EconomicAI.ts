@@ -523,7 +523,7 @@ export class EconomicAI {
     if (this.debugLLMPlan && steps.length > 0) {
       // Collect diagnostics about why steps were filtered
       const reasons = { wrongDomain: 0, noExecution: 0, alreadyDone: 0, gatingFailed: 0 };
-      const wrongDomainSteps: string[] = [];
+      const wrongDomainSteps: Array<{id: string, type: string}> = [];
       
       for (const s of steps) {
         if (!s.execution) {
@@ -532,7 +532,7 @@ export class EconomicAI {
         }
         if (s.execution.actionType !== "research" && s.execution.actionType !== "economic") {
           reasons.wrongDomain++;
-          wrongDomainSteps.push(`${s.id}:${s.execution.actionType}`);
+          wrongDomainSteps.push({id: s.id, type: s.execution.actionType});
           continue;
         }
         if (this.isStopConditionMet(s.stop_when, stats)) {
@@ -551,7 +551,11 @@ export class EconomicAI {
       
       console.log(`[LLM Plan Debug] No actionable economic step found (all ${steps.length} steps filtered):`, reasons);
       if (wrongDomainSteps.length > 0) {
-        console.log(`[LLM Plan Debug] ⚠️ ${wrongDomainSteps.length} steps wrong actionType (expected research|economic):`, wrongDomainSteps.join(', '));
+        // PHASE 4: Enhanced filtering log
+        console.log(`[Economic AI] ⚠️ Filtered ${wrongDomainSteps.length} steps with wrong actionType (expected research|economic):`);
+        wrongDomainSteps.forEach(step => {
+          console.log(`[Economic AI]   - ${step.id}: ${step.type}`);
+        });
       }
     }
     return null;

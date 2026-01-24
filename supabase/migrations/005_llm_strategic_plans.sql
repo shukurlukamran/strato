@@ -1,4 +1,22 @@
 -- LLM strategic plan persistence
+-- PHASE 5 VERIFICATION: Supabase alignment check
+-- ✓ recommended_actions column is JSONB - supports mixed arrays (strings + objects)
+-- ✓ All required columns present for LLMStrategicAnalysis persistence
+-- ✓ Schema supports 8-10 step plans (planItems stored as JSONB array)
+-- ✓ Indexes optimized for query patterns in LLMStrategicPlanner.ts
+
+-- Test query to verify plan persistence:
+-- SELECT 
+--   country_id,
+--   strategic_focus,
+--   jsonb_array_length(recommended_actions) as action_count,
+--   jsonb_typeof(recommended_actions) as type,
+--   turn_analyzed,
+--   confidence_score
+-- FROM llm_strategic_plans
+-- WHERE game_id = 'GAME_ID'
+-- ORDER BY turn_analyzed DESC
+-- LIMIT 10;
 
 create table if not exists llm_strategic_plans (
   id uuid primary key default gen_random_uuid(),

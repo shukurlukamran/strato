@@ -36,3 +36,5 @@ Analyze root causes of these, understand what is happening, and create a concise
 Analyze the plan carefully, understand what is happening, and then implement fixes. Feel free to ask me if there's anything unclear or anything you wanna clarify further regarding the plan. Make sure everything we build is also aligned with Supabase database.
 
 We implemented the plan at @  Analyze and check to verify if these are now implemented correctly. If not, create a concise plan with no fillers or bullshit for the implementation for helping other AI models to build it. Make sure everything we build is also aligned with Supabase database.
+
+We implemented @.plan.md and I'm sending vercel logs for different turns below. Analyze them to verify if the plan is now implemented correctly. If not, create a comprehensive plan for the implementation for helping other AI models to build it. Make sure everything we build is also aligned with Supabase database.
