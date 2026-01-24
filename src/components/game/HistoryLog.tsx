@@ -75,12 +75,11 @@ export function HistoryLog({ gameId, currentTurn }: HistoryLogProps) {
 
   // Filter to only show relevant events (actions, deals, natural events, statements)
   // Exclude economic events like population growth and treasury increases
-  const actionEvents = history?.events.filter(e => e.type.startsWith('action')) || [];
+  const actionEvents = history?.events.filter(e => e.type.startsWith('action') || e.type.startsWith('statement')) || [];
   const dealEvents = history?.events.filter(e => e.type.startsWith('deal')) || [];
   const naturalEvents = history?.events.filter(e => e.type.startsWith('natural')) || [];
-  const statementEvents = history?.events.filter(e => e.type.startsWith('statement')) || [];
 
-  const totalRelevantEvents = actionEvents.length + dealEvents.length + naturalEvents.length + statementEvents.length;
+  const totalRelevantEvents = actionEvents.length + dealEvents.length + naturalEvents.length;
 
   if (!history || totalRelevantEvents === 0) {
     return (
@@ -123,16 +122,6 @@ export function HistoryLog({ gameId, currentTurn }: HistoryLogProps) {
             <div className="mb-1 mt-3 text-xs font-medium text-purple-400">Natural Events</div>
             {naturalEvents.map((event, idx) => (
               <EventItem key={`natural-${idx}`} event={event} />
-            ))}
-          </div>
-        )}
-
-        {/* Statement Events */}
-        {statementEvents.length > 0 && (
-          <div className="space-y-1.5">
-            <div className="mb-1 mt-3 text-xs font-medium text-cyan-400">World News</div>
-            {statementEvents.map((event, idx) => (
-              <EventItem key={`statement-${idx}`} event={event} />
             ))}
           </div>
         )}

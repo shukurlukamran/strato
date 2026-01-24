@@ -16,7 +16,6 @@
 
 - City transfer mechanism in Deal Chat (analyze and see what can be exchanged or agreed with the current state of the game but doesn't exist in the deal chat's implementation capabilities)
 - Pulsing red border or persistent indicator for isUnderAttack for cities
-- Based on LLM analysis and recommended actions, each turn end, choose 2 random countries that make a statement on 2 random things each. These statements will be shown in the History log. For example, X warns Y for building massive army in the neighborhood; X promises to be the most technologically advanced nation soon, etc. These should give some hint to these countries' plans or intentions, but shouldn't fully disclose everything. (we can create 100 pre-made statements that can be used with rules. There should be many premade statements so they don't repeat often.)
 - Player can hire an advisor by clicking "Hire Advisor" button that can tell them what they can improve (the advisor will be the same logic with LLM for AI countries). It should work immediately without needing to end the turn. Advisor can be hired only once each turn.
 - AI countries may have dictators who thinks of themselves more than the country, and potential revolutions, protests, anger of people, etc
 - LLM should have an understanding that the country is being attacked by another country or its cities have been captured in the last few turns.
