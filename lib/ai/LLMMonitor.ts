@@ -280,7 +280,8 @@ class LLMMonitor {
 }
 
 // Export for use
-export { LLMMonitor, LLMMonitorAlert };
+export { LLMMonitor };
+export type { LLMMonitorAlert };
 
 // CLI Support
 if (require.main === module) {
