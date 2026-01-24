@@ -13,6 +13,29 @@ const BodySchema = z.object({
 });
 
 /**
+ * Randomly distributes statement events among other events to avoid them always appearing at the bottom
+ */
+function shuffleEventsWithStatements(
+  events: Array<{ type: string; message: string; data?: Record<string, unknown> }>,
+  statements: Array<{ type: string; message: string; data?: Record<string, unknown> }>
+): Array<{ type: string; message: string; data?: Record<string, unknown> }> {
+  if (statements.length === 0) return events;
+  if (events.length === 0) return statements;
+
+  const result = [...events];
+  const availableSlots = events.length + statements.length;
+
+  // Insert statements at random positions
+  for (const statement of statements) {
+    // Choose a random position in the current result array (including after the last element)
+    const insertPosition = Math.floor(Math.random() * (result.length + 1));
+    result.splice(insertPosition, 0, statement);
+  }
+
+  return result;
+}
+
+/**
  * Server-side turn advancement endpoint.
  * For now: Supabase-only (memory fallback is intentionally not durable).
  */
@@ -913,7 +936,9 @@ export async function POST(req: Request) {
   // Generate narrative statements for flavor text
   const narrativeEngine = new NarrativeEngine();
   const statementEvents = narrativeEngine.generateStatements(state.data.countries);
-  const allEventsWithStatements = [...allEvents, ...statementEvents];
+
+  // Randomly intersperse statement events among other events
+  const allEventsWithStatements = shuffleEventsWithStatements(allEvents, statementEvents);
 
   // Persist: mark executed actions, update stats, store snapshot, advance turn.
   // OPTIMIZED: Batch all updates together
