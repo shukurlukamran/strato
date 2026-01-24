@@ -9,6 +9,7 @@ import type { ChatMessage } from "@/types/chat";
 import { Map } from "@/components/game/Map";
 import { CountryCard } from "@/components/game/CountryCard";
 import { TurnIndicator } from "@/components/game/TurnIndicator";
+import { DefenseAlert } from "@/components/game/DefenseAlert";
 import { ResourceDisplay } from "@/components/game/ResourceDisplay";
 import { BudgetPanel } from "@/components/game/BudgetPanel";
 import { ActionPanel } from "@/components/game/ActionPanel";
@@ -75,6 +76,10 @@ export default function GamePage() {
   const [defenseCity, setDefenseCity] = useState<City | null>(null);
   const [defenseAttackerCountry, setDefenseAttackerCountry] = useState<Country | null>(null);
   const [defenseAttackerStats, setDefenseAttackerStats] = useState<CountryStats | null>(null);
+  // Track cities where defense modal was dismissed (so it doesn't auto-reopen)
+  const [dismissedDefenseCities, setDismissedDefenseCities] = useState<Set<string>>(new Set());
+  // Track cities where defense has already been submitted
+  const [submittedDefenseCities, setSubmittedDefenseCities] = useState<Set<string>>(new Set());
 
   useEffect(() => setGameId(gameId), [gameId, setGameId]);
 
@@ -281,13 +286,21 @@ export default function GamePage() {
     );
 
     // Only fetch attack info if there are cities under attack AND modal is not already open
+    // AND city is not dismissed AND defense is not already submitted
     if (playerCitiesUnderAttack.length > 0 && !defenseCity) {
-      // Find the first city under attack and fetch attacker info
-      const cityUnderAttack = playerCitiesUnderAttack[0];
+      // Find the first city under attack that hasn't been dismissed or submitted
+      const cityUnderAttack = playerCitiesUnderAttack.find(
+        c => !dismissedDefenseCities.has(c.id) && !submittedDefenseCities.has(c.id)
+      );
+      
+      if (!cityUnderAttack) {
+        // All cities are either dismissed or submitted, don't open modal
+        return;
+      }
       
       console.log(`[Defense] Player city ${cityUnderAttack.name} is under attack! Fetching attacker info...`);
       
-      // Fetch pending attack action to get attacker info
+      // Fetch pending attack action to get attacker info and check if defense already submitted
       fetch(`/api/actions?gameId=${encodeURIComponent(gameId)}&turn=${turn}&status=pending`)
         .then(res => res.json())
         .then((data: { actions?: Array<{ action_data: any; country_id: string }> }) => {
@@ -300,6 +313,14 @@ export default function GamePage() {
           
           if (attackAction) {
             const actionData = attackAction.action_data || {};
+            
+            // Check if defense has already been submitted
+            if (actionData.defenseAllocation !== undefined && actionData.defenseAllocation !== null) {
+              console.log(`[Defense] Defense already submitted for ${cityUnderAttack.name}, marking as submitted`);
+              setSubmittedDefenseCities(prev => new Set(prev).add(cityUnderAttack.id));
+              return;
+            }
+            
             const attackerId = actionData.attackerId || attackAction.country_id;
             const attackerCountry = countries.find(c => c.id === attackerId);
             const attackerStats = statsByCountryId[attackerId];
@@ -318,7 +339,7 @@ export default function GamePage() {
         })
         .catch(err => console.error("[Defense] Failed to fetch attack action:", err));
     }
-  }, [cities, playerCountryId, countries, statsByCountryId, gameId, turn, defenseCity]);
+  }, [cities, playerCountryId, countries, statsByCountryId, gameId, turn, defenseCity, dismissedDefenseCities, submittedDefenseCities]);
 
   // Cleanup defense modal when no cities are under attack - CLEANUP ONLY
   useEffect(() => {
@@ -329,10 +350,37 @@ export default function GamePage() {
     );
 
     // Clear defense modal if no cities are under attack but modal is open
-    if (playerCitiesUnderAttack.length === 0 && defenseCity) {
-      setDefenseCity(null);
-      setDefenseAttackerCountry(null);
-      setDefenseAttackerStats(null);
+    // Also clear dismissed/submitted tracking for cities no longer under attack
+    if (playerCitiesUnderAttack.length === 0) {
+      if (defenseCity) {
+        setDefenseCity(null);
+        setDefenseAttackerCountry(null);
+        setDefenseAttackerStats(null);
+      }
+      // Clear tracking for cities no longer under attack
+      setDismissedDefenseCities(new Set());
+      setSubmittedDefenseCities(new Set());
+    } else {
+      // Remove tracking for cities that are no longer under attack
+      const cityIdsUnderAttack = new Set(playerCitiesUnderAttack.map(c => c.id));
+      setDismissedDefenseCities(prev => {
+        const newSet = new Set(prev);
+        for (const cityId of prev) {
+          if (!cityIdsUnderAttack.has(cityId)) {
+            newSet.delete(cityId);
+          }
+        }
+        return newSet;
+      });
+      setSubmittedDefenseCities(prev => {
+        const newSet = new Set(prev);
+        for (const cityId of prev) {
+          if (!cityIdsUnderAttack.has(cityId)) {
+            newSet.delete(cityId);
+          }
+        }
+        return newSet;
+      });
     }
   }, [cities, playerCountryId, defenseCity]);
 
@@ -578,6 +626,57 @@ export default function GamePage() {
             <span>Diplomacy</span>
           </button>
           <AllProfilesInfo />
+          {(() => {
+            // Show defense alert for dismissed cities that are still under attack
+            const dismissedCitiesUnderAttack = cities.filter(
+              c => c.countryId === playerCountryId && 
+                   c.isUnderAttack && 
+                   dismissedDefenseCities.has(c.id) &&
+                   !submittedDefenseCities.has(c.id)
+            );
+            
+            if (dismissedCitiesUnderAttack.length > 0) {
+              return (
+                <DefenseAlert
+                  cities={dismissedCitiesUnderAttack}
+                  onClick={(city) => {
+                    // Reopen modal for this city
+                    setDismissedDefenseCities(prev => {
+                      const newSet = new Set(prev);
+                      newSet.delete(city.id);
+                      return newSet;
+                    });
+                    // Fetch attacker info and open modal
+                    fetch(`/api/actions?gameId=${encodeURIComponent(gameId)}&turn=${turn}&status=pending`)
+                      .then(res => res.json())
+                      .then((data: { actions?: Array<{ action_data: any; country_id: string }> }) => {
+                        const attackAction = data.actions?.find(
+                          (a: any) => {
+                            const actionData = a.action_data || {};
+                            return actionData.subType === "attack" && actionData.targetCityId === city.id;
+                          }
+                        );
+                        
+                        if (attackAction) {
+                          const actionData = attackAction.action_data || {};
+                          const attackerId = actionData.attackerId || attackAction.country_id;
+                          const attackerCountry = countries.find(c => c.id === attackerId);
+                          const attackerStats = statsByCountryId[attackerId];
+                          
+                          if (attackerCountry && attackerStats) {
+                            setDefenseCity(city);
+                            setDefenseAttackerCountry(attackerCountry);
+                            setDefenseAttackerStats(attackerStats);
+                          }
+                        }
+                      })
+                      .catch(err => console.error("[Defense] Failed to fetch attack action:", err));
+                  }}
+                />
+              );
+            }
+            return null;
+          })()}
           <TurnIndicator turn={turn} />
         </div>
       </div>
@@ -781,11 +880,20 @@ export default function GamePage() {
           attackerCountry={defenseAttackerCountry}
           attackerStats={defenseAttackerStats}
           onClose={() => {
+            // Mark city as dismissed so modal doesn't auto-reopen
+            setDismissedDefenseCities(prev => new Set(prev).add(defenseCity.id));
             setDefenseCity(null);
             setDefenseAttackerCountry(null);
             setDefenseAttackerStats(null);
           }}
-          onSubmitted={() => void refreshGameData()}
+          onSubmitted={() => {
+            // Mark city as submitted so modal doesn't reopen
+            setSubmittedDefenseCities(prev => new Set(prev).add(defenseCity.id));
+            setDefenseCity(null);
+            setDefenseAttackerCountry(null);
+            setDefenseAttackerStats(null);
+            void refreshGameData();
+          }}
         />
       )}
 

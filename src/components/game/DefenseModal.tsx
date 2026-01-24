@@ -40,23 +40,33 @@ export function DefenseModal({
     return Math.max(1, Math.min(effectiveMilitaryStrength, base));
   }, [effectiveMilitaryStrength, percent]);
 
-  // Estimate success probability (defender doesn't know attacker's allocation)
-  // This is just an estimate based on total military strength
+  // Estimate success probability based on allocated strength
+  // Defender doesn't know attacker's exact allocation, so we estimate attacker uses 50% of their strength
   const estimatedSuccessChance = useMemo(() => {
-    const defenderEffective = MilitaryCalculator.calculateEffectiveMilitaryStrength(defenderStats);
     const attackerEffective = MilitaryCalculator.calculateEffectiveMilitaryStrength(attackerStats);
-    const strengthRatio = defenderEffective / attackerEffective;
+    // Estimate attacker will use 50% of their effective strength (typical allocation)
+    const estimatedAttackerAllocation = Math.floor(attackerEffective * 0.5);
+    
+    // Use the actual allocated strength for defense
+    const defenderAllocation = allocatedStrength;
+    
+    // Calculate strength ratio with allocated defense vs estimated attack
+    const strengthRatio = defenderAllocation / Math.max(1, estimatedAttackerAllocation);
+    
     // Defender has 20% terrain advantage
     const adjustedRatio = strengthRatio * 1.2;
     
-    // Rough probability estimate (not exact since we don't know attacker allocation)
+    // Calculate probability based on adjusted ratio
+    // Higher ratio = better defense chance
+    if (adjustedRatio >= 2.0) return 85;
     if (adjustedRatio >= 1.5) return 75;
     if (adjustedRatio >= 1.2) return 65;
     if (adjustedRatio >= 1.0) return 55;
     if (adjustedRatio >= 0.8) return 45;
     if (adjustedRatio >= 0.6) return 35;
-    return 25;
-  }, [defenderStats, attackerStats]);
+    if (adjustedRatio >= 0.4) return 25;
+    return 15;
+  }, [allocatedStrength, attackerStats]);
 
   const submitDefense = async () => {
     if (submitting) return;

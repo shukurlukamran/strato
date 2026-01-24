@@ -1,9 +1,7 @@
 (DO NOT TOUCH THIS FILE. THIS FILE IS FOR MY PERSONAL NOTES.)
 
 
-- As seen from this log (jan 23 02:16:41), Player (Aurum) was attacked but its defense was automatically chosen by system, and player didn't decide defense strength. 
-- LLM Strategic Advisor is so defensive, doesn't recommend attacking at all. Also, its general quality isn't really good.
-- LLM Stragic Advise is incorrect or not updated with the latest game data. Aurum is the weakest country with only a few armies yet it says countries are under defended vs Aurum. Also Vercel log doesn't show the list of actions recommended thus can't see if it works properly:
+- LLM Stragic Advise is incorrect or not updated with the latest game data. Aurum is the weakest country with only a few armies yet it says countries are under defended vs Aurum (this issue may have been fixed now but not sure, check it). Also Vercel log doesn't show the list of actions recommended thus can't see if it works properly:
 
 
 [LLM Planner] ✓ Successfully parsed 5/5 country analyses
@@ -20,10 +18,33 @@
 [Turn API] ✓ Batch analysis complete: 5 analyses received
 [LLM Planner] Using Groq openai/gpt-oss-20b for strategic planning
 
-- Resource usage mechanism - resources are useless right now except food (actions should use resources and each resource should at least have one use case and purpose)
-- Re-evaluate the economy to make each turn matter. Currently, all countries skip many turns to have a meaningful event or action. Everything is expensive and hard to gather.
-- LLM should include the new resources mechanism for his decision-making
+Another example:
 
+[LLM Planner] Using Groq openai/gpt-oss-20b for strategic planning
+[Strategic Planner] Country 8c564704-ae83-40d8-96e4-e0abf13a3394:
+Rule-based: economy - Early game: Build economic foundation with infrastructure.
+Fresh LLM: balanced - Build tech, recruit, then attack Cyrenia if stronger
+[LLM Planner] Using Groq openai/gpt-oss-20b for strategic planning
+[Strategic Planner] Country 56fb4488-d327-4376-a452-309baaad597c:
+Rule-based: economy - Early game: Build economic foundation with infrastructure.
+Fresh LLM: balanced - Upgrade tech, recruit, attack Borealis when possible
+[LLM Planner] Using Groq openai/gpt-oss-20b for strategic planning
+[Strategic Planner] Country ce546761-42a9-4ebf-9ea6-ef1d2f68abb7:
+Rule-based: economy - Early game: Build economic foundation with infrastructure.
+Fresh LLM: balanced - Strengthen infra, recruit, defend against Aurum
+[LLM Planner] Using Groq openai/gpt-oss-20b for strategic planning
+[Strategic Planner] Country a8dcd67d-b118-4a94-8fbe-189d3149ff69:
+Rule-based: research - Early game: Invest in technology for long-term growth.
+Fresh LLM: balanced - Boost infra, recruit, hold against Aurum
+[LLM Planner] Using Groq openai/gpt-oss-20b for strategic planning
+[Strategic Planner] Country d670779c-ff07-4de9-b139-e671ee193310:
+Rule-based: economy - Early game: Build economic foundation with infrastructure.
+Fresh LLM: balanced - Upgrade infra, recruit, attack Borealis if advantage
+
+- **LLM should include the new resources mechanism for his decision-making**
+
+- In Deal chat, LLM responded with this which is unacceptable, it should keep  the conversation natural: "I've received your message: "But I want to buy more food from you. Let me know how much max food would you be wiling to give and what do you want in return?". Let me consider this carefully and get back to you."
+- No deal detected in this conversation error when clicking Extract Deal in Deal chat
 - AI countries should do deals between each-other and offer deals to Player (we should have a plan somewhere on this) (Only implement existing elements to deals for now). LLM Strategic Advices should include advices for this too but the actions should be executed without LLM. 
 - Countries are able to buy/sell resources from/to black market at significantly worse rates than they would be able to get via trading with other countries. (When implementing this, remove allowing increase of infra and tech with penalty when resources are missing - game shouldn't allow these upgrades if resource requirements aren't met - now countries and players can buy them from black market too so they have option)
 - History log should include any deals realized with details, including black market trades.
