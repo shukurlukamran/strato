@@ -12,6 +12,7 @@ import { BudgetCalculator } from "@/lib/game-engine/BudgetCalculator";
 import { ResourceProduction } from "@/lib/game-engine/ResourceProduction";
 import { ECONOMIC_BALANCE } from "@/lib/game-engine/EconomicBalance";
 import type { ResourceProfile } from "@/lib/game-engine/ResourceProfile";
+import { MilitaryCalculator } from "@/lib/game-engine/MilitaryCalculator";
 
 export interface EconomicAnalysis {
   // Budget health
@@ -21,20 +22,22 @@ export interface EconomicAnalysis {
   canAffordInfrastructure: boolean;
   canAffordResearch: boolean;
   canAffordMilitary: boolean;
-  
+
   // Investment ROI
   infrastructureROI: number; // Turns to break even
   researchROI: number;
-  
+
   // Resource health
   foodBalance: number; // Production - consumption
   foodTurnsRemaining: number | null; // Turns until starvation
   hasResourceSurplus: boolean;
-  
+
   // Strategic situation
+  militaryStrength: number; // Raw military strength
+  effectiveMilitaryStrength: number; // Combat-effective strength (with tech bonuses)
   militaryDeficit: number; // Difference from recommended strength
   isUnderDefended: boolean;
-  averageNeighborStrength: number;
+  averageNeighborEffectiveStrength: number;
 }
 
 export interface DecisionWeights {
@@ -81,19 +84,20 @@ export class RuleBasedAI {
     const infrastructureROI = this.calculateInfrastructureROI(stats, infraCost);
     const researchROI = this.calculateResearchROI(stats, researchCost);
     
-    // Calculate military situation
+    // Calculate military situation (use effective strength for accurate threat assessment)
     const neighbors = this.getNeighbors(state, countryId);
-    const avgNeighborStrength = neighbors.length > 0
-      ? neighbors.reduce((sum, n) => sum + n.militaryStrength, 0) / neighbors.length
-      : stats.militaryStrength;
-    
+    const ourEffectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(stats);
+    const avgNeighborEffectiveStrength = neighbors.length > 0
+      ? neighbors.reduce((sum, n) => sum + MilitaryCalculator.calculateEffectiveMilitaryStrength(n), 0) / neighbors.length
+      : ourEffectiveStrength;
+
     const recommendedMilitaryStrength = Math.max(
       50, // Minimum defense
-      avgNeighborStrength * 0.7, // 70% of neighbor average
+      avgNeighborEffectiveStrength * 0.7, // 70% of neighbor effective average
       stats.population / 2000 // Scale with population
     );
-    
-    const militaryDeficit = recommendedMilitaryStrength - stats.militaryStrength;
+
+    const militaryDeficit = recommendedMilitaryStrength - ourEffectiveStrength;
     
     // Calculate turns until bankruptcy (if negative income)
     const turnsUntilBankrupt = budgetBreakdown.netBudget < 0
@@ -117,9 +121,11 @@ export class RuleBasedAI {
       foodBalance,
       foodTurnsRemaining,
       hasResourceSurplus: this.hasResourceSurplus(stats),
+      militaryStrength: stats.militaryStrength,
+      effectiveMilitaryStrength: ourEffectiveStrength,
       militaryDeficit,
       isUnderDefended: militaryDeficit > 20,
-      averageNeighborStrength: avgNeighborStrength,
+      averageNeighborEffectiveStrength: avgNeighborEffectiveStrength,
     };
   }
 

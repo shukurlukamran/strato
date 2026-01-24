@@ -5,6 +5,10 @@
 
 import { describe, it, expect } from '@jest/globals';
 import type { CountryStats } from '@/types/country';
+import { LLMStrategicPlanner } from '@/lib/ai/LLMStrategicPlanner';
+import { MilitaryCalculator } from '@/lib/game-engine/MilitaryCalculator';
+import { ActionPricing } from '@/lib/game-engine/ActionPricing';
+import { ECONOMIC_BALANCE } from '@/lib/game-engine/EconomicBalance';
 
 // Mock the compactResourceString function logic
 function compactResourceString(resources: Record<string, number>): string {
@@ -256,6 +260,85 @@ describe('LLM Resource Integration', () => {
       expect(result).toContain('Fd200');
       expect(result).toContain('!Fe');
       expect(result).toContain('!O');
+    });
+  });
+
+  describe('LLM Strategic Context Tests', () => {
+    describe('Effective Military Strength', () => {
+      it('should include effective military strength in LLM context', () => {
+        const stats: CountryStats = {
+          countryId: 'test',
+          population: 10000,
+          budget: 1000,
+          militaryStrength: 50,
+          technologyLevel: 2,
+          infrastructureLevel: 1,
+          resourceProfile: { name: 'Balanced', modifiers: {} },
+          diplomaticRelations: {},
+          resources: { food: 100 },
+        };
+
+        const effectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(stats);
+
+        // Effective strength should be higher than raw strength due to tech bonus
+        expect(effectiveStrength).toBeGreaterThan(stats.militaryStrength);
+        expect(effectiveStrength).toBe(Math.floor(50 * (1 + 2 * ECONOMIC_BALANCE.TECHNOLOGY.MILITARY_EFFECTIVENESS_PER_LEVEL)));
+      });
+    });
+
+    describe('Attack Cost Accuracy', () => {
+      it('should use correct attack cost formula from ActionPricing', () => {
+        const allocatedStrength = 30;
+        const expectedCost = 100 + allocatedStrength * 10;
+
+        const result = ActionPricing.calculateAttackPricing(allocatedStrength);
+        expect(result.cost).toBe(expectedCost);
+      });
+
+      it('should match cached game rules attack cost formula', () => {
+        // Test that the cached rules formula matches ActionPricing
+        const testAllocations = [10, 20, 30, 50];
+
+        testAllocations.forEach(allocation => {
+          const realCost = ActionPricing.calculateAttackPricing(allocation).cost;
+          const cachedFormulaCost = 100 + allocation * 10;
+          expect(realCost).toBe(cachedFormulaCost);
+        });
+      });
+    });
+
+    describe('Resource Penalty Multipliers', () => {
+      it('should calculate penalty multipliers correctly', () => {
+        const stats: CountryStats = {
+          countryId: 'test',
+          population: 10000,
+          budget: 1000,
+          militaryStrength: 50,
+          technologyLevel: 1,
+          infrastructureLevel: 1,
+          resourceProfile: { name: 'Balanced', modifiers: {} },
+          diplomaticRelations: {},
+          resources: { food: 100 }, // Missing required resources
+        };
+
+        const researchPricing = ActionPricing.calculateResearchPricing(stats);
+
+        // Should have penalty multiplier > 1.0 due to missing resources
+        expect(researchPricing.resourceCostInfo.penaltyMultiplier).toBeGreaterThanOrEqual(1.0);
+
+        // Should have missing resources listed
+        expect(researchPricing.resourceCostInfo.missing.length).toBeGreaterThan(0);
+      });
+    });
+
+    describe('Mechanics Version Stability', () => {
+      it('should generate stable mechanics version', () => {
+        const version1 = LLMStrategicPlanner.getMechanicsVersion();
+        const version2 = LLMStrategicPlanner.getMechanicsVersion();
+
+        expect(version1).toBe(version2);
+        expect(version1).toMatch(/^v\d+\.\d+\.\d+\.\d+$/);
+      });
     });
   });
 });

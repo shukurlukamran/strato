@@ -137,7 +137,8 @@ export class MilitaryAI {
         attackStep?.execution?.actionType === "military" &&
           (attackStep.execution.actionData as any)?.subType === "attack",
         attackStep?.id ?? null,
-        attackStep?.instruction ?? null
+        attackStep?.instruction ?? null,
+        attackStep
       );
       if (attackAction) {
         const attackCost = Number((attackAction.actionData as Record<string, unknown>)?.cost ?? 0);
@@ -165,7 +166,9 @@ export class MilitaryAI {
     remainingBudget: number,
     forcedByLLM: boolean,
     llmStepId: string | null,
-    llmAttackStep: string | null
+    llmAttackStep: string | null,
+
+    attackStep?: LLMPlanItem | null
   ): Promise<GameAction | null> {
     const stats = state.countryStatsByCountryId[countryId];
     const country = state.countries.find(c => c.id === countryId);
@@ -204,8 +207,35 @@ export class MilitaryAI {
       return owner?.isPlayerControlled;
     });
 
-    // Always use rule-based attack decisions (no LLM calls)
-    // Rule-based logic works for all scenarios and is cost-effective
+    // Check if LLM specified a specific target city
+    if (forcedByLLM && attackStep && attackStep.kind === "step") {
+      const llmTargetCityId = (attackStep.execution?.actionData as any)?.targetCityId;
+      if (llmTargetCityId) {
+        // Verify the target city is valid and attackable
+        const targetCity = neighboringCities.find(city => city.id === llmTargetCityId);
+        if (targetCity) {
+          console.log(`[MilitaryAI] Honoring LLM-specified target: ${targetCity.name} (${llmTargetCityId})`);
+          const action = await this.attackSpecificCity(
+            state,
+            countryId,
+            targetCity,
+            stats,
+            remainingBudget,
+            effectiveStrength
+          );
+          if (action && llmAttackStep) {
+            if (llmStepId) (action.actionData as Record<string, unknown>).llmStepId = llmStepId;
+            (action.actionData as Record<string, unknown>).llmStep = llmAttackStep;
+            (action.actionData as Record<string, unknown>).llmPlanTurn = intent.llmPlan?.turnAnalyzed;
+          }
+          return action;
+        } else {
+          console.log(`[MilitaryAI] LLM-specified target ${llmTargetCityId} not found or not attackable, falling back to rule-based`);
+        }
+      }
+    }
+
+    // Use rule-based attack decisions
     const forcedIntent = forcedByLLM ? { ...intent, focus: "military" as const } : intent;
     const action = this.ruleBasedAttackDecision(
       state,
@@ -222,6 +252,71 @@ export class MilitaryAI {
       (action.actionData as Record<string, unknown>).llmPlanTurn = intent.llmPlan?.turnAnalyzed;
     }
     return action;
+  }
+
+  /**
+   * Attack a specific city as directed by LLM
+   */
+  private async attackSpecificCity(
+    state: GameStateSnapshot,
+    countryId: string,
+    targetCity: City,
+    stats: any,
+    remainingBudget: number,
+    attackerEffectiveStrength: number
+  ): Promise<GameAction | null> {
+    const defenderStats = state.countryStatsByCountryId[targetCity.countryId];
+    if (!defenderStats) return null;
+
+    const defenderEffectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(defenderStats);
+    const strengthRatio = attackerEffectiveStrength / defenderEffectiveStrength;
+
+    // Only attack if we have a reasonable chance (strength ratio > 0.8)
+    if (strengthRatio < 0.8) {
+      console.log(`[MilitaryAI] Not attacking ${targetCity.name} - insufficient strength advantage (${strengthRatio.toFixed(2)}x)`);
+      return null;
+    }
+
+    // Decide allocation (30-70% of EFFECTIVE military strength)
+    const adjustedPersonality = this.adjustPersonalityForIntent({ focus: "military", rationale: "" });
+    const baseAllocation = 0.3 + (adjustedPersonality.aggression * 0.4);
+    const allocatedStrength = Math.floor(attackerEffectiveStrength * baseAllocation);
+    const minAllocation = Math.floor(attackerEffectiveStrength * 0.3);
+    const maxAllocation = Math.floor(attackerEffectiveStrength * 0.7);
+    const finalAllocation = Math.max(minAllocation, Math.min(maxAllocation, allocatedStrength));
+
+    // Calculate cost
+    const cost = ActionPricing.calculateAttackPricing(finalAllocation).cost;
+
+    // Check if we can afford it
+    if (remainingBudget < cost) {
+      console.log(`[MilitaryAI] Cannot afford attack on ${targetCity.name}: cost ${cost}, remaining budget ${remainingBudget}`);
+      return null;
+    }
+
+    const targetOwner = state.countries.find(c => c.id === targetCity.countryId);
+    const isPlayerTarget = targetOwner?.isPlayerControlled;
+    console.log(`[MilitaryAI] ${state.countries.find(c => c.id === countryId)?.name} attacking LLM-specified target ${targetCity.name} (${isPlayerTarget ? 'Player' : 'AI'}) with ${finalAllocation} strength`);
+
+    return {
+      id: '',
+      gameId: state.gameId,
+      countryId,
+      turn: state.turn,
+      actionType: "military",
+      actionData: {
+        subType: "attack",
+        targetCityId: targetCity.id,
+        allocatedStrength: finalAllocation,
+        attackerId: countryId,
+        defenderId: targetCity.countryId,
+        cost,
+        immediate: true,
+        createdAt: new Date().toISOString(),
+      },
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    };
   }
 
   /**

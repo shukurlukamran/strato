@@ -11,6 +11,11 @@ import { RuleBasedAI } from "./RuleBasedAI";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getDiplomaticScore } from "@/lib/game-engine/DiplomaticRelations";
 import type { ActionType } from "@/types/actions";
+import { MilitaryCalculator } from "@/lib/game-engine/MilitaryCalculator";
+import { ActionPricing } from "@/lib/game-engine/ActionPricing";
+import { ECONOMIC_BALANCE } from "@/lib/game-engine/EconomicBalance";
+import type { City } from "@/types/city";
+import { calculateCityValue } from "@/types/city";
 
 /**
  * IMPORTANT: We do NOT constrain what the LLM can *advise* (instruction is always free text).
@@ -53,6 +58,25 @@ export interface LLMStrategicAnalysis {
   threatAssessment: string;
   opportunityIdentified: string;
   /**
+   * Primary strategic plan (6-8 steps)
+   */
+  primaryPlan?: LLMPlanItem[];
+  /**
+   * Fallback plan triggered by numeric condition (2-3 steps)
+   */
+  fallbackPlan?: {
+    condition: string; // e.g. "budget < 500"
+    steps: LLMPlanItem[];
+  };
+  /**
+   * Top risks to the primary plan
+   */
+  risks?: string[];
+  /**
+   * Why these specific steps/plan
+   */
+  planRationale?: string;
+  /**
    * Backward-compatible "display list" of actions. This is derived from `planItems` when present.
    * It remains an array of strings for logging/UI and legacy logic.
    */
@@ -82,10 +106,10 @@ export interface LLMCostTracking {
  */
 const CACHED_GAME_RULES = `
 EXECUTABLE ACTIONS (only these can be done):
-1. TECHNOLOGY UPGRADE: Boosts production (1.25x→3.0x) & military (+20%/level). Cost: 500×1.30^level×profile
-2. INFRASTRUCTURE UPGRADE: Boosts tax (+12%/level) & capacity (200k+50k×level). Cost: 450×1.25^level×profile
-3. RECRUIT MILITARY: Add strength. Cost: 30/point (15 units standard)
-4. ATTACK CITY: Conquer enemies to expand territory. Success requires strength advantage. Cost: 100 base + 50/strength allocated
+1. TECHNOLOGY UPGRADE: Boosts production (1.25x→3.0x) & military (+20%/level). Cost: ${ECONOMIC_BALANCE.UPGRADES.TECH_BASE_COST}×${ECONOMIC_BALANCE.UPGRADES.TECH_COST_MULTIPLIER}^level×profile×resources
+2. INFRASTRUCTURE UPGRADE: Boosts tax (+12%/level) & capacity (200k+50k×level). Cost: ${ECONOMIC_BALANCE.UPGRADES.INFRA_BASE_COST}×${ECONOMIC_BALANCE.UPGRADES.INFRA_COST_MULTIPLIER}^level×profile×resources
+3. RECRUIT MILITARY: Add strength. Cost: ${ECONOMIC_BALANCE.MILITARY.COST_PER_STRENGTH_POINT}/point base (tech/profile reduce, resources increase). 15 units standard.
+4. ATTACK CITY: Conquer enemies to expand territory. Success requires strength advantage. Cost: 100 + 10×strength allocated
 
 RESOURCES (8 types, simpler system):
 - Basic: Food (pop survival), Timber (infra/military)
@@ -128,6 +152,13 @@ export class LLMStrategicPlanner {
   // Call LLM every N turns (optimized: 10 turns to reduce API costs by 30%)
   private readonly LLM_CALL_FREQUENCY = 10;
 
+  /**
+   * Generate a stable version string for game mechanics to detect drift
+   */
+  private static getMechanicsVersion(): string {
+    return `v1.${ECONOMIC_BALANCE.UPGRADES.TECH_BASE_COST}.${ECONOMIC_BALANCE.UPGRADES.TECH_COST_MULTIPLIER}.${ECONOMIC_BALANCE.MILITARY.COST_PER_STRENGTH_POINT}`;
+  }
+
   private getPlanKey(gameId: string, countryId: string): string {
     return `${gameId}:${countryId}`;
   }
@@ -165,7 +196,8 @@ export class LLMStrategicPlanner {
    */
   async analyzeSituationBatch(
     state: GameStateSnapshot,
-    countries: Array<{ countryId: string; stats: CountryStats }>
+    countries: Array<{ countryId: string; stats: CountryStats }>,
+    cities: City[]
   ): Promise<Map<string, LLMStrategicAnalysis>> {
     const results = new Map<string, LLMStrategicAnalysis>();
     
@@ -186,7 +218,7 @@ export class LLMStrategicPlanner {
       console.log(`[LLM Planner] 🚀 BATCH analyzing ${countries.length} countries in SINGLE API call (Turn ${state.turn})`);
       
       // Build batch prompt with all countries
-      const batchPrompt = this.buildBatchStrategicPrompt(state, countries);
+      const batchPrompt = this.buildBatchStrategicPrompt(state, countries, cities);
       
       // Single API call for all countries (Groq format - OpenAI-compatible)
       const response = await fetch(this.apiUrl, {
@@ -200,7 +232,7 @@ export class LLMStrategicPlanner {
           messages: [
             {
               role: "system",
-              content: "You are an aggressive strategic AI advisor in a turn-based conquest game. Nations expand by attacking weak neighbors. Recommend BOTH economic development AND military conquests when advantageous. Provide strategic recommendations for EACH country in valid JSON format. Return ONLY the JSON object, no markdown, no explanations."
+              content: "You are a strategic AI advisor in a turn-based conquest game. Analyze each country's situation using the provided mechanics and context. Produce the best strategic plan considering economic growth, military security, and expansion opportunities. Return ONLY valid JSON, no explanations."
             },
             {
               role: "user",
@@ -243,8 +275,53 @@ export class LLMStrategicPlanner {
       console.log(`[LLM Planner] 💰 Total session cost: $${this.costTracking.estimatedCost.toFixed(4)} (${this.costTracking.totalCalls} calls)`);
       
       // Parse batch response
-      const analyses = this.parseBatchStrategicAnalysis(responseText, state.turn, countries);
-      
+      let analyses = this.parseBatchStrategicAnalysis(responseText, state.turn, countries);
+
+      // Quality-safe retry: If batch parsing failed, retry once with simplified prompt
+      if (analyses.size === 0) {
+        console.log(`[LLM Planner] ⚠️ Batch parsing failed, retrying with simplified prompt...`);
+        const retryPrompt = this.buildRetryBatchPrompt(state, countries, cities);
+
+        const retryResponse = await fetch(this.apiUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${this.apiKey}`
+          },
+          body: JSON.stringify({
+            model: this.modelName,
+            messages: [
+              {
+                role: "system",
+                content: "You are a strategic AI advisor. Return ONLY valid JSON. No explanations, no markdown."
+              },
+              {
+                role: "user",
+                content: retryPrompt
+              }
+            ],
+            temperature: 0.3,  // Lower temperature for more reliable JSON
+            top_p: 0.9,
+            max_tokens: 6000,  // Slightly fewer tokens for retry
+            response_format: { type: "json_object" }
+          })
+        });
+
+        if (retryResponse.ok) {
+          const retryData = await retryResponse.json();
+          const retryResponseText = retryData.choices?.[0]?.message?.content || "";
+          analyses = this.parseBatchStrategicAnalysis(retryResponseText, state.turn, countries);
+
+          if (analyses.size > 0) {
+            console.log(`[LLM Planner] ✓ Retry successful: parsed ${analyses.size} countries`);
+          } else {
+            console.log(`[LLM Planner] ✗ Retry also failed, falling back to rule-based planning`);
+          }
+        } else {
+          console.log(`[LLM Planner] ✗ Retry API call failed: ${retryResponse.status}`);
+        }
+      }
+
       // Cache and persist each country's analysis
       for (const { countryId } of countries) {
         const analysis = analyses.get(countryId);
@@ -258,9 +335,33 @@ export class LLMStrategicPlanner {
           
           results.set(countryId, analysis);
           
-          // Log summary
+          // Log summary with recommended actions
           const country = state.countries.find(c => c.id === countryId);
-          console.log(`[LLM Planner] ✓ ${country?.name || countryId}: ${analysis.strategicFocus} - ${analysis.rationale}`);
+          const planSource = analysis.planItems ? 'structured' : 'legacy';
+          const planItemsCount = analysis.planItems?.length || 0;
+          const executableSteps = analysis.planItems?.filter(item => item.kind === 'step' && item.execution).length || 0;
+
+          console.log(`[LLM Planner] ✓ ${country?.name || countryId}: ${analysis.strategicFocus} (${planSource}, ${planItemsCount} items, ${executableSteps} executable)`);
+          console.log(`[LLM Planner]   Rationale: ${analysis.rationale.substring(0, 80)}${analysis.rationale.length > 80 ? '...' : ''}`);
+
+          // Log recommended actions (always show in batch mode for Vercel visibility)
+          if (analysis.recommendedActions.length > 0) {
+            console.log(`[LLM Planner]   Actions: ${analysis.recommendedActions.slice(0, 3).join(' | ')}${analysis.recommendedActions.length > 3 ? ` (+${analysis.recommendedActions.length - 3} more)` : ''}`);
+          }
+
+          // Verbose logging (env-gated to avoid log spam)
+          if (process.env.LLM_PLANNER_LOG_ACTIONS === '1') {
+            if (analysis.planItems && analysis.planItems.length > 0) {
+              console.log(`[LLM Planner]   Plan Items:`);
+              analysis.planItems.slice(0, 3).forEach((item, i) => {
+                const execInfo = item.kind === 'step' && item.execution ? ` (${item.execution.actionType})` : '';
+                console.log(`[LLM Planner]     ${i+1}. ${item.instruction.substring(0, 60)}${item.instruction.length > 60 ? '...' : ''}${execInfo}`);
+              });
+              if (analysis.planItems.length > 3) {
+                console.log(`[LLM Planner]     ... and ${analysis.planItems.length - 3} more items`);
+              }
+            }
+          }
         }
       }
       
@@ -323,7 +424,7 @@ export class LLMStrategicPlanner {
           messages: [
             {
               role: "system",
-              content: "You are an aggressive strategic AI advisor for a nation in a turn-based conquest game. Nations expand by conquering weak neighbors. Recommend military attacks when the nation is strong, or economic development when weak. Balance risk vs reward. Analyze the situation and provide strategic recommendations in valid JSON format only. Return ONLY the JSON object, no markdown, no explanations."
+              content: "You are a strategic AI advisor for a nation in a turn-based conquest game. Analyze the country's situation using accurate mechanics and context. Produce the best strategic plan considering economic growth, military security, and expansion opportunities. Return ONLY valid JSON, no explanations."
             },
             {
               role: "user",
@@ -449,6 +550,150 @@ export class LLMStrategicPlanner {
   }
   
   /**
+   * Build simplified retry prompt for failed batch parsing
+   * Uses shorter, stricter instructions to improve JSON compliance
+   */
+  private buildRetryBatchPrompt(
+    state: GameStateSnapshot,
+    countries: Array<{ countryId: string; stats: CountryStats }>,
+    cities: City[]
+  ): string {
+    const countrySummaries = countries.map(({ countryId, stats }) => {
+      const country = state.countries.find(c => c.id === countryId);
+      if (!country) return "";
+
+      const economicAnalysis = RuleBasedAI.analyzeEconomicSituation(state, countryId, stats);
+      const neighbors = this.getNeighborsSummary(state, countryId, stats);
+
+      return `${country.name}: Pop ${Math.floor(stats.population/1000)}k, Mil ${stats.militaryStrength}, Budget $${stats.budget}, ${economicAnalysis.isUnderDefended ? `UNDER-DEFENDED (deficit: ${Math.round(economicAnalysis.militaryDeficit)})` : 'OK'}`;
+    }).join('; ');
+
+    return `${CACHED_GAME_RULES}
+
+RETRY MODE: Previous batch parsing failed. Provide simpler JSON response.
+
+COUNTRIES: ${countrySummaries}
+
+Return ONLY this JSON structure:
+{
+  "countries": [
+    {
+      "countryId": "country_id",
+      "focus": "economy|balanced|military",
+      "rationale": "Brief reason",
+      "action_plan": [
+        {"id": "action_id", "instruction": "Action description", "execution": {"actionType": "research|economic|military", "actionData": {}}}
+      ]
+    }
+  ]
+}`;
+  }
+
+  /**
+   * Generate attack candidate list for a country
+   * Returns top 3-5 attackable cities ranked by value/opportunity
+   */
+  private getAttackCandidates(
+    state: GameStateSnapshot,
+    countryId: string,
+    stats: CountryStats,
+    cities: City[]
+  ): string {
+    const ourEffectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(stats);
+    const candidates: Array<{
+      city: City;
+      defenderStats: CountryStats;
+      defenderEffectiveStrength: number;
+      cityValue: number;
+      estimatedCost: number;
+      strengthRatio: number;
+    }> = [];
+
+    // Find attackable cities (not owned by us, not under attack)
+    for (const city of cities) {
+      if (city.countryId === countryId || city.isUnderAttack) continue;
+
+      const defenderStats = state.countryStatsByCountryId[city.countryId];
+      if (!defenderStats) continue;
+
+      const defenderEffectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(defenderStats);
+      const strengthRatio = ourEffectiveStrength / defenderEffectiveStrength;
+      const cityValue = calculateCityValue(city);
+
+      // Only consider cities where we have a strength advantage
+      if (strengthRatio >= 1.2) {
+        // Estimate attack cost (typical allocation: 80% of our strength)
+        const typicalAllocation = Math.floor(stats.militaryStrength * 0.8);
+        const estimatedCost = ActionPricing.calculateAttackPricing(typicalAllocation).cost;
+
+        candidates.push({
+          city,
+          defenderStats,
+          defenderEffectiveStrength,
+          cityValue,
+          estimatedCost,
+          strengthRatio
+        });
+      }
+    }
+
+    // Sort by city value (highest first) and take top 5
+    candidates.sort((a, b) => b.cityValue - a.cityValue);
+    const topCandidates = candidates.slice(0, 5);
+
+    if (topCandidates.length === 0) {
+      return "No attack opportunities (insufficient military advantage)";
+    }
+
+    const candidateStrings = topCandidates.map(c => {
+      const defender = state.countries.find(co => co.id === c.city.countryId);
+      return `${c.city.id}:${defender?.name || 'Unknown'} (Eff ${c.defenderEffectiveStrength}, Value ${c.cityValue}, Cost $${c.estimatedCost}, Ratio ${(c.strengthRatio).toFixed(1)}x)`;
+    });
+
+    return candidateStrings.join('; ');
+  }
+
+  /**
+   * Generate affordability block showing action costs and resource penalties
+   * Format: "Research:$1200(1.4x,missing:coal,oil) Infra:$800(1.0x) Recruit15:$450(1.2x,missing:iron)"
+   */
+  private getAffordabilityBlock(stats: CountryStats): string {
+    const parts: string[] = [];
+
+    // Research affordability
+    try {
+      const researchPricing = ActionPricing.calculateResearchPricing(stats);
+      const missing = researchPricing.resourceCostInfo.missing.map(r => r.resourceId).join(',');
+      const missingStr = missing ? `,missing:${missing}` : '';
+      parts.push(`Research:$${researchPricing.cost}(${researchPricing.resourceCostInfo.penaltyMultiplier}x${missingStr})`);
+    } catch (e) {
+      parts.push('Research:ERROR');
+    }
+
+    // Infrastructure affordability
+    try {
+      const infraPricing = ActionPricing.calculateInfrastructurePricing(stats);
+      const missing = infraPricing.resourceCostInfo.missing.map(r => r.resourceId).join(',');
+      const missingStr = missing ? `,missing:${missing}` : '';
+      parts.push(`Infra:$${infraPricing.cost}(${infraPricing.resourceCostInfo.penaltyMultiplier}x${missingStr})`);
+    } catch (e) {
+      parts.push('Infra:ERROR');
+    }
+
+    // Recruitment affordability (15 units standard)
+    try {
+      const recruitPricing = ActionPricing.calculateRecruitmentPricing(15, stats);
+      const missing = recruitPricing.resourceCostInfo.missing.map(r => r.resourceId).join(',');
+      const missingStr = missing ? `,missing:${missing}` : '';
+      parts.push(`Recruit15:$${recruitPricing.cost}(${recruitPricing.resourceCostInfo.penaltyMultiplier}x${missingStr})`);
+    } catch (e) {
+      parts.push('Recruit15:ERROR');
+    }
+
+    return parts.join(' ');
+  }
+
+  /**
    * Generate compact resource string for LLM prompts (token-efficient)
    * Format: "Fd200 T80 Fe40 !O !St" = Has food/timber/iron, needs oil/steel
    */
@@ -492,18 +737,20 @@ export class LLMStrategicPlanner {
     // Get neighbor information
     const neighbors = this.getNeighborsSummary(state, countryId, stats);
     
-    // Get compact resource string
+    // Get compact resource string and affordability block
     const resourcesStr = this.compactResourceString(stats.resources || {});
-    
+    const affordabilityStr = this.getAffordabilityBlock(stats);
+
     return `${CACHED_GAME_RULES}
 
-${country.name} (T${state.turn}): Pop ${(stats.population/1000).toFixed(0)}k | $${(stats.budget).toFixed(0)} | Tech L${stats.technologyLevel} | Infra L${stats.infrastructureLevel || 0} | Mil ${stats.militaryStrength} | ${stats.resourceProfile?.name || "Balanced"}
+${country.name} (T${state.turn}): Pop ${(stats.population/1000).toFixed(0)}k | $${(stats.budget).toFixed(0)} | Tech L${stats.technologyLevel} | Infra L${stats.infrastructureLevel || 0} | Mil ${stats.militaryStrength} (${economicAnalysis.effectiveMilitaryStrength} effective) | ${stats.resourceProfile?.name || "Balanced"}
 Resources: ${resourcesStr}
-Income: $${economicAnalysis.netIncome}/t | ${economicAnalysis.isUnderDefended ? 'UNDER-DEFENDED' : 'OK'} | ${economicAnalysis.turnsUntilBankrupt !== null ? `Bankrupt in ${economicAnalysis.turnsUntilBankrupt}t` : 'Stable'}
+Affordability: ${affordabilityStr}
+Income: $${economicAnalysis.netIncome}/t | ${economicAnalysis.isUnderDefended ? `UNDER-DEFENDED (deficit: ${Math.round(economicAnalysis.militaryDeficit)})` : 'OK'} | ${economicAnalysis.turnsUntilBankrupt !== null ? `Bankrupt in ${economicAnalysis.turnsUntilBankrupt}t` : 'Stable'}
 
 NEIGHBORS: ${neighbors}
 
-Plan ${this.LLM_CALL_FREQUENCY} turns (2-3 actions/turn). Consider BOTH economic AND military strategies.
+Plan ${this.LLM_CALL_FREQUENCY} turns (2-3 actions/turn). Include at least one fallback step with "when" condition. Consider BOTH economic AND military strategies.
 
 JSON ONLY - EXAMPLE STRATEGIES:
 
@@ -511,24 +758,28 @@ ECONOMIC FOCUS:
 {"focus":"economy","rationale":"Build tech advantage","action_plan":[
   {"id":"tech_l2","instruction":"Tech→L2","priority":1,"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
   {"id":"recruit_30","instruction":"Recruit→30 for defense","priority":2,"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}},
-  {"id":"infra_l2","instruction":"Infra→L2","priority":3,"when":{"budget_gte":1000},"execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}}
+  {"id":"infra_l2","instruction":"Infra→L2","priority":3,"when":{"budget_gte":1000},"execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}},
+  {"id":"conservative_infra","instruction":"Infra→L1 if budget tight","priority":4,"when":{"budget_lt":500},"execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":1}}}
 ]}
 
 MILITARY FOCUS:
 {"focus":"military","rationale":"Strong mil, weak neighbors - expand","action_plan":[
   {"id":"recruit_50","instruction":"Recruit→50","priority":1,"stop_when":{"military_strength_gte":50},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":15}}},
   {"id":"attack_weak","instruction":"Attack weakest neighbor city","priority":2,"when":{"military_strength_gte":45},"execution":{"actionType":"military","actionData":{"subType":"attack","targetCityId":"<neighbor_city_id>","allocatedStrength":30}}},
-  {"id":"tech_l2","instruction":"Tech→L2 after conquest","priority":3,"when":{"budget_gte":1200},"execution":{"actionType":"research","actionData":{"targetLevel":2}}}
+  {"id":"tech_l2","instruction":"Tech→L2 after conquest","priority":3,"when":{"budget_gte":1200},"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
+  {"id":"defensive_recruit","instruction":"Recruit→30 for defense if threatened","priority":4,"when":{"budget_lt":300},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}}
 ]}
 
-YOUR RESPONSE (adapt to situation):
+REQUIRED STRUCTURE:
 {
-  "focus": "economy"|"military"|"research"|"balanced",
-  "rationale": "Why (max 100 chars)",
-  "threats": "Key threats",
-  "opportunities": "Key opportunities - INCLUDE attack opportunities if militarily strong",
-  "action_plan": [6-8 steps with mix of tech/infra/recruit/attack based on situation],
-  "diplomacy":{${neighbors
+  "focus": "economy"|"military"|"balanced",
+  "rationale": "Brief strategic reasoning",
+  "action_plan": [
+    // 6-8 executable steps - include at least one fallback step with "when" condition (e.g. when: {budget_lt: 500})
+  ],
+  "risks": ["Top risk #1", "Top risk #2"],
+  "plan_rationale": "Why these specific steps",
+  "diplomacy": {${neighbors
   .split('\n')
   .filter(n => n.trim())
   .map(n => {
@@ -537,14 +788,12 @@ YOUR RESPONSE (adapt to situation):
   })
   .filter(Boolean)
   .join(',')}},
-  "confidence":0.9
+  "confidence": 0.9
 }
 
-RULES: 
-- Include ATTACKS when militarily advantageous (stronger than neighbors)
-- Economic builds are for WEAKER nations or tech advantage seekers
-- 6-8 executable steps (tech/infra/recruit/attack)
-- Use "when" conditions to sequence actions properly`;
+STEP FORMAT: {"id": "unique_id", "instruction": "What to do", "execution": {"actionType": "research|economic|military", "actionData": {...}}}
+
+BE LLM-LED: Choose the best strategy yourself. Only validate executability at engine boundary.`;
   }
   
   /**
@@ -553,39 +802,42 @@ RULES:
   private getNeighborsSummary(state: GameStateSnapshot, countryId: string, stats: CountryStats): string {
     const country = state.countries.find(c => c.id === countryId);
     if (!country) return "None";
-    
+
     const neighborDistance = 200;
     const neighbors: string[] = [];
-    
+    const ourEffectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(stats);
+
     for (const otherCountry of state.countries) {
       if (otherCountry.id === countryId) continue;
-      
+
       const distance = Math.sqrt(
         Math.pow(country.positionX - otherCountry.positionX, 2) +
         Math.pow(country.positionY - otherCountry.positionY, 2)
       );
-      
+
       if (distance < neighborDistance) {
         const otherStats = state.countryStatsByCountryId[otherCountry.id];
         if (otherStats) {
           const ourToThem = getDiplomaticScore(stats.diplomaticRelations, otherCountry.id);
-          const isThreat = otherStats.militaryStrength > stats.militaryStrength * 1.2 || ourToThem < 30;
-          const isOpportunity = otherStats.militaryStrength < stats.militaryStrength * 0.7; // We're much stronger
-          
+          const otherEffectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(otherStats);
+          const isThreat = otherEffectiveStrength > ourEffectiveStrength * 1.2 || ourToThem < 30;
+          const isOpportunity = otherEffectiveStrength < ourEffectiveStrength * 0.7; // We're much stronger
+
           // Show threats (always), opportunities (always), and first 2 regular neighbors
           if (isThreat || isOpportunity || neighbors.length < 2) {
             let label = '';
             if (isThreat) label = ' ⚠️THREAT';
             else if (isOpportunity) label = ' 🎯WEAK (conquest opportunity)';
-            
+
+            const strengthRatio = otherEffectiveStrength / ourEffectiveStrength;
             neighbors.push(
-              `- ${otherCountry.name} (${otherCountry.id}): Rel ${ourToThem}, Mil ${otherStats.militaryStrength}${label}`
+              `- ${otherCountry.name} (${otherCountry.id}): Rel ${ourToThem}, Eff ${otherEffectiveStrength} (Raw ${otherStats.militaryStrength}), Ratio ${(strengthRatio).toFixed(2)}x${label}`
             );
           }
         }
       }
     }
-    
+
     return neighbors.length > 0 ? neighbors.join('\n') : "No notable neighbors";
   }
   
@@ -763,62 +1015,50 @@ RULES:
    */
   private buildBatchStrategicPrompt(
     state: GameStateSnapshot,
-    countries: Array<{ countryId: string; stats: CountryStats }>
+    countries: Array<{ countryId: string; stats: CountryStats }>,
+    cities: City[]
   ): string {
     const countryPrompts = countries.map(({ countryId, stats }) => {
       const country = state.countries.find(c => c.id === countryId);
       if (!country) return "";
-      
+
       const economicAnalysis = RuleBasedAI.analyzeEconomicSituation(state, countryId, stats);
       const neighbors = this.getNeighborsSummary(state, countryId, stats);
-      
+      const attackCandidates = this.getAttackCandidates(state, countryId, stats, cities);
+
       const resourcesStr = this.compactResourceString(stats.resources || {});
-      
+      const affordabilityStr = this.getAffordabilityBlock(stats);
+
       return `
 ### ${country.name} (ID: ${countryId})
-Pop: ${(stats.population/1000).toFixed(0)}k | $${(stats.budget).toFixed(0)} | Tech L${stats.technologyLevel} | Infra L${stats.infrastructureLevel || 0} | Mil ${stats.militaryStrength} | ${stats.resourceProfile?.name || "Balanced"}
+Pop: ${(stats.population/1000).toFixed(0)}k | $${(stats.budget).toFixed(0)} | Tech L${stats.technologyLevel} | Infra L${stats.infrastructureLevel || 0} | Mil ${stats.militaryStrength} (${economicAnalysis.effectiveMilitaryStrength} effective) | ${stats.resourceProfile?.name || "Balanced"}
 Resources: ${resourcesStr}
-Income: $${economicAnalysis.netIncome}/t | ${economicAnalysis.isUnderDefended ? 'UNDER-DEFENDED' : 'OK'} | ${economicAnalysis.turnsUntilBankrupt !== null ? `Bankrupt in ${economicAnalysis.turnsUntilBankrupt}t` : 'Stable'}
-Neighbors: ${neighbors.split('\n').join('; ')}`;
+Affordability: ${affordabilityStr}
+Income: $${economicAnalysis.netIncome}/t | ${economicAnalysis.isUnderDefended ? `UNDER-DEFENDED (deficit: ${Math.round(economicAnalysis.militaryDeficit)})` : 'OK'} | ${economicAnalysis.turnsUntilBankrupt !== null ? `Bankrupt in ${economicAnalysis.turnsUntilBankrupt}t` : 'Stable'}
+Neighbors: ${neighbors.split('\n').join('; ')}
+Attack Candidates: ${attackCandidates}`;
     }).join('\n');
 
     return `${CACHED_GAME_RULES}
+
+Mechanics version: ${LLMStrategicPlanner.getMechanicsVersion()}
 
 Plan ${this.LLM_CALL_FREQUENCY} turns (2-3 actions/turn). Consider BOTH economic AND military strategies.
 
 COUNTRIES TO ANALYZE:
 ${countryPrompts}
 
-Return JSON OBJECT with "countries" array. Each country should have 6-8 steps based on its situation:
-- If STRONG military vs neighbors → Include ATTACK steps in action_plan
-- If WEAK military or bankrupt → Focus on economic/defensive steps
-- Use "when" conditions to sequence properly
+SCHEMA: Return JSON with "countries" array. Each country needs:
+- focus: "economy"|"military"|"balanced"
+- rationale: Brief reason (max 100 chars)
+- action_plan: Array of 6-8 executable steps
+- diplomacy: Object mapping neighbor IDs to "neutral"|"hostile"
 
-{
-  "countries": [
-    {
-      "countryId": "${countries[0].countryId}",
-      "focus": "economy"|"military"|"research"|"balanced",
-      "rationale": "Why (max 100 chars) - mention attack opportunities if strong",
-      "threats": "Key threats",
-      "opportunities": "Key opportunities - INCLUDE conquest opportunities if advantageous",
-      "action_plan": [
-        {"id":"tech_l2","instruction":"Tech→L2","priority":1,"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
-        {"id":"recruit_45","instruction":"Recruit→45","priority":2,"stop_when":{"military_strength_gte":45},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}},
-        {"id":"attack_city","instruction":"Attack weak neighbor","priority":3,"when":{"military_strength_gte":40},"execution":{"actionType":"military","actionData":{"subType":"attack","targetCityId":"<city_id>","allocatedStrength":25}}},
-        {"id":"infra_l2","instruction":"Infra→L2","priority":4,"when":{"budget_gte":1000},"execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}}
-      ],
-      "diplomacy":{"neighbor_id":"neutral"|"hostile" if planning attack},
-      "confidence":0.9
-    }
-  ]
-}
+STEP SCHEMA: {"id": "unique_id", "instruction": "What to do", "priority": 1-5, "execution": {"actionType": "research"|"economic"|"military", "actionData": {...}}}
 
-RULES: 
-- Include ATTACKS when nation is stronger than neighbors (example above)
-- 6-8 executable steps (tech/infra/recruit/attack)
-- Use actual neighbor IDs for targetCityId in attacks
-- Economic focus only for weak/bankrupt nations`;
+ATTACKS: Include when militarily stronger than neighbors. Use targetCityId from Attack Candidates above.
+
+ECONOMIC FOCUS: For weak/bankrupt nations only.`;
   }
 
   /**

@@ -282,7 +282,7 @@ export class StrategicPlanner {
     
     // Late game - maintain advantage
     if (state.turn >= 30) {
-      if (analysis.averageNeighborStrength > stats.militaryStrength * 1.2) {
+      if (analysis.averageNeighborEffectiveStrength > analysis.effectiveMilitaryStrength * 1.2) {
         return {
           focus: "military",
           rationale: "Late game: Neighbors are stronger. Build deterrent force.",

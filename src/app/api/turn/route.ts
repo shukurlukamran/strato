@@ -196,7 +196,7 @@ export async function POST(req: Request) {
       
       if (countriesForBatch.length > 0) {
         console.log(`[Turn API] 🚀 BATCH analyzing ${countriesForBatch.length} countries in SINGLE API call`);
-        batchAnalyses = await llmPlanner.analyzeSituationBatch(state.data, countriesForBatch);
+        batchAnalyses = await llmPlanner.analyzeSituationBatch(state.data, countriesForBatch, cities);
         console.log(`[Turn API] ✓ Batch analysis complete: ${batchAnalyses.size} analyses received`);
       }
     } catch (batchError) {
