@@ -18,7 +18,7 @@
 [Turn API] ✓ Batch analysis complete: 5 analyses received
 [LLM Planner] Using Groq openai/gpt-oss-20b for strategic planning
 
-Another example from another turn/game where strategy looks weak:
+Another example:
 
 [LLM Planner] Using Groq openai/gpt-oss-20b for strategic planning
 [Strategic Planner] Country 8c564704-ae83-40d8-96e4-e0abf13a3394:
@@ -40,24 +40,6 @@ Fresh LLM: balanced - Boost infra, recruit, hold against Aurum
 [Strategic Planner] Country d670779c-ff07-4de9-b139-e671ee193310:
 Rule-based: economy - Early game: Build economic foundation with infrastructure.
 Fresh LLM: balanced - Upgrade infra, recruit, attack Borealis if advantage
-
-Another example from another turn/game where strategy looks weak and too focused on attacking the Player/any single country (Aurum here has significantly weak military so it may make sense but still it looks like a shallow strategy)?:
-
-[LLM Planner] ✓ Borealis: balanced - Strong enough to attack Aurum, invest in infra
-[LLM Planner] ✓ Persisted strategic plan for 1a780688-b317-4f4e-8439-e6b2dce0a7db: 6 items
-[LLM Planner] ✓ Cyrenia: balanced - Can outmaneuver Aurum, need infra
-[LLM Planner] ✓ Persisted strategic plan for aeb5b138-4a4f-4a3f-bde1-5b0c45c5455c: 6 items
-[LLM Planner] ✓ Dravon: balanced - Strong, can conquer Aurum, upgrade infra
-[LLM Planner] ✓ Persisted strategic plan for 0eac3509-d2a7-4511-972f-d1cb1affb55c: 6 items
-[LLM Planner] ✓ Eldoria: balanced - Tech Innovator, can attack Aurum, need infra
-[LLM Planner] ✓ Persisted strategic plan for 5e139243-db4e-4688-bc55-c95147998e12: 6 items
-[LLM Planner] ✓ Falken: balanced - Can outflank Aurum, need infra
-[Turn API] ✓ Batch analysis complete: 5 analyses received
-[LLM Planner] Using Groq openai/gpt-oss-20b for strategic planning
-[Strategic Planner] Country 2409821d-4947-4b1d-b2ab-d0f61eab0cbe:
-Rule-based: diplomacy - Cooperative approach. Seek alliances and trade partnerships.
-Fresh LLM: balanced - Strong enough to attack Aurum, invest in infra
-[LLM Planner] Using Groq openai/gpt-oss-20b for strategic planning
 
 - **LLM should include the new resources mechanism for his decision-making**
 
@@ -83,9 +65,6 @@ In Defense window when player is attacked:
 - AI countries may have dictators who thinks of themselves more than the country, and potential revolutions, protests, anger of people, etc
 - LLM should have an understanding that the country is being attacked by another country or its cities have been captured in the last few turns.
 - Plan how we can make "Estimated success chance" calculation in DefenseModal.tsx a better metric while keeping attacker's allocation unknown.
-- Taking back your captured city shouldn't be condemned by other countries as an act of aggression.
-- By turn 15-20, everyone is hostile to one another. We don't wanna discourage military actions much as the gameplay should be led by LLM strategy. But we should do something (such as implementing peace and non-agression treaties for X amount of turns as part of Deals)
-- Implement non-aggression deal (currently our deals only support single-turn deals though), alliance, etc.
 -------
 
 Analyze root causes of these, understand what is happening, and then implement fixes. 

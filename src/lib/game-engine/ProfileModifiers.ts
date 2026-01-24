@@ -112,10 +112,8 @@ export function getProfileTradeModifier(profile: ResourceProfile | null | undefi
 }
 
 /**
- * Get military effectiveness modifier (combat power).
- * Affects defense/attack allocation: effective strength = base × tech × this modifier.
- * Used in MilitaryCalculator.calculateEffectiveMilitaryStrength.
- * Updated for 8-resource system profiles.
+ * Get military effectiveness modifier (future use - when you have combat)
+ * Updated for 8-resource system profiles
  */
 export function getProfileMilitaryEffectivenessModifier(profile: ResourceProfile | null | undefined): number {
   if (!profile) return 1.0;

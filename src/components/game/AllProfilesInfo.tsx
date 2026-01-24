@@ -6,16 +6,15 @@ import { RESOURCE_PROFILES } from "@/lib/game-engine/ResourceProfile";
 import { getAllProfileModifiers } from "@/lib/game-engine/ProfileModifiers";
 
 // Gameplay guidance for each profile (8-resource system)
-// Note: "Military cost" = recruitment cost; "Combat power" = effectiveness (defense/attack allocation).
 const PROFILE_GUIDANCE: Record<string, string> = {
-  "Oil Kingdom": "Focus on exporting oil and coal to fund expensive upgrades. Build infrastructure early to maximize trade capacity. Military recruitment is slightly cheaper, but tech upgrades are expensive.",
-  "Agricultural Hub": "Excellent for population growth and food security. Export surplus food and timber. Combat power is 5% lower (peaceful culture). Tech upgrades are expensive, so focus on infrastructure and trade instead.",
-  "Mining Empire": "Strong military recruitment and resource extraction. Combat power is 5% higher; recruitment is 10% cheaper. Export iron, copper, and steel. Tech upgrades are expensive—perfect for aggressive expansion.",
+  "Oil Kingdom": "Focus on exporting oil and coal to fund expensive upgrades. Build infrastructure early to maximize trade capacity. Military is slightly cheaper, but tech upgrades are expensive.",
+  "Agricultural Hub": "Excellent for population growth and food security. Export surplus food and timber. Tech upgrades are expensive, so focus on infrastructure and trade instead.",
+  "Mining Empire": "Strong military recruitment and resource extraction. Export iron, copper, and steel. Tech upgrades are expensive, but military is cheaper - perfect for aggressive expansion.",
   "Tech Innovator": "Best for tech-focused strategies. Research is 25% cheaper! Military recruitment is also cheaper. Focus on reaching high tech levels quickly for production and military bonuses.",
-  "Trade Hub": "Wealthy with trade focus. Export gold and copper for high trade value. Infrastructure is 15% cheaper and trade revenue 25% higher. Combat power is 5% lower (peaceful traders). Focus on making many trade deals.",
-  "Balanced Nation": "Versatile profile with no major weaknesses. Standard costs and combat power across the board. Good for learning the game or flexible strategies that adapt to the situation.",
+  "Trade Hub": "Wealthy with trade focus. Export gold and copper for high trade value. Infrastructure is 15% cheaper and trade revenue is 25% higher. Focus on making many trade deals.",
+  "Balanced Nation": "Versatile profile with no major weaknesses. Standard costs across the board. Good for learning the game or flexible strategies that adapt to the situation.",
   "Industrial Powerhouse": "Infrastructure is 20% cheaper! Perfect for building capacity and trade. Export manufactured goods (coal, steel). Focus on infrastructure to maximize trade deals and population capacity.",
-  "Military State": "Military-focused profile. Military recruitment is 15% cheaper and combat power (effectiveness) is 10% higher. Perfect for aggressive expansion strategies."
+  "Military State": "Military-focused profile. Military recruitment is 15% cheaper and military effectiveness is 10% higher. Perfect for aggressive expansion strategies."
 };
 
 export function AllProfilesInfo() {
@@ -112,37 +111,28 @@ export function AllProfilesInfo() {
                       
                       {/* Cost & Economic Modifiers */}
                       <div className="border-t border-white/10 pt-2">
-                        <div className="text-xs font-semibold text-yellow-400 mb-2">💰 Cost & Combat Modifiers:</div>
+                        <div className="text-xs font-semibold text-yellow-400 mb-2">💰 Economic Modifiers:</div>
                         <div className="grid grid-cols-2 gap-2 text-xs">
                           {/* Tech Cost */}
                           <div className={costMods.techCost < 1 ? 'text-green-300' : costMods.techCost > 1 ? 'text-red-300' : 'text-white/70'}>
-                            🔬 Tech upgrade cost: {Math.round(costMods.techCost * 100)}%
+                            🔬 Tech Cost: {Math.round(costMods.techCost * 100)}%
                             {costMods.techCost < 1 && <span className="text-green-400"> ✓</span>}
                             {costMods.techCost > 1 && <span className="text-red-400"> ⚠</span>}
                           </div>
                           
                           {/* Infra Cost */}
                           <div className={costMods.infraCost < 1 ? 'text-green-300' : costMods.infraCost > 1 ? 'text-red-300' : 'text-white/70'}>
-                            🏗️ Infra upgrade cost: {Math.round(costMods.infraCost * 100)}%
+                            🏗️ Infra Cost: {Math.round(costMods.infraCost * 100)}%
                             {costMods.infraCost < 1 && <span className="text-green-400"> ✓</span>}
                             {costMods.infraCost > 1 && <span className="text-red-400"> ⚠</span>}
                           </div>
                           
-                          {/* Military recruitment cost (not effectiveness) */}
+                          {/* Military Cost */}
                           <div className={costMods.militaryCost < 1 ? 'text-green-300' : costMods.militaryCost > 1 ? 'text-red-300' : 'text-white/70'}>
-                            ⚔️ Military recruitment cost: {Math.round(costMods.militaryCost * 100)}%
+                            ⚔️ Military Cost: {Math.round(costMods.militaryCost * 100)}%
                             {costMods.militaryCost < 1 && <span className="text-green-400"> ✓</span>}
                             {costMods.militaryCost > 1 && <span className="text-red-400"> ⚠</span>}
                           </div>
-                          
-                          {/* Combat power (effectiveness) – affects defense/attack allocation */}
-                          {costMods.militaryEffectiveness !== 1 && (
-                            <div className={costMods.militaryEffectiveness > 1 ? 'text-green-300' : 'text-red-300'}>
-                              ⚡ Combat power (effectiveness): {Math.round(costMods.militaryEffectiveness * 100)}%
-                              {costMods.militaryEffectiveness > 1 && <span className="text-green-400"> ✓</span>}
-                              {costMods.militaryEffectiveness < 1 && <span className="text-red-400"> ⚠</span>}
-                            </div>
-                          )}
                           
                           {/* Trade Revenue */}
                           <div className={costMods.tradeRevenue > 1 ? 'text-green-300' : costMods.tradeRevenue < 1 ? 'text-red-300' : 'text-white/70'}>
@@ -157,6 +147,15 @@ export function AllProfilesInfo() {
                               💵 Tax Revenue: {Math.round(costMods.taxRevenue * 100)}%
                               {costMods.taxRevenue > 1 && <span className="text-green-400"> ✓</span>}
                               {costMods.taxRevenue < 1 && <span className="text-red-400"> ⚠</span>}
+                            </div>
+                          )}
+                          
+                          {/* Military Effectiveness */}
+                          {costMods.militaryEffectiveness !== 1 && (
+                            <div className={costMods.militaryEffectiveness > 1 ? 'text-green-300' : 'text-red-300'}>
+                              ⚡ Combat Power: {Math.round(costMods.militaryEffectiveness * 100)}%
+                              {costMods.militaryEffectiveness > 1 && <span className="text-green-400"> ✓</span>}
+                              {costMods.militaryEffectiveness < 1 && <span className="text-red-400"> ⚠</span>}
                             </div>
                           )}
                         </div>

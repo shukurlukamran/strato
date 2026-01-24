@@ -30,27 +30,9 @@ export function DefenseModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Calculate effective military strength (includes tech bonuses and profile modifiers)
+  // Calculate effective military strength (includes tech bonuses)
   const effectiveMilitaryStrength = useMemo(() => {
-    const effective = MilitaryCalculator.calculateEffectiveMilitaryStrength(defenderStats);
-    // Debug logging to help diagnose calculation issues
-    if (defenderStats.militaryStrength !== effective) {
-      const techLevel = defenderStats.technologyLevel || 0;
-      const techEffectiveness = 1 + (techLevel * 0.20);
-      const profileModifier = defenderStats.resourceProfile 
-        ? MilitaryCalculator.calculateMilitaryEffectivenessMultiplier(defenderStats) / techEffectiveness
-        : 1.0;
-      console.log('[DefenseModal] Military strength calculation:', {
-        base: defenderStats.militaryStrength,
-        effective,
-        techLevel,
-        techEffectiveness,
-        profileModifier,
-        profileName: defenderStats.resourceProfile?.name,
-        calculation: `${defenderStats.militaryStrength} * ${techEffectiveness} * ${profileModifier} = ${defenderStats.militaryStrength * techEffectiveness * profileModifier} → ${effective}`
-      });
-    }
-    return effective;
+    return MilitaryCalculator.calculateEffectiveMilitaryStrength(defenderStats);
   }, [defenderStats]);
 
   const allocatedStrength = useMemo(() => {
@@ -185,35 +167,11 @@ export function DefenseModal({
               <div className="text-xs text-white/60">Defender (You)</div>
               <div className="mt-1 font-semibold text-white">{defenderCountry.name}</div>
               <div className="mt-1 text-xs text-white/70">
-                {defenderStats.militaryStrength !== effectiveMilitaryStrength ? (
-                  <>
-                    Base: {defenderStats.militaryStrength} → Effective: {effectiveMilitaryStrength}
-                    {defenderStats.technologyLevel > 0 && (
-                      <span className="ml-1 text-green-400">
-                        (+{MilitaryCalculator.getTechMilitaryBonus(defenderStats.technologyLevel).toFixed(0)}% tech)
-                      </span>
-                    )}
-                    {defenderStats.resourceProfile && (() => {
-                      const profileModifier = MilitaryCalculator.calculateMilitaryEffectivenessMultiplier(defenderStats) / (1 + (defenderStats.technologyLevel || 0) * 0.20);
-                      if (profileModifier !== 1.0) {
-                        return (
-                          <span className={`ml-1 ${profileModifier > 1.0 ? 'text-green-400' : 'text-yellow-400'}`}>
-                            ({profileModifier > 1.0 ? '+' : ''}{((profileModifier - 1) * 100).toFixed(0)}% profile)
-                          </span>
-                        );
-                      }
-                      return null;
-                    })()}
-                  </>
-                ) : (
-                  <>
-                    Military: {effectiveMilitaryStrength}
-                    {defenderStats.technologyLevel > 0 && (
-                      <span className="ml-1 text-green-400">
-                        (+{MilitaryCalculator.getTechMilitaryBonus(defenderStats.technologyLevel).toFixed(0)}%)
-                      </span>
-                    )}
-                  </>
+                Military: {effectiveMilitaryStrength}
+                {defenderStats.technologyLevel > 0 && (
+                  <span className="ml-1 text-green-400">
+                    (+{MilitaryCalculator.getTechMilitaryBonus(defenderStats.technologyLevel).toFixed(0)}%)
+                  </span>
                 )}
               </div>
               <div className="mt-1 text-xs text-white/70">City: {defendingCity.name}</div>
@@ -255,12 +213,7 @@ export function DefenseModal({
             />
 
             <div className="mt-2 text-xs text-white/50 italic">
-              Note: Effective strength includes technology bonuses and profile modifiers.
-              {defenderStats.militaryStrength !== effectiveMilitaryStrength && (
-                <span className="block mt-1 text-yellow-400">
-                  Your base strength ({defenderStats.militaryStrength}) is adjusted to effective strength ({effectiveMilitaryStrength}) based on your resource profile.
-                </span>
-              )}
+              Note: Effective strength includes your technology bonuses
             </div>
 
             <div className="mt-3 space-y-2">
