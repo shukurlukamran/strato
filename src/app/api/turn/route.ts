@@ -5,6 +5,7 @@ import { GameState } from "@/lib/game-engine/GameState";
 import { TurnProcessor } from "@/lib/game-engine/TurnProcessor";
 import { EconomicEngine } from "@/lib/game-engine/EconomicEngine";
 import { AIController } from "@/lib/ai/AIController";
+import { ActionPricing } from "@/lib/game-engine/ActionPricing";
 
 const BodySchema = z.object({
   gameId: z.string().min(1),
@@ -233,27 +234,104 @@ export async function POST(req: Request) {
   
   // Save AI actions to database (let database auto-generate UUIDs)
   // IMPORTANT: Attack actions are scheduled for NEXT TURN to give defenders time to respond
+  // CRITICAL: AI attack costs must be charged on declaration turn (current turn)
   if (aiActions.length > 0) {
-    const { data: insertedActions, error: aiActionsError } = await supabase
-      .from("actions")
-      .insert(aiActions.map(a => {
-        // Check if this is an attack action
-        const actionData = a.actionData || {};
-        const isAttack = a.actionType === 'military' && actionData.subType === 'attack';
-        
-        return {
-          // Don't include id - let database auto-generate UUID
-          game_id: a.gameId,
-          country_id: a.countryId,
-          // CRITICAL FIX: Attack actions use NEXT turn (turn + 1) so defenders have time to respond
-          turn: isAttack ? a.turn + 1 : a.turn,
-          action_type: a.actionType,
-          action_data: a.actionData,
-          status: a.status,
-          created_at: a.createdAt
-        };
-      }))
-      .select(); // Get back the inserted actions with auto-generated IDs
+    // Filter and validate AI attack actions - charge costs before insertion
+    const validatedAiActions: typeof aiActions = [];
+    const attackCostUpdates: Array<{ countryId: string; newBudget: number; statsId: string }> = [];
+
+    for (const aiAction of aiActions) {
+      const actionData = aiAction.actionData || {};
+      const isAttack = aiAction.actionType === 'military' && actionData.subType === 'attack';
+
+      if (isAttack) {
+        // Get attacker stats for current turn
+        const attackerStats = state.data.countryStatsByCountryId[aiAction.countryId];
+        if (!attackerStats) {
+          console.warn(`[AI] Skipping attack action for ${aiAction.countryId}: no current turn stats found`);
+          continue;
+        }
+
+        // Calculate attack cost
+        const allocatedStrength = Number(actionData.allocatedStrength) || 10;
+        const attackPricing = ActionPricing.calculateAttackPricing(allocatedStrength);
+
+        // Check if attacker can afford the attack
+        if (!ActionPricing.canAffordAttack(attackPricing, attackerStats.budget)) {
+          console.log(`[AI] ${aiAction.countryId} cannot afford attack (cost: $${attackPricing.cost}, budget: $${attackerStats.budget}) - skipping`);
+          continue;
+        }
+
+        // Apply cost deduction to attacker stats (will be updated in database)
+        const updatedStats = ActionPricing.applyAttackCost(attackPricing, attackerStats);
+
+        // Update in-memory state to prevent EconomicEngine from overwriting the deduction
+        state.withUpdatedStats(aiAction.countryId, updatedStats);
+
+        // Record the budget update for batch processing
+        attackCostUpdates.push({
+          countryId: aiAction.countryId,
+          newBudget: updatedStats.budget,
+          statsId: attackerStats.id
+        });
+
+        // Add attack action for next turn with paid marker
+        actionData.cost = attackPricing.cost;
+        actionData.immediate = true; // Mark as paid
+        validatedAiActions.push({
+          ...aiAction,
+          actionData
+        });
+
+        console.log(`[AI] Charged ${aiAction.countryId} $${attackPricing.cost} for attack (allocated strength: ${allocatedStrength})`);
+      } else {
+        // Non-attack actions go through as-is (will be charged during turn processing)
+        validatedAiActions.push(aiAction);
+      }
+    }
+
+    // Apply all attack cost deductions to database
+    if (attackCostUpdates.length > 0) {
+      const attackCostPromises = attackCostUpdates.map(update =>
+        supabase
+          .from("country_stats")
+          .update({ budget: update.newBudget })
+          .eq("id", update.statsId)
+      );
+
+      const attackCostResults = await Promise.all(attackCostPromises);
+      const attackCostErrors = attackCostResults.filter(result => result.error);
+
+      if (attackCostErrors.length > 0) {
+        console.error('[AI] Failed to deduct attack costs for some countries:', attackCostErrors);
+        // Continue processing - partial failures shouldn't block the turn
+      } else {
+        console.log(`[AI] ✓ Deducted attack costs for ${attackCostUpdates.length} countries`);
+      }
+    }
+
+    // Insert validated AI actions
+    if (validatedAiActions.length > 0) {
+      const { data: insertedActions, error: aiActionsError } = await supabase
+        .from("actions")
+        .insert(validatedAiActions.map(a => {
+          // Check if this is an attack action
+          const actionData = a.actionData || {};
+          const isAttack = a.actionType === 'military' && actionData.subType === 'attack';
+
+          return {
+            // Don't include id - let database auto-generate UUID
+            game_id: a.gameId,
+            country_id: a.countryId,
+            // CRITICAL FIX: Attack actions use NEXT turn (turn + 1) so defenders have time to respond
+            turn: isAttack ? a.turn + 1 : a.turn,
+            action_type: a.actionType,
+            action_data: a.actionData,
+            status: a.status,
+            created_at: a.createdAt
+          };
+        }))
+        .select(); // Get back the inserted actions with auto-generated IDs
     
     if (aiActionsError) {
       console.error('[AI] Failed to save AI actions:', aiActionsError);
@@ -316,6 +394,9 @@ export async function POST(req: Request) {
       }
     } else {
       console.warn('[AI] No actions were inserted (insertedActions is empty)');
+    }
+    } else {
+      console.warn('[AI] No valid AI actions to insert (all were filtered out or unaffordable)');
     }
   } else {
     console.log(`[AI] No AI actions generated this turn`);

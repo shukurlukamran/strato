@@ -2,7 +2,7 @@ import type { StrategyIntent } from "@/lib/ai/StrategicPlanner";
 import type { GameAction } from "@/types/actions";
 import type { GameStateSnapshot } from "@/lib/game-engine/GameState";
 import { RuleBasedAI } from "./RuleBasedAI";
-import { ActionResolver } from "@/lib/game-engine/ActionResolver";
+import { ActionPricing } from "@/lib/game-engine/ActionPricing";
 import { DefaultPersonality, type AIPersonality } from "./Personality";
 import {
   extractLLMBans,
@@ -96,7 +96,7 @@ export class EconomicAI {
 
     if (intent.focus === "research") {
       if (canDoResearch && shouldResearch) {
-        const researchCost = ActionResolver.calculateResearchCost(stats.technologyLevel);
+        const pricingResult = ActionPricing.calculateResearchPricing(stats);
         if (hasLLMGuidance) {
           console.log(`[EconomicAI] Following LLM focus (research) with rule-based execution`);
         }
@@ -107,14 +107,14 @@ export class EconomicAI {
           turn: state.turn,
           actionType: "research",
           actionData: {
-            cost: researchCost,
+            cost: pricingResult.cost,
             targetLevel: stats.technologyLevel + 1,
           },
           status: "pending",
           createdAt: new Date().toISOString(),
         });
       } else if (canDoInfrastructure && shouldInfrastructure) {
-        const infraCost = ActionResolver.calculateInfrastructureCost(stats.infrastructureLevel || 0);
+        const pricingResult = ActionPricing.calculateInfrastructurePricing(stats);
         if (hasLLMGuidance) {
           console.log(`[EconomicAI] Following LLM focus (research) with infrastructure fallback`);
         }
@@ -126,7 +126,7 @@ export class EconomicAI {
           actionType: "economic",
           actionData: {
             subType: "infrastructure",
-            cost: infraCost,
+            cost: pricingResult.cost,
             targetLevel: (stats.infrastructureLevel || 0) + 1,
           },
           status: "pending",
@@ -138,7 +138,7 @@ export class EconomicAI {
 
     if (intent.focus === "economy") {
       if (canDoInfrastructure && shouldInfrastructure) {
-        const infraCost = ActionResolver.calculateInfrastructureCost(stats.infrastructureLevel || 0);
+        const pricingResult = ActionPricing.calculateInfrastructurePricing(stats);
         if (hasLLMGuidance) {
           console.log(`[EconomicAI] Following LLM focus (economy) with infrastructure upgrade`);
         }
@@ -150,14 +150,14 @@ export class EconomicAI {
           actionType: "economic",
           actionData: {
             subType: "infrastructure",
-            cost: infraCost,
+            cost: pricingResult.cost,
             targetLevel: (stats.infrastructureLevel || 0) + 1,
           },
           status: "pending",
           createdAt: new Date().toISOString(),
         });
       } else if (canDoResearch && shouldResearch) {
-        const researchCost = ActionResolver.calculateResearchCost(stats.technologyLevel);
+        const pricingResult = ActionPricing.calculateResearchPricing(stats);
         if (hasLLMGuidance) {
           console.log(`[EconomicAI] Following LLM focus (economy) with research fallback`);
         }
@@ -168,7 +168,7 @@ export class EconomicAI {
           turn: state.turn,
           actionType: "research",
           actionData: {
-            cost: researchCost,
+            cost: pricingResult.cost,
             targetLevel: stats.technologyLevel + 1,
           },
           status: "pending",
@@ -184,7 +184,7 @@ export class EconomicAI {
     
     // DECISION 1: Research investment
     if (canDoResearch && shouldResearch) {
-      const researchCost = ActionResolver.calculateResearchCost(stats.technologyLevel);
+      const pricingResult = ActionPricing.calculateResearchPricing(stats);
       if (hasLLMGuidance) {
         console.log(`[EconomicAI] Fallback: Rule-based research decision (LLM focus: ${intent.focus})`);
       }
@@ -195,7 +195,7 @@ export class EconomicAI {
         turn: state.turn,
         actionType: "research",
         actionData: {
-          cost: researchCost,
+          cost: pricingResult.cost,
           targetLevel: stats.technologyLevel + 1,
         },
         status: "pending",
@@ -206,7 +206,7 @@ export class EconomicAI {
     // DECISION 2: Infrastructure investment
     // Only if we didn't research this turn (one major investment per turn)
     if (actions.length === 0 && canDoInfrastructure && shouldInfrastructure) {
-      const infraCost = ActionResolver.calculateInfrastructureCost(stats.infrastructureLevel || 0);
+      const pricingResult = ActionPricing.calculateInfrastructurePricing(stats);
       if (hasLLMGuidance) {
         console.log(`[EconomicAI] Fallback: Rule-based infrastructure decision (LLM focus: ${intent.focus})`);
       }
@@ -327,7 +327,7 @@ export class EconomicAI {
         if (currentInfra >= 10) continue;
         if (!analysis.canAffordInfrastructure) continue;
 
-        const infraCost = ActionResolver.calculateInfrastructureCost(currentInfra);
+        const pricingResult = ActionPricing.calculateInfrastructurePricing(stats);
         return [
           {
             id: "",
@@ -337,7 +337,7 @@ export class EconomicAI {
             actionType: "economic",
             actionData: {
               subType: "infrastructure",
-              cost: infraCost,
+              cost: pricingResult.cost,
               targetLevel: currentInfra + 1,
               llmStep: step,
               llmStepId: step,
@@ -362,7 +362,7 @@ export class EconomicAI {
         // If a range is specified (rare for tech), treat as one-time and just do a single upgrade
         void extractNumberRange;
 
-        const researchCost = ActionResolver.calculateResearchCost(currentTech);
+        const pricingResult = ActionPricing.calculateResearchPricing(stats);
         return [
           {
             id: "",
@@ -371,7 +371,7 @@ export class EconomicAI {
             turn: state.turn,
             actionType: "research",
             actionData: {
-              cost: researchCost,
+              cost: pricingResult.cost,
               targetLevel: currentTech + 1,
               llmStep: step,
               llmStepId: step,
@@ -573,7 +573,7 @@ export class EconomicAI {
       const desired = Number((step.execution.actionData as any)?.targetLevel ?? stats.technologyLevel + 1);
       const targetLevel =
         Number.isFinite(desired) && desired > stats.technologyLevel ? Math.floor(desired) : stats.technologyLevel + 1;
-      const cost = ActionResolver.calculateResearchCost(stats.technologyLevel);
+      const pricingResult = ActionPricing.calculateResearchPricing(stats);
 
       return {
         id: "",
@@ -582,7 +582,7 @@ export class EconomicAI {
         turn: state.turn,
         actionType: "research",
         actionData: {
-          cost,
+          cost: pricingResult.cost,
           targetLevel,
           llmStepId: step.id,
           llmStep: step.instruction,
@@ -604,7 +604,7 @@ export class EconomicAI {
       const desired = Number((step.execution.actionData as any)?.targetLevel ?? currentInfra + 1);
       const targetLevel =
         Number.isFinite(desired) && desired > currentInfra ? Math.min(10, Math.floor(desired)) : currentInfra + 1;
-      const cost = ActionResolver.calculateInfrastructureCost(currentInfra);
+      const pricingResult = ActionPricing.calculateInfrastructurePricing(stats);
 
       return {
         id: "",
@@ -614,7 +614,7 @@ export class EconomicAI {
         actionType: "economic",
         actionData: {
           subType: "infrastructure",
-          cost,
+          cost: pricingResult.cost,
           targetLevel,
           llmStepId: step.id,
           llmStep: step.instruction,

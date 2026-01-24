@@ -101,7 +101,7 @@ export class TurnProcessor {
    * This method is ASYNC because it may need to call LLM for AI defense decisions
    */
   private async resolveCombat(
-    state: GameState, 
+    state: GameState,
     attackAction: GameAction,
     cityData: City
   ): Promise<CombatResult | null> {
@@ -109,6 +109,14 @@ export class TurnProcessor {
     const attackerId = actionData.attackerId || attackAction.countryId;
     const defenderId = actionData.defenderId;
     const allocatedStrength = actionData.allocatedStrength || 0;
+
+    // REGRESSION GUARD: Attack actions must be pre-paid (have immediate=true marker)
+    // This prevents free attacks that bypass budget deduction
+    const isPaid = actionData.immediate === true;
+    if (!isPaid) {
+      console.error(`[Combat] SECURITY: Attack action reached combat without payment marker! Failing attack. Action:`, attackAction);
+      return null;
+    }
 
     const attackerStats = state.data.countryStatsByCountryId[attackerId];
     const defenderStats = state.data.countryStatsByCountryId[defenderId];

@@ -1,12 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { ECONOMIC_BALANCE } from "@/lib/game-engine/EconomicBalance";
-import { 
-  getProfileTechCostModifier, 
-  getProfileInfraCostModifier 
-} from "@/lib/game-engine/ProfileModifiers";
-import { MilitaryCalculator } from "@/lib/game-engine/MilitaryCalculator";
+import { ActionPricing } from "@/lib/game-engine/ActionPricing";
 import { ResourceCost, type ResourceCostResult } from "@/lib/game-engine/ResourceCost";
 import type { ResourceProfile } from "@/lib/game-engine/ResourceProfile";
 
@@ -131,10 +126,10 @@ export async function POST(req: Request) {
     let cost = 0;
     let newStats: Partial<typeof stats> = {};
     let resourceCostInfo: ResourceCostResult | null = null;
-    
-    // Parse resource profile for modifiers
+
+    // Parse resource profile for display purposes only (ActionPricing handles the logic)
     const resourceProfile = stats.resource_profile as ResourceProfile | null;
-    
+
     // Helper to build CountryStats object for resource checks
     const countryStats = {
       technologyLevel: Number(stats.technology_level),
@@ -148,96 +143,50 @@ export async function POST(req: Request) {
 
     switch (actionType) {
       case "research": {
-        const techLevel = Math.floor(Number(stats.technology_level));
-        
-        // Check resource requirements
-        const requiredResources = ResourceCost.calculateResearchResourceCost(countryStats);
-        resourceCostInfo = ResourceCost.checkResourceAffordability(requiredResources, currentResources);
-        
-        // NEW FORMULA: Base cost with exponential growth for levels 0-5, gentler scaling for 6+
-        let baseCost: number;
-        if (techLevel <= 5) {
-          baseCost = ECONOMIC_BALANCE.UPGRADES.TECH_BASE_COST * 
-                    Math.pow(ECONOMIC_BALANCE.UPGRADES.TECH_COST_MULTIPLIER, techLevel);
-        } else {
-          // After level 5: baseCost = level5Cost × 1.20^(level - 5)
-          const level5Cost = ECONOMIC_BALANCE.UPGRADES.TECH_BASE_COST * 
-                            Math.pow(ECONOMIC_BALANCE.UPGRADES.TECH_COST_MULTIPLIER, 5);
-          baseCost = level5Cost * Math.pow(1.20, techLevel - 5);
-        }
-        
-        // Profile modifier (e.g., Tech Hub gets 25% discount)
-        const profileModifier = getProfileTechCostModifier(resourceProfile);
-        
-        // Research speed bonus (higher tech makes further research slightly cheaper)
-        const researchBonus = Math.min(
-          ECONOMIC_BALANCE.TECHNOLOGY.MAX_RESEARCH_SPEED_BONUS,
-          techLevel * ECONOMIC_BALANCE.TECHNOLOGY.RESEARCH_SPEED_BONUS_PER_LEVEL
-        );
-        const researchModifier = 1 - researchBonus;
-        
-        // Apply resource shortage penalty (increases cost if missing resources)
-        const resourcePenalty = resourceCostInfo.penaltyMultiplier;
-        
-        cost = Math.floor(baseCost * profileModifier * researchModifier * resourcePenalty);
-        
+        // Use ActionPricing for consistent cost calculation
+        const pricingResult = ActionPricing.calculateResearchPricing(countryStats);
+        cost = pricingResult.cost;
+        resourceCostInfo = pricingResult.resourceCostInfo;
+
         if (currentBudget < cost) {
-          const message = resourceCostInfo.shortage 
-            ? `Insufficient budget. Need $${cost.toLocaleString()}, have $${currentBudget.toLocaleString()}. (Cost increased by ${((resourcePenalty - 1) * 100).toFixed(0)}% due to resource shortage)`
+          const message = resourceCostInfo.shortage
+            ? `Insufficient budget. Need $${cost.toLocaleString()}, have $${currentBudget.toLocaleString()}. (Cost increased by ${((resourceCostInfo.penaltyMultiplier - 1) * 100).toFixed(0)}% due to resource shortage)`
             : `Insufficient budget. Need $${cost.toLocaleString()}, have $${currentBudget.toLocaleString()}`;
           return NextResponse.json({ error: message }, { status: 400 });
         }
-        
-        // Deduct resources if available
-        let updatedResources = currentResources;
-        if (resourceCostInfo.canAfford) {
-          updatedResources = ResourceCost.deductResources(currentResources, requiredResources);
-        }
-        
+
+        // Apply cost and resource deduction
+        const updatedStats = ActionPricing.applyActionCost(pricingResult, countryStats);
+
         newStats = {
-          budget: currentBudget - cost,
+          budget: updatedStats.budget,
           technology_level: Number(stats.technology_level) + 1,
-          resources: updatedResources,
+          resources: updatedStats.resources,
         };
         break;
       }
 
       case "infrastructure": {
-        const infraLevel = stats.infrastructure_level || 0;
-        
-        // Check resource requirements
-        const requiredResources = ResourceCost.calculateInfrastructureResourceCost(countryStats);
-        resourceCostInfo = ResourceCost.checkResourceAffordability(requiredResources, currentResources);
-        
-        // NEW FORMULA: Base cost with exponential growth
-        const baseCost = ECONOMIC_BALANCE.UPGRADES.INFRA_BASE_COST * 
-                        Math.pow(ECONOMIC_BALANCE.UPGRADES.INFRA_COST_MULTIPLIER, infraLevel);
-        
-        // Profile modifier (e.g., Industrial Complex gets 20% discount)
-        const profileModifier = getProfileInfraCostModifier(resourceProfile);
-        
-        // Apply resource shortage penalty
-        const resourcePenalty = resourceCostInfo.penaltyMultiplier;
-        
-        cost = Math.floor(baseCost * profileModifier * resourcePenalty);
-        
+        // Use ActionPricing for consistent cost calculation
+        const pricingResult = ActionPricing.calculateInfrastructurePricing(countryStats);
+        cost = pricingResult.cost;
+        resourceCostInfo = pricingResult.resourceCostInfo;
+
         if (currentBudget < cost) {
-          const message = resourceCostInfo.shortage 
-            ? `Insufficient budget. Need $${cost.toLocaleString()}, have $${currentBudget.toLocaleString()}. (Cost increased by ${((resourcePenalty - 1) * 100).toFixed(0)}% due to resource shortage)`
+          const message = resourceCostInfo.shortage
+            ? `Insufficient budget. Need $${cost.toLocaleString()}, have $${currentBudget.toLocaleString()}. (Cost increased by ${((resourceCostInfo.penaltyMultiplier - 1) * 100).toFixed(0)}% due to resource shortage)`
             : `Insufficient budget. Need $${cost.toLocaleString()}, have $${currentBudget.toLocaleString()}`;
           return NextResponse.json({ error: message }, { status: 400 });
         }
-        
-        // Deduct resources if available
-        let updatedResources = currentResources;
-        if (resourceCostInfo.canAfford) {
-          updatedResources = ResourceCost.deductResources(currentResources, requiredResources);
-        }
-        
+
+        // Apply cost and resource deduction
+        const updatedStats = ActionPricing.applyActionCost(pricingResult, countryStats);
+
+        const infraLevel = stats.infrastructure_level || 0;
         newStats = {
-          budget: currentBudget - cost,
+          budget: updatedStats.budget,
           infrastructure_level: infraLevel + 1,
-          resources: updatedResources,
+          resources: updatedStats.resources,
         };
         break;
       }
@@ -245,36 +194,26 @@ export async function POST(req: Request) {
       case "military": {
         // Use amount from request or default to 10
         const militaryAmount = amount && amount >= 5 && amount <= 50 && amount % 5 === 0 ? amount : 10;
-        
-        // Check resource requirements
-        const requiredResources = ResourceCost.calculateMilitaryResourceCost(militaryAmount, countryStats);
-        resourceCostInfo = ResourceCost.checkResourceAffordability(requiredResources, currentResources);
-        
-        // Base cost calculation with tech and profile modifiers
-        const baseCost = MilitaryCalculator.calculateRecruitmentCost(militaryAmount, countryStats);
-        
-        // Apply resource shortage penalty
-        const resourcePenalty = resourceCostInfo.penaltyMultiplier;
-        
-        cost = Math.floor(baseCost * resourcePenalty);
-        
+
+        // Use ActionPricing for consistent cost calculation
+        const pricingResult = ActionPricing.calculateRecruitmentPricing(militaryAmount, countryStats);
+        cost = pricingResult.cost;
+        resourceCostInfo = pricingResult.resourceCostInfo;
+
         if (currentBudget < cost) {
-          const message = resourceCostInfo.shortage 
-            ? `Insufficient budget. Need $${cost.toLocaleString()}, have $${currentBudget.toLocaleString()}. (Cost increased by ${((resourcePenalty - 1) * 100).toFixed(0)}% due to resource shortage)`
+          const message = resourceCostInfo.shortage
+            ? `Insufficient budget. Need $${cost.toLocaleString()}, have $${currentBudget.toLocaleString()}. (Cost increased by ${((resourceCostInfo.penaltyMultiplier - 1) * 100).toFixed(0)}% due to resource shortage)`
             : `Insufficient budget. Need $${cost.toLocaleString()}, have $${currentBudget.toLocaleString()}`;
           return NextResponse.json({ error: message }, { status: 400 });
         }
-        
-        // Deduct resources if available
-        let updatedResources = currentResources;
-        if (resourceCostInfo.canAfford) {
-          updatedResources = ResourceCost.deductResources(currentResources, requiredResources);
-        }
-        
+
+        // Apply cost and resource deduction
+        const updatedStats = ActionPricing.applyActionCost(pricingResult, countryStats);
+
         newStats = {
-          budget: currentBudget - cost,
+          budget: updatedStats.budget,
           military_strength: stats.military_strength + militaryAmount,
-          resources: updatedResources,
+          resources: updatedStats.resources,
         };
         break;
       }
