@@ -636,37 +636,39 @@ export class LLMStrategicPlanner {
     const economicAnalysis = RuleBasedAI.analyzeEconomicSituation(state, countryId, stats);
     const resourcesStr = this.compactResourceString(stats.resources || {});
     
-    return `Analyze strategic focus for ${country.name}:
+    return `SIMPLIFIED RETRY MODE: Previous attempt failed. Generate strategic plan for ${country.name}:
+
 Budget: $${stats.budget} | Tech L${stats.technologyLevel} | Mil ${stats.militaryStrength} (${economicAnalysis.effectiveMilitaryStrength} effective)
 Status: ${economicAnalysis.isUnderDefended ? 'Under-defended' : 'OK'} | ${economicAnalysis.turnsUntilBankrupt !== null ? `Bankrupt in ${economicAnalysis.turnsUntilBankrupt}t` : 'Stable'}
+Resources: ${resourcesStr}
 
-CRITICAL REQUIREMENTS FOR RETRY:
-1. EVERY country MUST have 8-10 action steps (MINIMUM 8, MAXIMUM 10)
-2. EVERY step MUST have complete execution object with actionType and actionData
-3. Military steps MUST have subType: "recruit" or "attack"
-4. Economic steps MUST have subType: "infrastructure" and targetLevel
-5. Research steps MUST have targetLevel
-6. NO escaped quotes, NO special characters, NO markdown
-7. NO extra fields outside the schema shown below
-8. Ensure ALL braces and brackets are properly closed
+⚠️ CRITICAL: You MUST generate EXACTLY 8-10 action steps. Plans with fewer than 8 will FAIL VALIDATION.
 
-Return ONLY this JSON:
+VALIDATION CHECKLIST (verify before responding):
+✓ action_plan has 8-10 steps (MINIMUM 8, MAXIMUM 10) - COUNT THEM!
+✓ EVERY step has complete execution object with actionType and actionData
+✓ Military steps have subType: "recruit" or "attack"
+✓ Economic steps have subType: "infrastructure" and targetLevel
+✓ Research steps have targetLevel
+✓ NO escaped quotes, NO markdown formatting
+
+Return ONLY this JSON (copy this structure with 8+ steps):
 {
-  "focus": "economy" or "military" or "balanced",
-  "rationale": "Brief reason (max 80 chars)",
+  "focus": "economy|military|balanced",
+  "rationale": "Brief reason max 80 chars",
   "action_plan": [
-    {"id": "step1", "instruction": "Research tech level 2", "execution": {"actionType": "research", "actionData": {"targetLevel": 2}}},
-    {"id": "step2", "instruction": "Recruit troops for defense", "execution": {"actionType": "military", "actionData": {"subType": "recruit", "amount": 15}}},
-    {"id": "step3", "instruction": "Upgrade infrastructure", "execution": {"actionType": "economic", "actionData": {"subType": "infrastructure", "targetLevel": 2}}},
-    {"id": "step4", "instruction": "Research tech level 3", "execution": {"actionType": "research", "actionData": {"targetLevel": 3}}},
-    {"id": "step5", "instruction": "More recruitment", "execution": {"actionType": "military", "actionData": {"subType": "recruit", "amount": 10}}},
-    {"id": "step6", "instruction": "Attack if strong enough", "execution": {"actionType": "military", "actionData": {"subType": "attack", "targetCityId": "CITY_UUID_FROM_CANDIDATES", "allocatedStrength": 25}}},
-    {"id": "step7", "instruction": "Upgrade infrastructure again", "execution": {"actionType": "economic", "actionData": {"subType": "infrastructure", "targetLevel": 3}}},
-    {"id": "step8", "instruction": "Final tech push", "execution": {"actionType": "research", "actionData": {"targetLevel": 4}}}
+    {"id":"s1","instruction":"Research tech level 2","execution":{"actionType":"research","actionData":{"targetLevel":2}}},
+    {"id":"s2","instruction":"Recruit 15 troops for defense","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":15}}},
+    {"id":"s3","instruction":"Upgrade infrastructure L2","execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}},
+    {"id":"s4","instruction":"Research tech level 3","execution":{"actionType":"research","actionData":{"targetLevel":3}}},
+    {"id":"s5","instruction":"Recruit 10 more troops","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}},
+    {"id":"s6","instruction":"Upgrade infrastructure L3","execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":3}}},
+    {"id":"s7","instruction":"Research tech level 4","execution":{"actionType":"research","actionData":{"targetLevel":4}}},
+    {"id":"s8","instruction":"Final military buildup","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}}
   ],
-  "risks": ["Risk 1"],
-  "diplomacy": {},
-  "confidence": 0.8
+  "risks":["Main risk"],
+  "diplomacy":{},
+  "confidence":0.8
 }`;
   }
   
@@ -726,26 +728,38 @@ Return ONLY this JSON:
     countries: Array<{ countryId: string; stats: CountryStats }>,
     cities: City[]
   ): string {
-    const countrySummaries = countries.map(({ countryId, stats }) => {
+    // Build country details with EXPLICIT countryId mapping
+    const countryDetails = countries.map(({ countryId, stats }) => {
       const country = state.countries.find(c => c.id === countryId);
       if (!country) return "";
 
       const economicAnalysis = RuleBasedAI.analyzeEconomicSituation(state, countryId, stats);
-      const neighbors = this.getNeighborsSummary(state, countryId, stats);
 
-      return `${country.name}: Pop ${Math.floor(stats.population/1000)}k, Mil ${stats.militaryStrength}, Budget $${stats.budget}, ${economicAnalysis.isUnderDefended ? `UNDER-DEFENDED (deficit: ${Math.round(economicAnalysis.militaryDeficit)})` : 'OK'}`;
-    }).join('; ');
+      return `
+### ${country.name}
+- EXACT countryId TO USE: "${countryId}"
+- DO NOT USE: "${country.name}" (this is the name, not the ID!)
+- Pop: ${Math.floor(stats.population/1000)}k | Mil: ${stats.militaryStrength} | Budget: $${stats.budget}
+- Status: ${economicAnalysis.isUnderDefended ? `UNDER-DEFENDED (deficit: ${Math.round(economicAnalysis.militaryDeficit)})` : 'OK'}`;
+    }).join('\n');
 
     return `${CACHED_GAME_RULES}
 
 PREVIOUS ATTEMPT FAILED JSON VALIDATION. THIS IS A RETRY.
 
-Return ONLY this JSON structure. NO markdown formatting. NO code blocks. NO explanatory text. JUST THE JSON:
+COUNTRIES TO ANALYZE (use EXACT countryId shown below):
+${countryDetails}
+
+⚠️ CRITICAL: You MUST use the EXACT countryId UUID shown above. DO NOT use country names!
+Example CORRECT: "countryId": "${countries[0]?.countryId}"
+Example WRONG: "countryId": "${state.countries.find(c => c.id === countries[0]?.countryId)?.name}" ❌
+
+Return ONLY this JSON structure. NO markdown. NO code blocks. NO explanations. JUST THE JSON:
 
 {
   "countries": [
     {
-      "countryId": "EXACT_UUID_FROM_REQUEST",
+      "countryId": "USE_EXACT_UUID_FROM_ABOVE",
       "focus": "economy|military|balanced",
       "rationale": "Brief reason max 80 chars",
       "action_plan": [
@@ -754,7 +768,7 @@ Return ONLY this JSON structure. NO markdown formatting. NO code blocks. NO expl
         {"id":"step3","instruction":"Upgrade infrastructure","execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}},
         {"id":"step4","instruction":"Research tech level 3","execution":{"actionType":"research","actionData":{"targetLevel":3}}},
         {"id":"step5","instruction":"More recruitment","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}},
-        {"id":"step6","instruction":"Attack if strong enough","execution":{"actionType":"military","actionData":{"subType":"attack","targetCityId":"CITY_UUID_FROM_CANDIDATES","allocatedStrength":25}}},
+        {"id":"step6","instruction":"Attack if strong enough","execution":{"actionType":"military","actionData":{"subType":"attack","targetCityId":"CITY_UUID","allocatedStrength":25}}},
         {"id":"step7","instruction":"Upgrade infrastructure again","execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":3}}},
         {"id":"step8","instruction":"Final tech push","execution":{"actionType":"research","actionData":{"targetLevel":4}}}
       ],
@@ -763,21 +777,17 @@ Return ONLY this JSON structure. NO markdown formatting. NO code blocks. NO expl
   ]
 }
 
-CRITICAL REQUIREMENTS FOR RETRY:
-1. EVERY country MUST have 8-10 action steps (MINIMUM 8, MAXIMUM 10)
-2. EVERY step MUST have complete execution object with actionType and actionData
-3. Military steps MUST have subType: "recruit" or "attack"
-4. Economic steps MUST have subType: "infrastructure" and targetLevel
-5. Research steps MUST have targetLevel
-6. Use EXACT countryId from the request (full UUID, no abbreviations)
-7. NO escaped quotes, NO special characters, NO markdown
-8. NO extra fields outside the schema shown above
-9. Ensure ALL braces and brackets are properly closed
+VALIDATION CHECKLIST:
+✓ EVERY country has EXACT countryId UUID from list above (NOT country name!)
+✓ EVERY country has 8-10 action steps (MINIMUM 8, MAXIMUM 10)
+✓ EVERY step has complete execution object with actionType and actionData
+✓ Military steps have subType: "recruit" or "attack"
+✓ Economic steps have subType: "infrastructure" and targetLevel
+✓ Research steps have targetLevel
+✓ NO country names in countryId field
+✓ ALL braces and brackets properly closed
 
-COUNTRIES TO ANALYZE:
-${countrySummaries}
-
-Return ONLY the JSON. Nothing else.`;
+Return ONLY the JSON object. No markdown, no extra text.`;
   }
 
   /**
@@ -1250,7 +1260,9 @@ BE LLM-LED: Choose the best strategy yourself. Only validate executability at en
       const affordabilityStr = this.getAffordabilityBlock(stats);
 
       return `
-### ${country.name} (ID: ${countryId})
+### ${country.name}
+⚠️ EXACT countryId TO USE: "${countryId}"
+⚠️ DO NOT USE: "${country.name}" (this is the name, NOT the ID!)
 Pop: ${(stats.population/1000).toFixed(0)}k | $${(stats.budget).toFixed(0)} | Tech L${stats.technologyLevel} | Infra L${stats.infrastructureLevel || 0} | Mil ${stats.militaryStrength} (${economicAnalysis.effectiveMilitaryStrength} effective) | ${stats.resourceProfile?.name || "Balanced"}
 Resources: ${resourcesStr}
 Affordability: ${affordabilityStr}
@@ -1270,8 +1282,14 @@ Plan ${this.LLM_CALL_FREQUENCY} turns (2-3 actions/turn). Consider BOTH economic
 COUNTRIES TO ANALYZE:
 ${countryPrompts}
 
-CRITICAL CONSTRAINT: countryId MUST be exactly one of these values:
-${countries.map(c => `  - ${c.countryId}`).join('\n')}
+⚠️ CRITICAL CONSTRAINT: countryId MUST be EXACT UUID from this list:
+${countries.map(c => {
+  const country = state.countries.find(co => co.id === c.countryId);
+  return `  - "${c.countryId}"  ← Use this exact UUID for ${country?.name || 'country'}`;
+}).join('\n')}
+
+⚠️ DO NOT use country names like "Borealis" or "Cyrenia" - these will FAIL validation!
+⚠️ ONLY use the full UUID strings shown above!
 
 JSON RULES:
 1. Return ONLY JSON with "countries" array
@@ -1279,27 +1297,29 @@ JSON RULES:
 3. Each action: id, instruction, execution (actionType + actionData)
 4. Use exact countryId from list above (full UUID)
 
-EXAMPLE (COPY THIS EXACT STRUCTURE):
+EXAMPLE (COPY THIS EXACT STRUCTURE WITH YOUR COUNTRIES):
 {
   "countries": [
     {
-      "countryId": "a48be812-0f40-42b3-85b4-7ee8a92e62f1",
+      "countryId": "${countries[0]?.countryId || 'USE_EXACT_UUID_FROM_LIST_ABOVE'}",
       "focus": "balanced",
       "rationale": "Build economy and military strength",
       "action_plan": [
-        {"id":"tech1","instruction":"Upgrade tech","execution":{"actionType":"research","actionData":{"targetLevel":3}}},
-        {"id":"recruit1","instruction":"Recruit troops","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":15}}},
-        {"id":"attack1","instruction":"Attack weak city","execution":{"actionType":"military","actionData":{"subType":"attack","targetCityId":"CITY_UUID","allocatedStrength":20}}},
-        {"id":"infra1","instruction":"Upgrade infrastructure","execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}},
-        {"id":"tech2","instruction":"Tech upgrade continued","execution":{"actionType":"research","actionData":{"targetLevel":4}}},
-        {"id":"recruit2","instruction":"More recruitment","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}},
-        {"id":"trade1","instruction":"Establish trade relations","execution":{"actionType":"diplomacy","actionData":{}}},
-        {"id":"tech3","instruction":"Final tech push","execution":{"actionType":"research","actionData":{"targetLevel":5}}}
+        {"id":"tech1","instruction":"Upgrade tech to L2","execution":{"actionType":"research","actionData":{"targetLevel":2}}},
+        {"id":"recruit1","instruction":"Recruit 15 troops","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":15}}},
+        {"id":"infra1","instruction":"Upgrade infrastructure to L1","execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":1}}},
+        {"id":"tech2","instruction":"Upgrade tech to L3","execution":{"actionType":"research","actionData":{"targetLevel":3}}},
+        {"id":"recruit2","instruction":"Recruit 10 more troops","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}},
+        {"id":"infra2","instruction":"Upgrade infrastructure to L2","execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}},
+        {"id":"attack1","instruction":"Attack weak neighbor","execution":{"actionType":"military","actionData":{"subType":"attack","targetCityId":"CITY_UUID_FROM_ATTACK_CANDIDATES","allocatedStrength":25}}},
+        {"id":"tech3","instruction":"Upgrade tech to L4","execution":{"actionType":"research","actionData":{"targetLevel":4}}}
       ],
       "diplomacy": {}
     }
   ]
 }
+
+Note: This example has exactly 8 steps. You can add up to 10 steps per country.
 
 STEP REQUIREMENTS BY TYPE:
 
@@ -1316,21 +1336,24 @@ Military (Attack):
   {"id":"id","instruction":"text","execution":{"actionType":"military","actionData":{"subType":"attack","targetCityId":"CITY_UUID","allocatedStrength":20-50}}}
 
 VALIDATION CHECKLIST BEFORE RESPONDING:
+✓ countryId is EXACT UUID from list above (NOT country name!)
+✓ Plan has 8-10 total steps per country (REQUIRED: minimum 8, maximum 10)
 ✓ EVERY action has "execution" object with actionType and actionData
 ✓ Military steps have execution.actionData.subType as "recruit" or "attack"
-✓ Economic steps have execution.actionData.subType as "infrastructure"
+✓ Economic steps have execution.actionData.subType as "infrastructure" and targetLevel
 ✓ Research steps have execution.actionData.targetLevel
-✓ Plan has 8-10 total steps (INCREASED from 6-8)
-✓ countryId matches exactly one of the provided IDs
+✓ No country names in countryId field (only UUIDs)
 ✓ No escaped characters, only valid JSON
-✓ Closing braces all match
+✓ All closing braces and brackets match
 
-SCHEMA: Return JSON with "countries" array. Each country needs:
-- countryId: MUST be exactly one of the IDs listed above (no other format)
+SCHEMA: Return JSON with "countries" array. Each country MUST have:
+- countryId: EXACT UUID from the list above (e.g., "406b9182-a2eb-40c7-9854-190a5ddc6eb5")
+  ⚠️ NEVER use country names! ONLY use the full UUID!
 - focus: "economy"|"military"|"balanced"
 - rationale: Brief reason (max 100 chars)
-- action_plan: Array of EXACTLY 8-10 executable steps (REQUIRED: minimum 8, maximum 10 steps per country)
-- diplomacy: Object mapping neighbor IDs to "neutral"|"hostile"
+- action_plan: Array of EXACTLY 8-10 executable steps (REQUIRED: minimum 8, maximum 10)
+  ⚠️ Plans with fewer than 8 steps will FAIL validation!
+- diplomacy: Object (can be empty {})
 
 STEP SCHEMA: {"id": "unique_id", "instruction": "What to do", "priority": 1-5, "execution": {"actionType": "research"|"economic"|"military", "actionData": {...}}, "when": {...}, "stop_when": {...}}
 
@@ -1378,8 +1401,14 @@ ECONOMIC FOCUS: For weak/bankrupt nations only.`;
       }
       cleanedResponse = cleanedResponse.trim();
       
-      // Parse JSON (Groq returns wrapped object format)
-      const parsedObject = JSON.parse(cleanedResponse);
+      // Parse JSON - handle multiple formats the LLM might return
+      let parsedObject = JSON.parse(cleanedResponse);
+      
+      // DEFENSIVE: Handle extra array wrapper [{"countries":[...]}] -> {"countries":[...]}
+      if (Array.isArray(parsedObject) && parsedObject.length > 0 && parsedObject[0]?.countries) {
+        console.log("[LLM Planner] Detected array wrapper, unwrapping to object");
+        parsedObject = parsedObject[0];
+      }
       
       // PHASE 1 FIX: Validate JSON structure before further processing
       try {
