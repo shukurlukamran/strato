@@ -40,7 +40,20 @@ export async function POST(req: Request) {
 
   const targetCity = cityRes.data[0] as any;
   if (targetCity.game_id !== gameId) return NextResponse.json({ error: "City does not belong to this game" }, { status: 400 });
-  if (targetCity.country_id !== defenderCountryId) return NextResponse.json({ error: "You can only defend your own cities" }, { status: 400 });
+  // #region agent log
+  const dbCountryId = targetCity.country_id;
+  const idsMatch = dbCountryId === defenderCountryId;
+  const types = { db: typeof dbCountryId, req: typeof defenderCountryId };
+  console.log('[Defend API] Own city check:', { defenderCountryId, dbCountryId, idsMatch, types, targetCityId });
+  await fetch('http://127.0.0.1:7242/ingest/5cfd136f-1fa7-464e-84d5-bcaf3c90cae7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'defend/route.ts:own-city-check',message:'own city check',data:{defenderCountryId,dbCountryId,idsMatch,types,targetCityId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
+  // #endregion
+  if (targetCity.country_id !== defenderCountryId) {
+    // #region agent log
+    console.log('[Defend API] REJECTED - country mismatch:', { defenderCountryId, dbCountryId: targetCity.country_id, targetCityId });
+    await fetch('http://127.0.0.1:7242/ingest/5cfd136f-1fa7-464e-84d5-bcaf3c90cae7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'defend/route.ts:own-city-reject',message:'own city reject',data:{defenderCountryId,dbCountryId,targetCityId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
+    // #endregion
+    return NextResponse.json({ error: "You can only defend your own cities" }, { status: 400 });
+  }
   if (!targetCity.is_under_attack) return NextResponse.json({ error: "City is not under attack" }, { status: 400 });
 
   // Check for existing attack action targeting this city

@@ -73,6 +73,13 @@ export function DefenseModal({
     setSubmitting(true);
     setError(null);
     try {
+      // #region agent log
+      const defenderId = defenderCountry.id;
+      const cityOwnerId = defendingCity.countryId;
+      const match = defenderId === cityOwnerId;
+      console.log('[DefenseModal] Submitting defense:', { defenderId, cityOwnerId, match, defenderName: defenderCountry.name, cityName: defendingCity.name });
+      fetch('http://127.0.0.1:7242/ingest/5cfd136f-1fa7-464e-84d5-bcaf3c90cae7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DefenseModal.tsx:submitDefense',message:'defense submit payload',data:{defenderCountryId:defenderId,targetCityId:defendingCity.id,cityOwnerId,match,defenderName:defenderCountry.name,cityName:defendingCity.name},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+      // #endregion
       const res = await fetch("/api/military/defend", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -85,6 +92,9 @@ export function DefenseModal({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/5cfd136f-1fa7-464e-84d5-bcaf3c90cae7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DefenseModal.tsx:submitDefense',message:'defend API error',data:{status:res.status,error:data?.error,defenderCountryId:defenderId,targetCityId:defendingCity.id,cityOwnerId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
+        // #endregion
         throw new Error(data?.error || "Failed to submit defense");
       }
       onSubmitted?.();

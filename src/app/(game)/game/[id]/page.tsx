@@ -871,31 +871,38 @@ export default function GamePage() {
       )}
 
       {/* Defense Modal */}
-      {defenseCity && defenseAttackerCountry && defenseAttackerStats && selectedCountry && selectedStats && (
-        <DefenseModal
-          gameId={gameId}
-          defendingCity={defenseCity}
-          defenderCountry={selectedCountry}
-          defenderStats={selectedStats}
-          attackerCountry={defenseAttackerCountry}
-          attackerStats={defenseAttackerStats}
-          onClose={() => {
-            // Mark city as dismissed so modal doesn't auto-reopen
-            setDismissedDefenseCities(prev => new Set(prev).add(defenseCity.id));
-            setDefenseCity(null);
-            setDefenseAttackerCountry(null);
-            setDefenseAttackerStats(null);
-          }}
-          onSubmitted={() => {
-            // Mark city as submitted so modal doesn't reopen
-            setSubmittedDefenseCities(prev => new Set(prev).add(defenseCity.id));
-            setDefenseCity(null);
-            setDefenseAttackerCountry(null);
-            setDefenseAttackerStats(null);
-            void refreshGameData();
-          }}
-        />
-      )}
+      {defenseCity && defenseAttackerCountry && defenseAttackerStats && (() => {
+        // Find the country that owns the defending city (the actual defender)
+        // This is the country that should defend, not the selected country on the map
+        const actualDefenderCountry = countries.find(c => c.id === defenseCity.countryId);
+        const actualDefenderStats = actualDefenderCountry ? statsByCountryId[actualDefenderCountry.id] : null;
+        if (!actualDefenderCountry || !actualDefenderStats) return null;
+        return (
+          <DefenseModal
+            gameId={gameId}
+            defendingCity={defenseCity}
+            defenderCountry={actualDefenderCountry}
+            defenderStats={actualDefenderStats}
+            attackerCountry={defenseAttackerCountry}
+            attackerStats={defenseAttackerStats}
+            onClose={() => {
+              // Mark city as dismissed so modal doesn't auto-reopen
+              setDismissedDefenseCities(prev => new Set(prev).add(defenseCity.id));
+              setDefenseCity(null);
+              setDefenseAttackerCountry(null);
+              setDefenseAttackerStats(null);
+            }}
+            onSubmitted={() => {
+              // Mark city as submitted so modal doesn't reopen
+              setSubmittedDefenseCities(prev => new Set(prev).add(defenseCity.id));
+              setDefenseCity(null);
+              setDefenseAttackerCountry(null);
+              setDefenseAttackerStats(null);
+              void refreshGameData();
+            }}
+          />
+        );
+      })()}
 
       {/* Diplomatic Relations Modal */}
       {showDiplomacyModal && (

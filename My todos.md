@@ -66,6 +66,7 @@ In Defense window when player is attacked:
 - Player can hire an advisor by clicking "Hire Advisor" button that can tell them what they can improve (the advisor will be the same logic with LLM for AI countries). It should work immediately without needing to end the turn. Advisor can be hired only once each turn.
 - AI countries may have dictators who thinks of themselves more than the country, and potential revolutions, protests, anger of people, etc
 - LLM should have an understanding that the country is being attacked by another country or its cities have been captured in the last few turns.
+- Plan how we can make "Estimated success chance" calculation in DefenseModal.tsx a better metric while keeping attacker's allocation unknown.
 -------
 
 Analyze root causes of these, understand what is happening, and then implement fixes. 
