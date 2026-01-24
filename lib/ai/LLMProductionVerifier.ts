@@ -247,7 +247,7 @@ class LLMProductionVerifier {
     }
 
     // Summary
-    console.log(${'='.repeat(80)});
+    console.log('='.repeat(80));
     console.log(`Summary: ${passCount} PASS, ${warnCount} WARN, ${failCount} FAIL`);
     
     if (failCount > 0) {
@@ -260,7 +260,7 @@ class LLMProductionVerifier {
     } else {
       console.log('\n✅ All verification checks PASSED! LLM fixes are working correctly.');
     }
-    console.log(${'='.repeat(80)} + '\n');
+    console.log('='.repeat(80) + '\n');
   }
 }
 
