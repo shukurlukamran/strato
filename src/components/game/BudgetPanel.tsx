@@ -9,6 +9,7 @@ import {
   calculateTradeCapacity,
 } from "@/lib/game-engine/EconomicClientUtils";
 import { ECONOMIC_BALANCE } from "@/lib/game-engine/EconomicBalance";
+import { getAllProfileModifiers } from "@/lib/game-engine/ProfileModifiers";
 import { ResourceProduction } from "@/lib/game-engine/ResourceProduction";
 import type { Country, CountryStats } from "@/types/country";
 import { Tooltip } from "./Tooltip";
@@ -39,6 +40,7 @@ export function BudgetPanel({ country, stats, activeDealsValue = 0 }: BudgetPane
   // NEW: Calculate military effectiveness and population capacity
   const effectiveMilitaryStrength = calculateEffectiveMilitaryStrength(stats);
   const militaryMultiplier = calculateMilitaryEffectivenessMultiplier(stats);
+  const profileMods = getAllProfileModifiers(stats.resourceProfile);
   const popCapacity = calculatePopulationCapacity(stats);
   const tradeCapacity = calculateTradeCapacity(stats);
 
@@ -103,7 +105,16 @@ export function BudgetPanel({ country, stats, activeDealsValue = 0 }: BudgetPane
           </Tooltip>
 
           {/* Military */}
-          <Tooltip content={`⚔️ MILITARY STRENGTH\n\nYour nation's combat power for defense and conquest.\n\n💪 CURRENT POWER:\nBase Strength: ${stats.militaryStrength}\nTech Bonus: +${((militaryMultiplier - 1) * 100).toFixed(0)}% (Tech Level ${stats.technologyLevel.toFixed(1)})\n${stats.resourceProfile ? `Profile Bonus: ${stats.resourceProfile.name === 'Mining Empire' ? '+5%' : '0%'}` : ''}\n\nEffective Strength: ${effectiveMilitaryStrength} ${effectiveMilitaryStrength > stats.militaryStrength ? '⚡ BOOSTED!' : ''}\n\n💰 RECRUITMENT:\nCost per point: $${ECONOMIC_BALANCE.MILITARY.COST_PER_STRENGTH_POINT}${stats.technologyLevel > 0 ? `\nTech Discount: -${(stats.technologyLevel * ECONOMIC_BALANCE.TECHNOLOGY.MILITARY_COST_REDUCTION_PER_LEVEL * 100).toFixed(0)}%` : ''}${stats.resourceProfile ? `\nProfile Modifier: ${stats.resourceProfile.name === 'Tech Innovator' ? '-10%' : stats.resourceProfile.name === 'Mining Empire' ? '-10%' : '0%'}` : ''}\n\n📉 UPKEEP:\n$${ECONOMIC_BALANCE.CONSUMPTION.MILITARY_UPKEEP_PER_STRENGTH} per strength/turn\nTotal: $${(stats.militaryStrength * ECONOMIC_BALANCE.CONSUMPTION.MILITARY_UPKEEP_PER_STRENGTH).toFixed(0)}/turn\n\n💡 TIP: Technology makes your army more effective AND cheaper!`}>
+          <Tooltip content={(() => {
+            const techBonus = (stats.technologyLevel || 0) * ECONOMIC_BALANCE.TECHNOLOGY.MILITARY_EFFECTIVENESS_PER_LEVEL * 100;
+            const effLine = profileMods.militaryEffectiveness !== 1
+              ? `\nCombat power (profile): ${profileMods.militaryEffectiveness > 1 ? '+' : ''}${((profileMods.militaryEffectiveness - 1) * 100).toFixed(0)}%`
+              : '';
+            const costLine = profileMods.militaryCost !== 1
+              ? `\nRecruitment cost (profile): ${Math.round(profileMods.militaryCost * 100)}%`
+              : '';
+            return `⚔️ MILITARY STRENGTH\n\nYour nation's combat power for defense and conquest.\n\n💪 CURRENT POWER:\nBase: ${stats.militaryStrength}\nTech: +${techBonus.toFixed(0)}% (Level ${(stats.technologyLevel || 0).toFixed(1)})${effLine}\n\nEffective: ${effectiveMilitaryStrength} ${effectiveMilitaryStrength !== stats.militaryStrength ? (effectiveMilitaryStrength > stats.militaryStrength ? '⚡' : '⚠') : ''}\n\n💰 RECRUITMENT COST:\nBase: $${ECONOMIC_BALANCE.MILITARY.COST_PER_STRENGTH_POINT}/pt${stats.technologyLevel > 0 ? `\nTech: -${(Math.min(stats.technologyLevel * ECONOMIC_BALANCE.TECHNOLOGY.MILITARY_COST_REDUCTION_PER_LEVEL, ECONOMIC_BALANCE.TECHNOLOGY.MAX_MILITARY_COST_REDUCTION) * 100).toFixed(0)}%` : ''}${costLine}\n\n📉 UPKEEP: $${ECONOMIC_BALANCE.CONSUMPTION.MILITARY_UPKEEP_PER_STRENGTH}/str\nTotal: $${(stats.militaryStrength * ECONOMIC_BALANCE.CONSUMPTION.MILITARY_UPKEEP_PER_STRENGTH).toFixed(0)}/turn`;
+          })()}>
             <div className="rounded border border-white/10 bg-slate-800/50 px-4 py-2 cursor-help">
               <div className="text-xs text-white/60 mb-1">⚔️ Military</div>
               <div className="text-lg font-bold text-red-400">

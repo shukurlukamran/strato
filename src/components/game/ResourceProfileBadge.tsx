@@ -43,21 +43,27 @@ export function ResourceProfileBadge({ profile }: { profile: ResourceProfile | n
         </div>
       )}
       
-      {/* Cost Modifiers Section */}
+      {/* Cost & Combat Modifiers Section */}
       <div className="border-t border-white/10 pt-2 mt-2">
-        <div className="text-xs font-semibold text-blue-400 mb-1">Upgrade Cost Modifiers:</div>
+        <div className="text-xs font-semibold text-blue-400 mb-1">Cost & Combat Modifiers:</div>
         
         <div className={`text-xs ${costMods.techCost < 1 ? 'text-green-300' : costMods.techCost > 1 ? 'text-red-300' : 'text-white/70'}`}>
-          • Technology: {Math.round(costMods.techCost * 100)}% {costMods.techCost < 1 ? '✓' : costMods.techCost > 1 ? '⚠' : ''}
+          • Tech upgrade cost: {Math.round(costMods.techCost * 100)}% {costMods.techCost < 1 ? '✓' : costMods.techCost > 1 ? '⚠' : ''}
         </div>
         
         <div className={`text-xs ${costMods.infraCost < 1 ? 'text-green-300' : costMods.infraCost > 1 ? 'text-red-300' : 'text-white/70'}`}>
-          • Infrastructure: {Math.round(costMods.infraCost * 100)}% {costMods.infraCost < 1 ? '✓' : costMods.infraCost > 1 ? '⚠' : ''}
+          • Infra upgrade cost: {Math.round(costMods.infraCost * 100)}% {costMods.infraCost < 1 ? '✓' : costMods.infraCost > 1 ? '⚠' : ''}
         </div>
         
         <div className={`text-xs ${costMods.militaryCost < 1 ? 'text-green-300' : costMods.militaryCost > 1 ? 'text-red-300' : 'text-white/70'}`}>
-          • Military: {Math.round(costMods.militaryCost * 100)}% {costMods.militaryCost < 1 ? '✓' : costMods.militaryCost > 1 ? '⚠' : ''}
+          • Military recruitment cost: {Math.round(costMods.militaryCost * 100)}% {costMods.militaryCost < 1 ? '✓' : costMods.militaryCost > 1 ? '⚠' : ''}
         </div>
+        
+        {costMods.militaryEffectiveness !== 1 && (
+          <div className={`text-xs ${costMods.militaryEffectiveness > 1 ? 'text-green-300' : 'text-red-300'}`}>
+            • Combat power (effectiveness): {Math.round(costMods.militaryEffectiveness * 100)}% {costMods.militaryEffectiveness > 1 ? '✓' : '⚠'}
+          </div>
+        )}
         
         {costMods.tradeRevenue !== 1 && (
           <div className={`text-xs ${costMods.tradeRevenue > 1 ? 'text-green-300' : 'text-red-300'}`}>
