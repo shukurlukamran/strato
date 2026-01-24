@@ -521,7 +521,38 @@ export class EconomicAI {
     }
     
     if (this.debugLLMPlan && steps.length > 0) {
-      console.log(`[LLM Plan Debug] No actionable economic step found (all ${steps.length} steps filtered out)`);
+      // Collect diagnostics about why steps were filtered
+      const reasons = { wrongDomain: 0, noExecution: 0, alreadyDone: 0, gatingFailed: 0 };
+      const wrongDomainSteps: string[] = [];
+      
+      for (const s of steps) {
+        if (!s.execution) {
+          reasons.noExecution++;
+          continue;
+        }
+        if (s.execution.actionType !== "research" && s.execution.actionType !== "economic") {
+          reasons.wrongDomain++;
+          wrongDomainSteps.push(`${s.id}:${s.execution.actionType}`);
+          continue;
+        }
+        if (this.isStopConditionMet(s.stop_when, stats)) {
+          reasons.alreadyDone++;
+          continue;
+        }
+        if (!s.stop_when && executed.has(s.id)) {
+          reasons.alreadyDone++;
+          continue;
+        }
+        if (!this.isWhenConditionMet(s.when, stats)) {
+          reasons.gatingFailed++;
+          continue;
+        }
+      }
+      
+      console.log(`[LLM Plan Debug] No actionable economic step found (all ${steps.length} steps filtered):`, reasons);
+      if (wrongDomainSteps.length > 0) {
+        console.log(`[LLM Plan Debug] ⚠️ ${wrongDomainSteps.length} steps wrong actionType (expected research|economic):`, wrongDomainSteps.join(', '));
+      }
     }
     return null;
   }

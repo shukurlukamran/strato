@@ -560,13 +560,15 @@ export class LLMStrategicPlanner {
 Budget: $${stats.budget} | Tech L${stats.technologyLevel} | Mil ${stats.militaryStrength} (${economicAnalysis.effectiveMilitaryStrength} effective)
 Status: ${economicAnalysis.isUnderDefended ? 'Under-defended' : 'OK'} | ${economicAnalysis.turnsUntilBankrupt !== null ? `Bankrupt in ${economicAnalysis.turnsUntilBankrupt}t` : 'Stable'}
 
+CRITICAL: Military actions MUST have subType ("recruit" or "attack"), or they will be filtered out.
+
 Return ONLY this JSON:
 {
   "focus": "economy" or "military" or "balanced",
   "rationale": "Brief reason (max 50 chars)",
   "action_plan": [
-    {"id": "a1", "instruction": "Action 1", "execution": {"actionType": "research"|"economic"|"military", "actionData": {}}},
-    {"id": "a2", "instruction": "Action 2", "when": {"budget_gte": 1000}, "stop_when": {"tech_level_gte": 2}, "execution": {"actionType": "research", "actionData": {}}}
+    {"id": "a1", "instruction": "Action 1", "execution": {"actionType": "research", "actionData": {"targetLevel": 2}}},
+    {"id": "a2", "instruction": "Military action", "execution": {"actionType": "military", "actionData": {"subType": "recruit", "amount": 15}}}
   ],
   "risks": ["Risk 1"],
   "diplomacy": {},
@@ -646,7 +648,15 @@ RETRY MODE: Previous batch parsing failed. Provide simpler JSON response.
 
 COUNTRIES: ${countrySummaries}
 
-Return ONLY this JSON structure:
+CRITICAL REQUIREMENTS:
+1. EVERY step MUST have valid "execution" object
+2. Military steps MUST specify subType: "recruit" or "attack"
+   - ❌ WRONG: {"actionType": "military", "actionData": {"amount": 15}}
+   - ✅ CORRECT: {"actionType": "military", "actionData": {"subType": "recruit", "amount": 15}}
+3. Plan MUST have 6-8 steps minimum
+4. countryId MUST match exactly (case-sensitive)
+
+Return ONLY this JSON structure (6-8 steps REQUIRED):
 {
   "countries": [
     {
@@ -654,7 +664,7 @@ Return ONLY this JSON structure:
       "focus": "economy|balanced|military",
       "rationale": "Brief reason",
       "action_plan": [
-        {"id": "action_id", "instruction": "Action description", "execution": {"actionType": "research|economic|military", "actionData": {}}}
+        {"id": "action_id", "instruction": "Action description", "execution": {"actionType": "research|economic|military", "actionData": {"subType": "..."}}}
       ]
     }
   ]
@@ -843,6 +853,17 @@ MILITARY FOCUS:
   {"id":"defensive_recruit","instruction":"Recruit→30 for defense if threatened","priority":4,"when":{"budget_lt":300},"stop_when":{"military_strength_gte":30},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}}
 ]}
 
+CRITICAL: MILITARY ACTIONS MUST HAVE CORRECT SCHEMA
+
+❌ WRONG - Missing subType (WILL BE FILTERED OUT and not executed):
+{"id":"recruit","instruction":"Recruit troops","execution":{"actionType":"military","actionData":{"amount":15}}}
+^ This will be REJECTED. The game engine looks for subType field.
+
+✅ CORRECT - Always include subType:
+{"id":"recruit","instruction":"Recruit troops","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":15}}}
+
+EVERY military step MUST specify subType as either "recruit" or "attack". If you omit it, the step will be filtered out and NOT executed.
+
 REQUIRED STRUCTURE:
 {
   "focus": "economy"|"military"|"balanced",
@@ -866,6 +887,14 @@ REQUIRED STRUCTURE:
 }
 
 STEP FORMAT: {"id": "unique_id", "instruction": "What to do", "when": {...}, "stop_when": {...}, "execution": {"actionType": "research|economic|military", "actionData": {...}}}
+
+VALIDATION CHECKLIST (verify before responding):
+✓ EVERY action has an "execution" object
+✓ Military steps have execution.actionData.subType as "recruit" or "attack"
+✓ Economic steps have execution.actionData.subType as "infrastructure"
+✓ Research steps have execution.actionData.targetLevel
+✓ Plan has 6-8 total steps
+✓ countryId matches exactly one of the provided IDs (case-sensitive)
 
 BE LLM-LED: Choose the best strategy yourself. Only validate executability at engine boundary.`;
   }
@@ -1131,10 +1160,20 @@ SCHEMA: Return JSON with "countries" array. Each country needs:
 - countryId: MUST be exactly one of the IDs listed above (no other format)
 - focus: "economy"|"military"|"balanced"
 - rationale: Brief reason (max 100 chars)
-- action_plan: Array of 6-8 executable steps
+- action_plan: Array of EXACTLY 6-8 executable steps (REQUIRED: minimum 6, maximum 8 steps per country)
 - diplomacy: Object mapping neighbor IDs to "neutral"|"hostile"
 
 STEP SCHEMA: {"id": "unique_id", "instruction": "What to do", "priority": 1-5, "execution": {"actionType": "research"|"economic"|"military", "actionData": {...}}, "when": {...}, "stop_when": {...}}
+
+CRITICAL: Military steps MUST include subType:
+❌ WRONG: {"execution": {"actionType": "military", "actionData": {"amount": 15}}}
+✅ CORRECT: {"execution": {"actionType": "military", "actionData": {"subType": "recruit", "amount": 15}}}
+
+For attack actions, include targetCityId from Attack Candidates list.
+For recruit actions, include amount (10-15 typical).
+Without subType, military steps will be filtered out and NOT executed.
+
+PLAN SIZE REQUIREMENT: Every country MUST have 6-8 steps. No exceptions. If a country is wealthy/stable, add economic diversification. If weak, add defensive military + economic recovery.
 
 ATTACKS: Include when militarily stronger than neighbors. Use targetCityId from Attack Candidates above.
 
@@ -1199,21 +1238,48 @@ ECONOMIC FOCUS: For weak/bankrupt nations only.`;
         // CRITICAL: Normalize countryId - extract UUID if embedded in string
         // Handle cases like: "Eldoria (47d3…)", "47d3…,", "47d3…d", etc.
         if (!uuidRegex.test(String(countryId))) {
-          const match = String(countryId).match(uuidInStringRegex);
+          const str = String(countryId);
+          
+          // Try extracting UUID from various formats
+          const match = str.match(uuidInStringRegex);
           if (match?.[1]) {
-            const normalized = match[1];
+            countryId = match[1];
             if (!warnedAboutNormalization) {
-              console.warn("[LLM Planner] Normalizing batch countryId:", { original: countryId, normalized });
+              console.log("[LLM Planner] Normalized batch countryId (extracted from string):", { original: parsed.countryId, normalized: countryId });
               warnedAboutNormalization = true;
             }
-            countryId = normalized;
+          } else {
+            // Try removing common trailing characters
+            const cleaned = str.replace(/[,;.\s]+$/, '').trim();
+            if (uuidRegex.test(cleaned)) {
+              countryId = cleaned;
+              if (!warnedAboutNormalization) {
+                console.log("[LLM Planner] Normalized batch countryId (removed trailing chars):", { original: parsed.countryId, normalized: countryId });
+                warnedAboutNormalization = true;
+              }
+            }
           }
         }
         
         // Validate against allowed IDs
         if (!allowedCountryIds.has(String(countryId))) {
-          console.warn(`[LLM Planner] Batch countryId not in requested set (normalized: ${countryId}), discarding`);
-          continue;
+          // Try case-insensitive match as fallback
+          const normalizedId = String(countryId).toLowerCase();
+          const matchedId = Array.from(allowedCountryIds).find(id => 
+            id.toLowerCase() === normalizedId
+          );
+          
+          if (matchedId) {
+            if (!warnedAboutNormalization) {
+              console.log("[LLM Planner] Normalized countryId case sensitivity:", { original: countryId, normalized: matchedId });
+              warnedAboutNormalization = true;
+            }
+            countryId = matchedId;
+          } else {
+            console.warn(`[LLM Planner] ⚠️ Batch countryId not in allowed set (normalized: "${countryId}", original: "${parsed.countryId}")`);
+            console.warn(`[LLM Planner] Allowed IDs: [${Array.from(allowedCountryIds).slice(0, 3).join(', ')}${allowedCountryIds.size > 3 ? '...' : ''}]`);
+            continue;
+          }
         }
         
         matchedAllowedCount++;
@@ -1280,6 +1346,18 @@ ECONOMIC FOCUS: For weak/bankrupt nations only.`;
           confidenceScore,
           turnAnalyzed: turn,
         };
+        
+        // VALIDATION: Check plan quality
+        const stepCount = planItems.filter(i => i.kind === 'step').length;
+        const executableCount = planItems.filter(i => i.kind === 'step' && i.execution).length;
+        
+        if (stepCount < 6) {
+          console.warn(`[LLM Planner] ⚠️ Plan quality LOW for ${countryId}: only ${stepCount}/6 steps (${executableCount} executable)`);
+        }
+        
+        if (executableCount < 4) {
+          console.warn(`[LLM Planner] ⚠️ Plan quality LOW for ${countryId}: only ${executableCount}/6 executable steps`);
+        }
         
         results.set(String(countryId), analysis);
       }

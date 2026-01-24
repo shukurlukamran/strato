@@ -937,6 +937,48 @@ Your decision:`;
     
     if (this.debugLLMPlan && steps.length > 0) {
       console.log(`[LLM Plan Debug] No actionable ${requiredSubType} step found (all ${steps.length} steps filtered out)`);
+      
+      // Enhanced diagnostics: show why steps were filtered
+      const reasons = { wrongDomain: 0, noExecution: 0, alreadyDone: 0, gatingFailed: 0, wrongSubType: 0, banned: 0 };
+      const wrongDomainSteps: string[] = [];
+      
+      for (const s of steps) {
+        if (!s.execution) {
+          reasons.noExecution++;
+          continue;
+        }
+        if (s.execution.actionType !== "military") {
+          reasons.wrongDomain++;
+          wrongDomainSteps.push(`${s.id}:${s.execution.actionType}`);
+          continue;
+        }
+        if (this.isStopConditionMet(s.stop_when, stats)) {
+          reasons.alreadyDone++;
+          continue;
+        }
+        if (!s.stop_when && executed.has(s.id)) {
+          reasons.alreadyDone++;
+          continue;
+        }
+        if (!this.isWhenConditionMet(s.when, stats)) {
+          reasons.gatingFailed++;
+          continue;
+        }
+        const subType = (s.execution.actionData as any)?.subType;
+        if (subType !== requiredSubType) {
+          reasons.wrongSubType++;
+          continue;
+        }
+        if (subType === "recruit" && bans.banRecruitment) {
+          reasons.banned++;
+          continue;
+        }
+      }
+      
+      console.log(`[LLM Plan Debug] Step filtering breakdown (${requiredSubType}):`, reasons);
+      if (wrongDomainSteps.length > 0) {
+        console.log(`[LLM Plan Debug] ⚠️ ${wrongDomainSteps.length} steps wrong actionType (expected military):`, wrongDomainSteps.join(', '));
+      }
     }
     return null;
   }
