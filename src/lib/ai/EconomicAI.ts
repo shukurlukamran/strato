@@ -3,7 +3,6 @@ import type { GameAction } from "@/types/actions";
 import type { GameStateSnapshot } from "@/lib/game-engine/GameState";
 import { RuleBasedAI } from "./RuleBasedAI";
 import { ActionResolver } from "@/lib/game-engine/ActionResolver";
-import { ResourceCost } from "@/lib/game-engine/ResourceCost";
 import { DefaultPersonality, type AIPersonality } from "./Personality";
 import {
   extractLLMBans,
@@ -44,10 +43,6 @@ export class EconomicAI {
     const stats = state.countryStatsByCountryId[countryId];
     
     if (!stats) return actions;
-
-    // Track available resources and budget for this turn
-    let availableResources = { ...stats.resources };
-    let availableBudget = stats.budget;
 
     // Analyze economic situation
     const analysis = RuleBasedAI.analyzeEconomicSituation(state, countryId, stats);
@@ -101,145 +96,12 @@ export class EconomicAI {
 
     if (intent.focus === "research") {
       if (canDoResearch && shouldResearch) {
-        const baseCost = ActionResolver.calculateResearchCost(stats.technologyLevel);
-        const requiredResources = ResourceCost.getResourceCostForAction("research", stats);
-        const affordability = ResourceCost.checkResourceAffordability(requiredResources, availableResources);
-        const researchCost = Math.floor(baseCost * affordability.penaltyMultiplier);
-        
-        if (availableBudget >= researchCost) {
-          if (hasLLMGuidance) {
-            console.log(`[EconomicAI] Following LLM focus (research) with rule-based execution`);
-          }
-          actions.push({
-            id: '',
-            gameId: state.gameId,
-            countryId,
-            turn: state.turn,
-            actionType: "research",
-            actionData: {
-              cost: researchCost,
-              targetLevel: stats.technologyLevel + 1,
-            },
-            status: "pending",
-            createdAt: new Date().toISOString(),
-          });
-          availableBudget -= researchCost;
-          if (affordability.canAfford) {
-            availableResources = ResourceCost.deductResources(availableResources, requiredResources);
-          }
-        }
-      } else if (canDoInfrastructure && shouldInfrastructure) {
-        const baseCost = ActionResolver.calculateInfrastructureCost(stats.infrastructureLevel || 0);
-        const requiredResources = ResourceCost.getResourceCostForAction("infrastructure", stats);
-        const affordability = ResourceCost.checkResourceAffordability(requiredResources, availableResources);
-        const infraCost = Math.floor(baseCost * affordability.penaltyMultiplier);
-        
-        if (availableBudget >= infraCost) {
-          if (hasLLMGuidance) {
-            console.log(`[EconomicAI] Following LLM focus (research) with infrastructure fallback`);
-          }
-          actions.push({
-            id: '',
-            gameId: state.gameId,
-            countryId,
-            turn: state.turn,
-            actionType: "economic",
-            actionData: {
-              subType: "infrastructure",
-              cost: infraCost,
-              targetLevel: (stats.infrastructureLevel || 0) + 1,
-            },
-            status: "pending",
-            createdAt: new Date().toISOString(),
-          });
-          availableBudget -= infraCost;
-          if (affordability.canAfford) {
-            availableResources = ResourceCost.deductResources(availableResources, requiredResources);
-          }
-        }
-      }
-      return actions;
-    }
-
-    if (intent.focus === "economy") {
-      if (canDoInfrastructure && shouldInfrastructure) {
-        const baseCost = ActionResolver.calculateInfrastructureCost(stats.infrastructureLevel || 0);
-        const requiredResources = ResourceCost.getResourceCostForAction("infrastructure", stats);
-        const affordability = ResourceCost.checkResourceAffordability(requiredResources, availableResources);
-        const infraCost = Math.floor(baseCost * affordability.penaltyMultiplier);
-        
-        if (availableBudget >= infraCost) {
-          if (hasLLMGuidance) {
-            console.log(`[EconomicAI] Following LLM focus (economy) with infrastructure upgrade`);
-          }
-          actions.push({
-            id: '',
-            gameId: state.gameId,
-            countryId,
-            turn: state.turn,
-            actionType: "economic",
-            actionData: {
-              subType: "infrastructure",
-              cost: infraCost,
-              targetLevel: (stats.infrastructureLevel || 0) + 1,
-            },
-            status: "pending",
-            createdAt: new Date().toISOString(),
-          });
-          availableBudget -= infraCost;
-          if (affordability.canAfford) {
-            availableResources = ResourceCost.deductResources(availableResources, requiredResources);
-          }
-        }
-      } else if (canDoResearch && shouldResearch) {
-        const baseCost = ActionResolver.calculateResearchCost(stats.technologyLevel);
-        const requiredResources = ResourceCost.getResourceCostForAction("research", stats);
-        const affordability = ResourceCost.checkResourceAffordability(requiredResources, availableResources);
-        const researchCost = Math.floor(baseCost * affordability.penaltyMultiplier);
-        
-        if (availableBudget >= researchCost) {
-          if (hasLLMGuidance) {
-            console.log(`[EconomicAI] Following LLM focus (economy) with research fallback`);
-          }
-          actions.push({
-            id: '',
-            gameId: state.gameId,
-            countryId,
-            turn: state.turn,
-            actionType: "research",
-            actionData: {
-              cost: researchCost,
-              targetLevel: stats.technologyLevel + 1,
-            },
-            status: "pending",
-            createdAt: new Date().toISOString(),
-          });
-          availableBudget -= researchCost;
-          if (affordability.canAfford) {
-            availableResources = ResourceCost.deductResources(availableResources, requiredResources);
-          }
-        }
-      }
-      return actions;
-    }
-
-    // FALLBACK: Generic rule-based logic for focuses not handled above
-    // At this point, focus can only be: "balanced", "military", or "diplomacy"
-    // ("economy" and "research" already returned above)
-    
-    // DECISION 1: Research investment
-    if (canDoResearch && shouldResearch) {
-      const baseCost = ActionResolver.calculateResearchCost(stats.technologyLevel);
-      const requiredResources = ResourceCost.getResourceCostForAction("research", stats);
-      const affordability = ResourceCost.checkResourceAffordability(requiredResources, availableResources);
-      const researchCost = Math.floor(baseCost * affordability.penaltyMultiplier);
-      
-      if (availableBudget >= researchCost) {
+        const researchCost = ActionResolver.calculateResearchCost(stats.technologyLevel);
         if (hasLLMGuidance) {
-          console.log(`[EconomicAI] Fallback: Rule-based research decision (LLM focus: ${intent.focus})`);
+          console.log(`[EconomicAI] Following LLM focus (research) with rule-based execution`);
         }
         actions.push({
-          id: '', // Will be auto-generated by database
+          id: '',
           gameId: state.gameId,
           countryId,
           turn: state.turn,
@@ -251,27 +113,13 @@ export class EconomicAI {
           status: "pending",
           createdAt: new Date().toISOString(),
         });
-        availableBudget -= researchCost;
-        if (affordability.canAfford) {
-          availableResources = ResourceCost.deductResources(availableResources, requiredResources);
-        }
-      }
-    }
-
-    // DECISION 2: Infrastructure investment
-    // Only if we didn't research this turn (one major investment per turn)
-    if (actions.length === 0 && canDoInfrastructure && shouldInfrastructure) {
-      const baseCost = ActionResolver.calculateInfrastructureCost(stats.infrastructureLevel || 0);
-      const requiredResources = ResourceCost.getResourceCostForAction("infrastructure", stats);
-      const affordability = ResourceCost.checkResourceAffordability(requiredResources, availableResources);
-      const infraCost = Math.floor(baseCost * affordability.penaltyMultiplier);
-      
-      if (availableBudget >= infraCost) {
+      } else if (canDoInfrastructure && shouldInfrastructure) {
+        const infraCost = ActionResolver.calculateInfrastructureCost(stats.infrastructureLevel || 0);
         if (hasLLMGuidance) {
-          console.log(`[EconomicAI] Fallback: Rule-based infrastructure decision (LLM focus: ${intent.focus})`);
+          console.log(`[EconomicAI] Following LLM focus (research) with infrastructure fallback`);
         }
         actions.push({
-          id: '', // Will be auto-generated by database
+          id: '',
           gameId: state.gameId,
           countryId,
           turn: state.turn,
@@ -284,11 +132,98 @@ export class EconomicAI {
           status: "pending",
           createdAt: new Date().toISOString(),
         });
-        availableBudget -= infraCost;
-        if (affordability.canAfford) {
-          availableResources = ResourceCost.deductResources(availableResources, requiredResources);
-        }
       }
+      return actions;
+    }
+
+    if (intent.focus === "economy") {
+      if (canDoInfrastructure && shouldInfrastructure) {
+        const infraCost = ActionResolver.calculateInfrastructureCost(stats.infrastructureLevel || 0);
+        if (hasLLMGuidance) {
+          console.log(`[EconomicAI] Following LLM focus (economy) with infrastructure upgrade`);
+        }
+        actions.push({
+          id: '',
+          gameId: state.gameId,
+          countryId,
+          turn: state.turn,
+          actionType: "economic",
+          actionData: {
+            subType: "infrastructure",
+            cost: infraCost,
+            targetLevel: (stats.infrastructureLevel || 0) + 1,
+          },
+          status: "pending",
+          createdAt: new Date().toISOString(),
+        });
+      } else if (canDoResearch && shouldResearch) {
+        const researchCost = ActionResolver.calculateResearchCost(stats.technologyLevel);
+        if (hasLLMGuidance) {
+          console.log(`[EconomicAI] Following LLM focus (economy) with research fallback`);
+        }
+        actions.push({
+          id: '',
+          gameId: state.gameId,
+          countryId,
+          turn: state.turn,
+          actionType: "research",
+          actionData: {
+            cost: researchCost,
+            targetLevel: stats.technologyLevel + 1,
+          },
+          status: "pending",
+          createdAt: new Date().toISOString(),
+        });
+      }
+      return actions;
+    }
+
+    // FALLBACK: Generic rule-based logic for focuses not handled above
+    // At this point, focus can only be: "balanced", "military", or "diplomacy"
+    // ("economy" and "research" already returned above)
+    
+    // DECISION 1: Research investment
+    if (canDoResearch && shouldResearch) {
+      const researchCost = ActionResolver.calculateResearchCost(stats.technologyLevel);
+      if (hasLLMGuidance) {
+        console.log(`[EconomicAI] Fallback: Rule-based research decision (LLM focus: ${intent.focus})`);
+      }
+      actions.push({
+        id: '', // Will be auto-generated by database
+        gameId: state.gameId,
+        countryId,
+        turn: state.turn,
+        actionType: "research",
+        actionData: {
+          cost: researchCost,
+          targetLevel: stats.technologyLevel + 1,
+        },
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    // DECISION 2: Infrastructure investment
+    // Only if we didn't research this turn (one major investment per turn)
+    if (actions.length === 0 && canDoInfrastructure && shouldInfrastructure) {
+      const infraCost = ActionResolver.calculateInfrastructureCost(stats.infrastructureLevel || 0);
+      if (hasLLMGuidance) {
+        console.log(`[EconomicAI] Fallback: Rule-based infrastructure decision (LLM focus: ${intent.focus})`);
+      }
+      actions.push({
+        id: '', // Will be auto-generated by database
+        gameId: state.gameId,
+        countryId,
+        turn: state.turn,
+        actionType: "economic",
+        actionData: {
+          subType: "infrastructure",
+          cost: infraCost,
+          targetLevel: (stats.infrastructureLevel || 0) + 1,
+        },
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      });
     }
 
     return actions;
@@ -317,7 +252,6 @@ export class EconomicAI {
       // Allow multiple actions per turn (player can do multiple too).
       // We keep it conservative: at most 2 economic actions (typically 1 research + 1 infra).
       let remainingBudget = stats.budget;
-      let availableResources = { ...stats.resources };
       const chosenThisTurn = new Set<string>();
       const out: GameAction[] = [];
 
@@ -337,32 +271,10 @@ export class EconomicAI {
           continue;
         }
 
-        // Validate resources for this action
-        const actionType = built.actionType;
-        let requiredResources: Array<{ resourceId: string; amount: number }> = [];
-        if (actionType === "research") {
-          requiredResources = ResourceCost.getResourceCostForAction("research", stats);
-        } else if (actionType === "economic") {
-          const subType = (built.actionData as any)?.subType;
-          if (subType === "infrastructure") {
-            requiredResources = ResourceCost.getResourceCostForAction("infrastructure", stats);
-          }
-        }
-
-        const baseCost = Number((built.actionData as any)?.cost ?? 0);
-        const affordability = requiredResources.length > 0 
-          ? ResourceCost.checkResourceAffordability(requiredResources, availableResources)
-          : { canAfford: true, penaltyMultiplier: 1.0 };
-        const finalCost = Math.floor(baseCost * affordability.penaltyMultiplier);
-
-        if (Number.isFinite(finalCost) && finalCost > 0 && finalCost <= remainingBudget) {
-          // Update cost in action data to reflect penalty
-          (built.actionData as any).cost = finalCost;
+        const cost = Number((built.actionData as any)?.cost ?? 0);
+        if (Number.isFinite(cost) && cost > 0 && cost <= remainingBudget) {
           out.push(built);
-          remainingBudget -= finalCost;
-          if (affordability.canAfford && requiredResources.length > 0) {
-            availableResources = ResourceCost.deductResources(availableResources, requiredResources);
-          }
+          remainingBudget -= cost;
           chosenThisTurn.add(step.id);
         } else {
           // Can't afford this step this turn; stop trying further economic steps.
@@ -377,10 +289,6 @@ export class EconomicAI {
     // Legacy fallback: parse free-text recommendedActions
     const steps = intent.llmPlan?.recommendedActions ?? [];
     if (!Array.isArray(steps) || steps.length === 0) return [];
-
-    // Track available resources and budget
-    let availableResources = { ...stats.resources };
-    let availableBudget = stats.budget;
 
     // Avoid duplicating economic upgrades if already pending this turn
     const alreadyHasResearch = state.pendingActions.some(
@@ -419,32 +327,26 @@ export class EconomicAI {
         if (currentInfra >= 10) continue;
         if (!analysis.canAffordInfrastructure) continue;
 
-        const baseCost = ActionResolver.calculateInfrastructureCost(currentInfra);
-        const requiredResources = ResourceCost.getResourceCostForAction("infrastructure", stats);
-        const affordability = ResourceCost.checkResourceAffordability(requiredResources, availableResources);
-        const infraCost = Math.floor(baseCost * affordability.penaltyMultiplier);
-        
-        if (availableBudget >= infraCost) {
-          return [
-            {
-              id: "",
-              gameId: state.gameId,
-              countryId,
-              turn: state.turn,
-              actionType: "economic",
-              actionData: {
-                subType: "infrastructure",
-                cost: infraCost,
-                targetLevel: currentInfra + 1,
-                llmStep: step,
-                llmStepId: step,
-                llmPlanTurn: intent.llmPlan?.turnAnalyzed,
-              },
-              status: "pending",
-              createdAt: new Date().toISOString(),
+        const infraCost = ActionResolver.calculateInfrastructureCost(currentInfra);
+        return [
+          {
+            id: "",
+            gameId: state.gameId,
+            countryId,
+            turn: state.turn,
+            actionType: "economic",
+            actionData: {
+              subType: "infrastructure",
+              cost: infraCost,
+              targetLevel: currentInfra + 1,
+              llmStep: step,
+              llmStepId: step,
+              llmPlanTurn: intent.llmPlan?.turnAnalyzed,
             },
-          ];
-        }
+            status: "pending",
+            createdAt: new Date().toISOString(),
+          },
+        ];
       }
 
       // Research/technology directive
@@ -460,31 +362,25 @@ export class EconomicAI {
         // If a range is specified (rare for tech), treat as one-time and just do a single upgrade
         void extractNumberRange;
 
-        const baseCost = ActionResolver.calculateResearchCost(currentTech);
-        const requiredResources = ResourceCost.getResourceCostForAction("research", stats);
-        const affordability = ResourceCost.checkResourceAffordability(requiredResources, availableResources);
-        const researchCost = Math.floor(baseCost * affordability.penaltyMultiplier);
-        
-        if (availableBudget >= researchCost) {
-          return [
-            {
-              id: "",
-              gameId: state.gameId,
-              countryId,
-              turn: state.turn,
-              actionType: "research",
-              actionData: {
-                cost: researchCost,
-                targetLevel: currentTech + 1,
-                llmStep: step,
-                llmStepId: step,
-                llmPlanTurn: intent.llmPlan?.turnAnalyzed,
-              },
-              status: "pending",
-              createdAt: new Date().toISOString(),
+        const researchCost = ActionResolver.calculateResearchCost(currentTech);
+        return [
+          {
+            id: "",
+            gameId: state.gameId,
+            countryId,
+            turn: state.turn,
+            actionType: "research",
+            actionData: {
+              cost: researchCost,
+              targetLevel: currentTech + 1,
+              llmStep: step,
+              llmStepId: step,
+              llmPlanTurn: intent.llmPlan?.turnAnalyzed,
             },
-          ];
-        }
+            status: "pending",
+            createdAt: new Date().toISOString(),
+          },
+        ];
       }
     }
 

@@ -7,7 +7,6 @@ import { DefaultPersonality, type AIPersonality } from "./Personality";
 import { calculateCityValue } from "@/types/city";
 import { MilitaryCalculator } from "@/lib/game-engine/MilitaryCalculator";
 import { ECONOMIC_BALANCE } from "@/lib/game-engine/EconomicBalance";
-import { ResourceCost } from "@/lib/game-engine/ResourceCost";
 import {
   extractLLMBans,
   extractLLMBansFromProhibitTokens,
@@ -83,9 +82,6 @@ export class MilitaryAI {
         (attackStep.execution.actionData as any)?.subType === "attack") ||
       (!hasLLMPlan && (intent.focus === "military" || intent.focus === "balanced"));
 
-    // Track available resources for this turn
-    let availableResources = { ...stats.resources };
-
     // DECISION: Military recruitment
     const recruitAmount = allowRecruitment
       ? (this.extractRecruitAmountFromStep(recruitStep) ?? RuleBasedAI.decideMilitaryRecruitment(stats, analysis, weights))
@@ -103,15 +99,7 @@ export class MilitaryAI {
           (a.actionData as Record<string, unknown>)?.subType === "recruit"
       );
       const finalRecruitAmount = alreadyHasRecruit ? 0 : Math.max(0, Math.floor(recruitAmount));
-      
-      // Calculate resource requirements
-      const requiredResources = ResourceCost.calculateMilitaryResourceCost(finalRecruitAmount, stats);
-      const affordability = ResourceCost.checkResourceAffordability(requiredResources, availableResources);
-      
-      // Base cost calculation
-      const baseCost = finalRecruitAmount * costPerStrength;
-      // Apply resource penalty multiplier
-      const recruitCost = Math.floor(baseCost * affordability.penaltyMultiplier);
+      const recruitCost = finalRecruitAmount * costPerStrength;
       
       if (finalRecruitAmount > 0 && recruitCost <= remainingBudget) {
         actions.push({
@@ -132,10 +120,6 @@ export class MilitaryAI {
           createdAt: new Date().toISOString(),
         });
         remainingBudget -= recruitCost;
-        // Deduct resources if available
-        if (affordability.canAfford) {
-          availableResources = ResourceCost.deductResources(availableResources, requiredResources);
-        }
       }
     }
 

@@ -26,10 +26,8 @@ export class ActionResolver {
   /**
    * Resolve an action (including combat for attack actions)
    * Returns the updated action with results
-   * 
-   * Resource validation:
-   * - Immediate actions (player actions): Resources already deducted at submission time
-   * - Turn-based actions (AI actions): Resources validated and deducted here at execution time
+   * NOTE: Resource costs are handled at action submission time (immediate actions),
+   * so this resolver doesn't need to deduct resources for turn-based actions anymore.
    */
   resolve(state: GameState, action: GameAction): GameAction {
     if (!state.data.countryStatsByCountryId[action.countryId]) {
@@ -40,73 +38,21 @@ export class ActionResolver {
     const cost = (action.actionData as any)?.cost || 0;
     const immediate = (action.actionData as any)?.immediate === true;
     
-    let next: CountryStats = { ...prev };
-    let finalCost = cost;
-    let updatedResources = prev.resources;
-
-    // For turn-based actions (AI actions), validate and deduct resources at execution time
-    if (!immediate) {
-      // Calculate required resources based on action type
-      let requiredResources: Array<{ resourceId: string; amount: number }> = [];
-      let militaryAmount: number | undefined;
-
-      if (action.actionType === "research") {
-        requiredResources = ResourceCost.getResourceCostForAction("research", prev);
-      } else if (action.actionType === "economic") {
-        const subType = (action.actionData as any)?.subType;
-        if (subType === "infrastructure") {
-          requiredResources = ResourceCost.getResourceCostForAction("infrastructure", prev);
-        }
-      } else if (action.actionType === "military") {
-        const subType = (action.actionData as any)?.subType;
-        if (subType === "recruit") {
-          militaryAmount = (action.actionData as any)?.amount || 10;
-          requiredResources = ResourceCost.getResourceCostForAction("military", prev, militaryAmount);
-        }
-        // Attack actions don't require resources (only budget)
-      }
-
-      // Check resource affordability and apply penalty multiplier
-      if (requiredResources.length > 0) {
-        const affordability = ResourceCost.checkResourceAffordability(requiredResources, prev.resources);
-        
-        // Apply penalty multiplier to cost if resources are missing
-        finalCost = Math.floor(cost * affordability.penaltyMultiplier);
-        
-        // Check if country can afford the final cost (with penalty)
-        if (prev.budget < finalCost) {
-          return { ...action, status: "failed" };
-        }
-        
-        // Deduct resources if available (even if missing, we still deduct what we have)
-        if (affordability.canAfford) {
-          updatedResources = ResourceCost.deductResources(prev.resources, requiredResources);
-        } else {
-          // Partial deduction: deduct what we have, even if not enough
-          updatedResources = ResourceCost.deductResources(prev.resources, requiredResources);
-        }
-      } else {
-        // No resource requirements, just check budget
-        if (prev.budget < finalCost) {
-          return { ...action, status: "failed" };
-        }
-      }
-    } else {
-      // Immediate actions: resources already deducted at submission time
-      // Just verify budget (should already be checked, but double-check for safety)
-      if (prev.budget < finalCost) {
-        return { ...action, status: "failed" };
-      }
+    // Check if country has enough budget
+    if (!immediate && prev.budget < cost) {
+      return { ...action, status: "failed" };
     }
 
+    let next: CountryStats = { ...prev };
+
     // Apply action effects and deduct cost
+    // Resources are already deducted at submission time for immediate actions
     if (action.actionType === "research") {
       // Technology upgrade: increase by 1 level
       next = {
         ...next,
         technologyLevel: next.technologyLevel + 1,
-        budget: immediate ? next.budget : Math.max(0, next.budget - finalCost),
-        resources: updatedResources,
+        budget: immediate ? next.budget : Math.max(0, next.budget - cost),
       };
     } else if (action.actionType === "economic") {
       const subType = (action.actionData as any)?.subType;
@@ -116,8 +62,7 @@ export class ActionResolver {
         next = {
           ...next,
           infrastructureLevel: (next.infrastructureLevel || 0) + 1,
-          budget: immediate ? next.budget : Math.max(0, next.budget - finalCost),
-          resources: updatedResources,
+          budget: immediate ? next.budget : Math.max(0, next.budget - cost),
         };
       }
     } else if (action.actionType === "military") {
@@ -129,12 +74,11 @@ export class ActionResolver {
         next = {
           ...next,
           militaryStrength: next.militaryStrength + amount,
-          budget: immediate ? next.budget : Math.max(0, next.budget - finalCost),
-          resources: updatedResources,
+          budget: immediate ? next.budget : Math.max(0, next.budget - cost),
         };
       } else if (subType === "attack") {
         // Attack actions are resolved later (combat resolution phase).
-        // Budget and resources already deducted at submission time for immediate actions.
+        // We intentionally do NOT modify stats here for MVP, and cost is deducted at submission time.
       }
     }
     
