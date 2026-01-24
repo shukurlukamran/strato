@@ -212,9 +212,21 @@ export class MilitaryAI {
       const llmTargetCityId = (attackStep.execution?.actionData as any)?.targetCityId;
       if (llmTargetCityId) {
         // Verify the target city is valid and attackable
-        const targetCity = neighboringCities.find(city => city.id === llmTargetCityId);
+        let targetCity = neighboringCities.find(city => city.id === llmTargetCityId);
+        
+        // RECOVERY: If cityId is invalid, try interpreting it as a countryId
+        if (!targetCity && llmTargetCityId.length > 5) {
+          // Might be a countryId instead; find a city owned by that country
+          const citiesOwnedByCountry = neighboringCities.filter(city => city.countryId === llmTargetCityId);
+          if (citiesOwnedByCountry.length > 0) {
+            // Pick the first/best city from that country
+            targetCity = citiesOwnedByCountry[0];
+            console.log(`[MilitaryAI] LLM provided countryId instead of cityId; recovered to city ${targetCity.name} (${targetCity.id})`);
+          }
+        }
+        
         if (targetCity) {
-          console.log(`[MilitaryAI] Honoring LLM-specified target: ${targetCity.name} (${llmTargetCityId})`);
+          console.log(`[MilitaryAI] Honoring LLM-specified target: ${targetCity.name} (${targetCity.id})`);
           const action = await this.attackSpecificCity(
             state,
             countryId,

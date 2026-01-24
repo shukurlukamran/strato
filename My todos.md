@@ -1,65 +1,6 @@
 (DO NOT TOUCH THIS FILE. THIS FILE IS FOR MY PERSONAL NOTES.)
 
-
-- LLM Stragic Advise is incorrect or not updated with the latest game data. Aurum is the weakest country with only a few armies yet it says countries are under defended vs Aurum (this issue may have been fixed now but not sure, check it). Also Vercel log doesn't show the list of actions recommended thus can't see if it works properly:
-
-
-[LLM Planner] ✓ Successfully parsed 5/5 country analyses
-[LLM Planner] ✓ Persisted strategic plan for 7192d918-9836-4920-b330-6fc1f1809d7e: 6 items
-[LLM Planner] ✓ Borealis: balanced - Strong vs Dravon, under-Defended vs Aurum; upgrade infra, attack Dravon
-[LLM Planner] ✓ Persisted strategic plan for 773e6eb7-bd17-4ba3-92ae-7325dccc51fb: 6 items
-[LLM Planner] ✓ Cyrenia: balanced - Strong vs Dravon, under-Defended vs Aurum; upgrade infra, attack Dravon
-[LLM Planner] ✓ Persisted strategic plan for 9262ee25-f86e-4393-b46e-f0a191af39ae: 6 items
-[LLM Planner] ✓ Dravon: balanced - Weaker, under threat; focus on infra and tech, recruit minimally
-[LLM Planner] ✓ Persisted strategic plan for 44ffcd09-49e0-4cdc-9773-f47997c250f9: 6 items
-[LLM Planner] ✓ Eldoria: balanced - Strong vs Dravon, under-Defended vs Aurum; upgrade infra, attack Dravon
-[LLM Planner] ✓ Persisted strategic plan for e2f16177-1d8e-40c5-bae5-0f2e47ea4b8a: 6 items
-[LLM Planner] ✓ Falken: balanced - Strong vs Dravon, under-Defended vs Aurum; upgrade infra, attack Dravon
-[Turn API] ✓ Batch analysis complete: 5 analyses received
-[LLM Planner] Using Groq openai/gpt-oss-20b for strategic planning
-
-Another example from another turn/game where strategy looks weak:
-
-[LLM Planner] Using Groq openai/gpt-oss-20b for strategic planning
-[Strategic Planner] Country 8c564704-ae83-40d8-96e4-e0abf13a3394:
-Rule-based: economy - Early game: Build economic foundation with infrastructure.
-Fresh LLM: balanced - Build tech, recruit, then attack Cyrenia if stronger
-[LLM Planner] Using Groq openai/gpt-oss-20b for strategic planning
-[Strategic Planner] Country 56fb4488-d327-4376-a452-309baaad597c:
-Rule-based: economy - Early game: Build economic foundation with infrastructure.
-Fresh LLM: balanced - Upgrade tech, recruit, attack Borealis when possible
-[LLM Planner] Using Groq openai/gpt-oss-20b for strategic planning
-[Strategic Planner] Country ce546761-42a9-4ebf-9ea6-ef1d2f68abb7:
-Rule-based: economy - Early game: Build economic foundation with infrastructure.
-Fresh LLM: balanced - Strengthen infra, recruit, defend against Aurum
-[LLM Planner] Using Groq openai/gpt-oss-20b for strategic planning
-[Strategic Planner] Country a8dcd67d-b118-4a94-8fbe-189d3149ff69:
-Rule-based: research - Early game: Invest in technology for long-term growth.
-Fresh LLM: balanced - Boost infra, recruit, hold against Aurum
-[LLM Planner] Using Groq openai/gpt-oss-20b for strategic planning
-[Strategic Planner] Country d670779c-ff07-4de9-b139-e671ee193310:
-Rule-based: economy - Early game: Build economic foundation with infrastructure.
-Fresh LLM: balanced - Upgrade infra, recruit, attack Borealis if advantage
-
-Another example from another turn/game where strategy looks weak and too focused on attacking the Player/any single country (Aurum here has significantly weak military so it may make sense but still it looks like a shallow strategy)?:
-
-[LLM Planner] ✓ Borealis: balanced - Strong enough to attack Aurum, invest in infra
-[LLM Planner] ✓ Persisted strategic plan for 1a780688-b317-4f4e-8439-e6b2dce0a7db: 6 items
-[LLM Planner] ✓ Cyrenia: balanced - Can outmaneuver Aurum, need infra
-[LLM Planner] ✓ Persisted strategic plan for aeb5b138-4a4f-4a3f-bde1-5b0c45c5455c: 6 items
-[LLM Planner] ✓ Dravon: balanced - Strong, can conquer Aurum, upgrade infra
-[LLM Planner] ✓ Persisted strategic plan for 0eac3509-d2a7-4511-972f-d1cb1affb55c: 6 items
-[LLM Planner] ✓ Eldoria: balanced - Tech Innovator, can attack Aurum, need infra
-[LLM Planner] ✓ Persisted strategic plan for 5e139243-db4e-4688-bc55-c95147998e12: 6 items
-[LLM Planner] ✓ Falken: balanced - Can outflank Aurum, need infra
-[Turn API] ✓ Batch analysis complete: 5 analyses received
-[LLM Planner] Using Groq openai/gpt-oss-20b for strategic planning
-[Strategic Planner] Country 2409821d-4947-4b1d-b2ab-d0f61eab0cbe:
-Rule-based: diplomacy - Cooperative approach. Seek alliances and trade partnerships.
-Fresh LLM: balanced - Strong enough to attack Aurum, invest in infra
-[LLM Planner] Using Groq openai/gpt-oss-20b for strategic planning
-
-- **LLM should include the new resources mechanism for his decision-making**
+- Add the current population growth percentage and breakdown of where it comes from to the Population tooltip
 
 - In Deal chat, LLM responded with this which is unacceptable, it should keep  the conversation natural: "I've received your message: "But I want to buy more food from you. Let me know how much max food would you be wiling to give and what do you want in return?". Let me consider this carefully and get back to you."
 - No deal detected in this conversation error when clicking Extract Deal in Deal chat
@@ -90,8 +31,8 @@ Analyze root causes of these, understand what is happening, and then implement f
 
 Make sure everything we build is aligned with LLM in both Deals chat and End turn decisions and anywhere else it may be used, and also with Supabase database.
 
-Analyze root causes of these, understand what is happening, and create a concise plan with no fillers or bullshit for the implementation for helping other AI models to build it.
+Analyze root causes of these, understand what is happening, and create a concise plan with no fillers or bullshit for the implementation for helping other AI models to build it. Make sure everything we build is also aligned with Supabase database.
 
-Analyze the plan carefully, understand what is happening, and then implement fixes. Feel free to ask me if there's anything unclear or anything you wanna clarify further regarding the plan.
+Analyze the plan carefully, understand what is happening, and then implement fixes. Feel free to ask me if there's anything unclear or anything you wanna clarify further regarding the plan. Make sure everything we build is also aligned with Supabase database.
 
-We implemented the plan at @  Analyze and check to verify if these are now implemented correctly. If not, create a concise plan with no fillers or bullshit for the implementation for helping other AI models to build it.
+We implemented the plan at @  Analyze and check to verify if these are now implemented correctly. If not, create a concise plan with no fillers or bullshit for the implementation for helping other AI models to build it. Make sure everything we build is also aligned with Supabase database.

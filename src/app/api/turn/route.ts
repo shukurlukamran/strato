@@ -196,8 +196,23 @@ export async function POST(req: Request) {
       
       if (countriesForBatch.length > 0) {
         console.log(`[Turn API] 🚀 BATCH analyzing ${countriesForBatch.length} countries in SINGLE API call`);
+        console.log(`[Turn API] Requested country IDs: [${countriesForBatch.map(c => c.countryId.substring(0, 8)).join(', ')}...]`);
         batchAnalyses = await llmPlanner.analyzeSituationBatch(state.data, countriesForBatch, cities);
-        console.log(`[Turn API] ✓ Batch analysis complete: ${batchAnalyses.size} analyses received`);
+        
+        // Sanity logging: verify matching
+        const matchedCountries = Array.from(batchAnalyses.keys());
+        const requestedSet = new Set(countriesForBatch.map(c => c.countryId));
+        const allMatched = matchedCountries.every(id => requestedSet.has(id));
+        
+        console.log(`[Turn API] ✓ Batch analysis complete: ${batchAnalyses.size}/${countriesForBatch.length} matched`);
+        console.log(`[Turn API] Matched country IDs: [${matchedCountries.map(id => id.substring(0, 8)).join(', ')}${batchAnalyses.size !== countriesForBatch.length ? '...' : ''}]`);
+        
+        if (!allMatched) {
+          console.warn(`[Turn API] ⚠️ Some returned analyses don't match requested IDs; may indicate ID normalization issues`);
+        }
+        if (batchAnalyses.size < countriesForBatch.length) {
+          console.warn(`[Turn API] ⚠️ Batch analysis returned fewer results than requested (${batchAnalyses.size}/${countriesForBatch.length})`);
+        }
       }
     } catch (batchError) {
       console.error(`[Turn API] Batch analysis failed, will use cached plans:`, batchError);

@@ -410,10 +410,8 @@ export class LLMStrategicPlanner {
       // Build context-rich prompt
       const prompt = this.buildStrategicPrompt(state, countryId, stats);
       
-      // Call Groq API (OpenAI-compatible format)
-      // Note: response_format json_object can be strict about schema compliance
-      // If model fails to generate valid JSON, it will return 400 error
-      const response = await fetch(this.apiUrl, {
+      // Attempt 1: Normal analysis with higher token cap
+      let response = await fetch(this.apiUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -433,113 +431,108 @@ export class LLMStrategicPlanner {
           ],
           temperature: 0.4,  // Balanced temperature for varied strategies with reliable JSON
           top_p: 0.9,
-          max_tokens: 2000,
+          max_tokens: 3000,  // Increased from 2000 to accommodate fuller plans
           response_format: { type: "json_object" }  // Force JSON output
         })
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`[LLM Planner] Groq API error: ${response.status} - ${errorText}`);
+      if (response.ok) {
+        const data = await response.json();
+        const responseText = data.choices?.[0]?.message?.content || "";
         
-        // Check if this is a JSON validation error
-        try {
-          const errorJson = JSON.parse(errorText);
-          if (errorJson.error?.code === "json_validate_failed") {
-            console.error(`[LLM Planner] JSON validation failed - model could not generate valid JSON for the schema`);
-            console.error(`[LLM Planner] This usually means the prompt is too complex or the model is struggling with the constraints`);
-          }
-        } catch {
-          // Error text is not JSON, just log it
+        // Track costs
+        const usage = data.usage || {};
+        const inputTokens = usage.prompt_tokens || prompt.length / 4;
+        const outputTokens = usage.completion_tokens || responseText.length / 4;
+        const inputCost = (inputTokens / 1_000_000) * 0.20; // Groq input pricing
+        const outputCost = (outputTokens / 1_000_000) * 0.20; // Groq output pricing
+        
+        this.costTracking.totalCalls++;
+        this.costTracking.totalInputTokens += inputTokens;
+        this.costTracking.totalOutputTokens += outputTokens;
+        this.costTracking.estimatedCost += inputCost + outputCost;
+        this.costTracking.lastCallTimestamp = new Date().toISOString();
+        
+        const duration = Date.now() - startTime;
+        console.log(`[LLM Planner] ✓ Analysis complete in ${duration}ms (Groq ${this.modelName})`);
+        console.log(`[LLM Planner] 💰 Cost: $${(inputCost + outputCost).toFixed(6)} (Input: ${inputTokens.toFixed(0)} tokens, Output: ${outputTokens.toFixed(0)} tokens)`);
+        console.log(`[LLM Planner] 💰 Total session cost: $${this.costTracking.estimatedCost.toFixed(4)} (${this.costTracking.totalCalls} calls)`);
+        
+        // Parse LLM response into structured analysis
+        const analysis = this.parseStrategicAnalysis(responseText, state.turn);
+        
+        // Cache and persist
+        this.lastAnalysisCache.set(cacheKey, analysis);
+        const planKey = this.getPlanKey(state.gameId, countryId);
+        this.activeStrategicPlans.set(planKey, analysis);
+        await this.persistStrategicPlan(state.gameId, countryId, analysis);
+        
+        this.logStrategyDetails(state, countryId, analysis);
+        
+        // Clean old cache entries
+        if (this.lastAnalysisCache.size > 10) {
+          const oldestKeys = Array.from(this.lastAnalysisCache.keys()).slice(0, this.lastAnalysisCache.size - 10);
+          oldestKeys.forEach(key => this.lastAnalysisCache.delete(key));
         }
         
-        return null;
-      }
+        return analysis;
+      } else {
+        const errorText = await response.text();
+        const errorData = JSON.parse(errorText).error || {};
+        
+        if (errorData.code === "json_validate_failed") {
+          console.warn(`[LLM Planner] JSON validation failed on attempt 1, retrying with simplified prompt...`);
+          
+          // Attempt 2: Retry with simplified prompt and lower temperature
+          const simplifiedPrompt = this.buildSimplifiedStrategicPrompt(state, countryId, stats);
+          const retryResponse = await fetch(this.apiUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${this.apiKey}`
+            },
+            body: JSON.stringify({
+              model: this.modelName,
+              messages: [
+                {
+                  role: "system",
+                  content: "You are a strategic AI advisor. Return ONLY valid JSON. No explanations, no markdown."
+                },
+                {
+                  role: "user",
+                  content: simplifiedPrompt
+                }
+              ],
+              temperature: 0.2,  // Much lower temperature for reliable JSON
+              top_p: 0.8,
+              max_tokens: 2000,  // Reduced for simpler schema
+              response_format: { type: "json_object" }
+            })
+          });
 
-      const data = await response.json();
-      const responseText = data.choices?.[0]?.message?.content || "";
-      
-      // Track costs (Groq pricing: ~$0.20 per 1M tokens for input/output)
-      const usage = data.usage || {};
-      const inputTokens = usage.prompt_tokens || prompt.length / 4;
-      const outputTokens = usage.completion_tokens || responseText.length / 4;
-      const inputCost = (inputTokens / 1_000_000) * 0.20; // Groq input pricing
-      const outputCost = (outputTokens / 1_000_000) * 0.20; // Groq output pricing
-      
-      this.costTracking.totalCalls++;
-      this.costTracking.totalInputTokens += inputTokens;
-      this.costTracking.totalOutputTokens += outputTokens;
-      this.costTracking.estimatedCost += inputCost + outputCost;
-      this.costTracking.lastCallTimestamp = new Date().toISOString();
-      
-      const duration = Date.now() - startTime;
-      console.log(`[LLM Planner] ✓ Analysis complete in ${duration}ms (Groq ${this.modelName})`);
-      console.log(`[LLM Planner] 💰 Cost: $${(inputCost + outputCost).toFixed(6)} (Input: ${inputTokens.toFixed(0)} tokens, Output: ${outputTokens.toFixed(0)} tokens)`);
-      console.log(`[LLM Planner] 💰 Total session cost: $${this.costTracking.estimatedCost.toFixed(4)} (${this.costTracking.totalCalls} calls)`);
-      
-      // Parse LLM response into structured analysis
-      const analysis = this.parseStrategicAnalysis(responseText, state.turn);
-      
-      // Cache the result
-      this.lastAnalysisCache.set(cacheKey, analysis);
-      
-      // IMPORTANT: Store as active strategic plan for this country
-      // This plan will guide decisions for the next 5 turns
-      const planKey = this.getPlanKey(state.gameId, countryId);
-      this.activeStrategicPlans.set(planKey, analysis);
-      await this.persistStrategicPlan(state.gameId, countryId, analysis);
-      
-      // Enhanced logging for development
-      const country = state.countries.find(c => c.id === countryId);
-      const countryName = country?.name || countryId;
-      const neighborDistance = 200;
-      const currentNeighborRelations = country
-        ? state.countries
-            .filter((c) => c.id !== countryId)
-            .map((other) => {
-              const dx = country.positionX - other.positionX;
-              const dy = country.positionY - other.positionY;
-              const distance = Math.sqrt(dx * dx + dy * dy);
-              return { other, distance };
-            })
-            .filter(({ distance }) => distance < neighborDistance)
-            .map(({ other }) => {
-              const otherStats = state.countryStatsByCountryId[other.id];
-              const ourToThem = getDiplomaticScore(stats.diplomaticRelations, other.id);
-              const theirToUs = getDiplomaticScore(otherStats?.diplomaticRelations, countryId);
-              return `${other.name} (${other.id}): our→them ${ourToThem}/100, them→us ${theirToUs}/100`;
-            })
-        : [];
-      console.log(`\n${'='.repeat(80)}`);
-      console.log(`🤖 LLM STRATEGIC DECISION - Turn ${state.turn}`);
-      console.log(`${'='.repeat(80)}`);
-      console.log(`Country: ${countryName} (${countryId})`);
-      if (currentNeighborRelations.length > 0) {
-        console.log(`Current Diplomatic Relations (neighbors):`);
-        currentNeighborRelations.forEach((line) => console.log(`  - ${line}`));
+          if (retryResponse.ok) {
+            const retryData = await retryResponse.json();
+            const retryResponseText = retryData.choices?.[0]?.message?.content || "";
+            const analysis = this.parseStrategicAnalysis(retryResponseText, state.turn);
+            
+            console.log(`[LLM Planner] ✓ Retry successful`);
+            
+            // Cache and persist
+            this.lastAnalysisCache.set(cacheKey, analysis);
+            const planKey = this.getPlanKey(state.gameId, countryId);
+            this.activeStrategicPlans.set(planKey, analysis);
+            await this.persistStrategicPlan(state.gameId, countryId, analysis);
+            
+            return analysis;
+          } else {
+            console.error(`[LLM Planner] Retry also failed: ${retryResponse.status}`);
+            return null;
+          }
+        } else {
+          console.error(`[LLM Planner] Groq API error: ${response.status} - ${errorText}`);
+          return null;
+        }
       }
-      console.log(`Focus: ${analysis.strategicFocus.toUpperCase()}`);
-      console.log(`Rationale: ${analysis.rationale}`);
-      console.log(`Threats: ${analysis.threatAssessment}`);
-      console.log(`Opportunities: ${analysis.opportunityIdentified}`);
-      console.log(`Recommended Actions:`);
-      analysis.recommendedActions.forEach((action, i) => {
-        console.log(`  ${i + 1}. ${action}`);
-      });
-      // Note: diplomaticStance is the LLM's recommended posture, which may differ from the game's
-      // current diplomatic relation scores shown in the UI. We log both to avoid confusion.
-      console.log(`LLM Diplomatic Stance (recommended):`, analysis.diplomaticStance);
-      console.log(`Confidence: ${(analysis.confidenceScore * 100).toFixed(0)}%`);
-      console.log(`Plan Valid Until: Turn ${state.turn + this.LLM_CALL_FREQUENCY - 1}`);
-      console.log(`${'='.repeat(80)}\n`);
-      
-      // Clean old cache entries (keep last 10 turns)
-      if (this.lastAnalysisCache.size > 10) {
-        const oldestKeys = Array.from(this.lastAnalysisCache.keys()).slice(0, this.lastAnalysisCache.size - 10);
-        oldestKeys.forEach(key => this.lastAnalysisCache.delete(key));
-      }
-      
-      return analysis;
     } catch (error) {
       console.error("[LLM Planner] Error calling Groq:", error);
       if (error instanceof Error) {
@@ -547,6 +540,85 @@ export class LLMStrategicPlanner {
       }
       return null;
     }
+  }
+  
+  /**
+   * Build simplified prompt for retry attempts (minimal schema, fewer examples)
+   */
+  private buildSimplifiedStrategicPrompt(
+    state: GameStateSnapshot,
+    countryId: string,
+    stats: CountryStats
+  ): string {
+    const country = state.countries.find(c => c.id === countryId);
+    if (!country) return "";
+    
+    const economicAnalysis = RuleBasedAI.analyzeEconomicSituation(state, countryId, stats);
+    const resourcesStr = this.compactResourceString(stats.resources || {});
+    
+    return `Analyze strategic focus for ${country.name}:
+Budget: $${stats.budget} | Tech L${stats.technologyLevel} | Mil ${stats.militaryStrength} (${economicAnalysis.effectiveMilitaryStrength} effective)
+Status: ${economicAnalysis.isUnderDefended ? 'Under-defended' : 'OK'} | ${economicAnalysis.turnsUntilBankrupt !== null ? `Bankrupt in ${economicAnalysis.turnsUntilBankrupt}t` : 'Stable'}
+
+Return ONLY this JSON:
+{
+  "focus": "economy" or "military" or "balanced",
+  "rationale": "Brief reason (max 50 chars)",
+  "action_plan": [
+    {"id": "a1", "instruction": "Action 1", "execution": {"actionType": "research"|"economic"|"military", "actionData": {}}},
+    {"id": "a2", "instruction": "Action 2", "when": {"budget_gte": 1000}, "stop_when": {"tech_level_gte": 2}, "execution": {"actionType": "research", "actionData": {}}}
+  ],
+  "risks": ["Risk 1"],
+  "diplomacy": {},
+  "confidence": 0.8
+}`;
+  }
+  
+  /**
+   * Log detailed strategy information
+   */
+  private logStrategyDetails(state: GameStateSnapshot, countryId: string, analysis: LLMStrategicAnalysis): void {
+    const country = state.countries.find((c: any) => c.id === countryId);
+    const stats = state.countryStatsByCountryId[countryId];
+    const neighborDistance = 200;
+    const currentNeighborRelations = country
+      ? state.countries
+          .filter((c: any) => c.id !== countryId)
+          .map((other: any) => {
+            const dx = country.positionX - other.positionX;
+            const dy = country.positionY - other.positionY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            return { other, distance };
+          })
+          .filter(({ distance }: any) => distance < neighborDistance)
+          .map(({ other }: any) => {
+            const otherStats = state.countryStatsByCountryId[other.id];
+            const ourToThem = getDiplomaticScore(stats?.diplomaticRelations, other.id);
+            const theirToUs = getDiplomaticScore(otherStats?.diplomaticRelations, countryId);
+            return `${other.name} (${other.id}): our→them ${ourToThem}/100, them→us ${theirToUs}/100`;
+          })
+      : [];
+    
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`🤖 LLM STRATEGIC DECISION - Turn ${state.turn}`);
+    console.log(`${'='.repeat(80)}`);
+    console.log(`Country: ${country?.name || countryId} (${countryId})`);
+    if (currentNeighborRelations.length > 0) {
+      console.log(`Current Diplomatic Relations (neighbors):`);
+      currentNeighborRelations.forEach((line: any) => console.log(`  - ${line}`));
+    }
+    console.log(`Focus: ${analysis.strategicFocus.toUpperCase()}`);
+    console.log(`Rationale: ${analysis.rationale}`);
+    console.log(`Threats: ${analysis.threatAssessment}`);
+    console.log(`Opportunities: ${analysis.opportunityIdentified}`);
+    console.log(`Recommended Actions:`);
+    analysis.recommendedActions.forEach((action, i) => {
+      console.log(`  ${i + 1}. ${action}`);
+    });
+    console.log(`LLM Diplomatic Stance (recommended):`, analysis.diplomaticStance);
+    console.log(`Confidence: ${(analysis.confidenceScore * 100).toFixed(0)}%`);
+    console.log(`Plan Valid Until: Turn ${analysis.turnAnalyzed + this.LLM_CALL_FREQUENCY - 1}`);
+    console.log(`${'='.repeat(80)}\n`);
   }
   
   /**
@@ -647,7 +719,7 @@ Return ONLY this JSON structure:
 
     const candidateStrings = topCandidates.map(c => {
       const defender = state.countries.find(co => co.id === c.city.countryId);
-      return `${c.city.id}:${defender?.name || 'Unknown'} (Eff ${c.defenderEffectiveStrength}, Value ${c.cityValue}, Cost $${c.estimatedCost}, Ratio ${(c.strengthRatio).toFixed(1)}x)`;
+      return `cityId:${c.city.id} (owner:${c.city.countryId}, ${defender?.name || 'Unknown'}, Eff ${c.defenderEffectiveStrength}, Value ${c.cityValue}, Cost $${c.estimatedCost}, Ratio ${(c.strengthRatio).toFixed(1)}x)`;
     });
 
     return candidateStrings.join('; ');
@@ -750,24 +822,25 @@ Income: $${economicAnalysis.netIncome}/t | ${economicAnalysis.isUnderDefended ? 
 
 NEIGHBORS: ${neighbors}
 
-Plan ${this.LLM_CALL_FREQUENCY} turns (2-3 actions/turn). Include at least one fallback step with "when" condition. Consider BOTH economic AND military strategies.
+Plan ${this.LLM_CALL_FREQUENCY} turns (2-3 actions/turn, capped per turn). Include at least one fallback step with "when" condition. Consider BOTH economic AND military strategies.
+IMPORTANT: Use "stop_when" conditions (e.g., stop_when: {tech_level_gte: X}) to allow steps to repeat across multiple turns. Steps without stop_when are executed only once.
 
 JSON ONLY - EXAMPLE STRATEGIES:
 
 ECONOMIC FOCUS:
 {"focus":"economy","rationale":"Build tech advantage","action_plan":[
-  {"id":"tech_l2","instruction":"Tech→L2","priority":1,"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
-  {"id":"recruit_30","instruction":"Recruit→30 for defense","priority":2,"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}},
-  {"id":"infra_l2","instruction":"Infra→L2","priority":3,"when":{"budget_gte":1000},"execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}},
+  {"id":"tech_l2","instruction":"Tech→L2","priority":1,"stop_when":{"tech_level_gte":2},"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
+  {"id":"recruit_30","instruction":"Recruit→30 for defense","priority":2,"stop_when":{"military_strength_gte":30},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}},
+  {"id":"infra_l2","instruction":"Infra→L2","priority":3,"when":{"budget_gte":1000},"stop_when":{"infra_level_gte":2},"execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}},
   {"id":"conservative_infra","instruction":"Infra→L1 if budget tight","priority":4,"when":{"budget_lt":500},"execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":1}}}
 ]}
 
 MILITARY FOCUS:
 {"focus":"military","rationale":"Strong mil, weak neighbors - expand","action_plan":[
   {"id":"recruit_50","instruction":"Recruit→50","priority":1,"stop_when":{"military_strength_gte":50},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":15}}},
-  {"id":"attack_weak","instruction":"Attack weakest neighbor city","priority":2,"when":{"military_strength_gte":45},"execution":{"actionType":"military","actionData":{"subType":"attack","targetCityId":"<neighbor_city_id>","allocatedStrength":30}}},
-  {"id":"tech_l2","instruction":"Tech→L2 after conquest","priority":3,"when":{"budget_gte":1200},"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
-  {"id":"defensive_recruit","instruction":"Recruit→30 for defense if threatened","priority":4,"when":{"budget_lt":300},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}}
+  {"id":"attack_weak","instruction":"Attack weakest neighbor city","priority":2,"when":{"military_strength_gte":45},"execution":{"actionType":"military","actionData":{"subType":"attack","targetCityId":"<CITY_ID>","allocatedStrength":30}}},
+  {"id":"tech_l2","instruction":"Tech→L2 after conquest","priority":3,"when":{"budget_gte":1200},"stop_when":{"tech_level_gte":2},"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
+  {"id":"defensive_recruit","instruction":"Recruit→30 for defense if threatened","priority":4,"when":{"budget_lt":300},"stop_when":{"military_strength_gte":30},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}}
 ]}
 
 REQUIRED STRUCTURE:
@@ -775,7 +848,8 @@ REQUIRED STRUCTURE:
   "focus": "economy"|"military"|"balanced",
   "rationale": "Brief strategic reasoning",
   "action_plan": [
-    // 6-8 executable steps - include at least one fallback step with "when" condition (e.g. when: {budget_lt: 500})
+    // 6-8 executable steps. Use stop_when to allow repeatable steps, omit for one-time steps.
+    // Example: {"id":"id","instruction":"...","stop_when":{"tech_level_gte":X},"execution":{...}}
   ],
   "risks": ["Top risk #1", "Top risk #2"],
   "plan_rationale": "Why these specific steps",
@@ -791,7 +865,7 @@ REQUIRED STRUCTURE:
   "confidence": 0.9
 }
 
-STEP FORMAT: {"id": "unique_id", "instruction": "What to do", "execution": {"actionType": "research|economic|military", "actionData": {...}}}
+STEP FORMAT: {"id": "unique_id", "instruction": "What to do", "when": {...}, "stop_when": {...}, "execution": {"actionType": "research|economic|military", "actionData": {...}}}
 
 BE LLM-LED: Choose the best strategy yourself. Only validate executability at engine boundary.`;
   }
@@ -1039,6 +1113,8 @@ Neighbors: ${neighbors.split('\n').join('; ')}
 Attack Candidates: ${attackCandidates}`;
     }).join('\n');
 
+    const countryIdsList = countries.map(c => c.countryId).join(', ');
+
     return `${CACHED_GAME_RULES}
 
 Mechanics version: ${LLMStrategicPlanner.getMechanicsVersion()}
@@ -1048,13 +1124,17 @@ Plan ${this.LLM_CALL_FREQUENCY} turns (2-3 actions/turn). Consider BOTH economic
 COUNTRIES TO ANALYZE:
 ${countryPrompts}
 
+CRITICAL CONSTRAINT: countryId MUST be exactly one of these values:
+${countries.map(c => `  - ${c.countryId}`).join('\n')}
+
 SCHEMA: Return JSON with "countries" array. Each country needs:
+- countryId: MUST be exactly one of the IDs listed above (no other format)
 - focus: "economy"|"military"|"balanced"
 - rationale: Brief reason (max 100 chars)
 - action_plan: Array of 6-8 executable steps
 - diplomacy: Object mapping neighbor IDs to "neutral"|"hostile"
 
-STEP SCHEMA: {"id": "unique_id", "instruction": "What to do", "priority": 1-5, "execution": {"actionType": "research"|"economic"|"military", "actionData": {...}}}
+STEP SCHEMA: {"id": "unique_id", "instruction": "What to do", "priority": 1-5, "execution": {"actionType": "research"|"economic"|"military", "actionData": {...}}, "when": {...}, "stop_when": {...}}
 
 ATTACKS: Include when militarily stronger than neighbors. Use targetCityId from Attack Candidates above.
 
@@ -1095,13 +1175,48 @@ ECONOMIC FOCUS: For weak/bankrupt nations only.`;
         return results;
       }
       
+      // Build allowed country IDs set for validation
+      const allowedCountryIds = new Set(countries.map(c => c.countryId));
+      
+      // UUID regex for normalization
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const uuidInStringRegex = /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+      
+      let parsedCount = 0;
+      let matchedAllowedCount = 0;
+      let warnedAboutNormalization = false;
+      
       // Process each country's analysis
       for (const parsed of parsedArray) {
-        const countryId = parsed.countryId;
+        let countryId = parsed.countryId;
         if (!countryId) {
           console.warn("[LLM Planner] Country analysis missing countryId");
           continue;
         }
+        
+        parsedCount++;
+        
+        // CRITICAL: Normalize countryId - extract UUID if embedded in string
+        // Handle cases like: "Eldoria (47d3…)", "47d3…,", "47d3…d", etc.
+        if (!uuidRegex.test(String(countryId))) {
+          const match = String(countryId).match(uuidInStringRegex);
+          if (match?.[1]) {
+            const normalized = match[1];
+            if (!warnedAboutNormalization) {
+              console.warn("[LLM Planner] Normalizing batch countryId:", { original: countryId, normalized });
+              warnedAboutNormalization = true;
+            }
+            countryId = normalized;
+          }
+        }
+        
+        // Validate against allowed IDs
+        if (!allowedCountryIds.has(String(countryId))) {
+          console.warn(`[LLM Planner] Batch countryId not in requested set (normalized: ${countryId}), discarding`);
+          continue;
+        }
+        
+        matchedAllowedCount++;
         
         // Use existing single-country parser logic
         const strategicFocus = ["economy", "military", "diplomacy", "research", "balanced"].includes(parsed.focus)
@@ -1137,7 +1252,15 @@ ECONOMIC FOCUS: For weak/bankrupt nations only.`;
         if (parsed.diplomacy && typeof parsed.diplomacy === 'object') {
           for (const [country, stance] of Object.entries(parsed.diplomacy)) {
             if (["friendly", "neutral", "hostile"].includes(stance as string)) {
-              diplomaticStance[country.trim()] = stance as "friendly" | "neutral" | "hostile";
+              // Also normalize diplomacy keys if needed
+              let diplomacyKey = country.trim();
+              if (!uuidRegex.test(diplomacyKey)) {
+                const match = diplomacyKey.match(uuidInStringRegex);
+                if (match?.[1]) {
+                  diplomacyKey = match[1];
+                }
+              }
+              diplomaticStance[diplomacyKey] = stance as "friendly" | "neutral" | "hostile";
             }
           }
         }
@@ -1158,10 +1281,16 @@ ECONOMIC FOCUS: For weak/bankrupt nations only.`;
           turnAnalyzed: turn,
         };
         
-        results.set(countryId, analysis);
+        results.set(String(countryId), analysis);
       }
       
-      console.log(`[LLM Planner] ✓ Successfully parsed ${results.size}/${countries.length} country analyses`);
+      console.log(`[LLM Planner] ✓ Successfully parsed ${parsedCount}/${countries.length} analyses, ${matchedAllowedCount}/${parsedCount} matched allowed IDs`);
+      
+      // If we parsed entries but none matched allowed IDs, log diagnostic
+      if (parsedCount > 0 && results.size === 0) {
+        console.error(`[LLM Planner] ✗ Batch parsing: ${parsedCount} entries parsed but 0 matched allowed country IDs`);
+        console.error(`[LLM Planner] Allowed IDs: [${Array.from(allowedCountryIds).slice(0, 3).join(', ')}${allowedCountryIds.size > 3 ? '...' : ''}]`);
+      }
       
       return results;
     } catch (error) {
