@@ -70,6 +70,19 @@ export function DefenseModal({
 
   const submitDefense = async () => {
     if (submitting) return;
+    
+    // Validate that we're defending our own city
+    if (defenderCountry.id !== defendingCity.countryId) {
+      setError(`Cannot defend: City belongs to ${defendingCity.countryId} but you are ${defenderCountry.id}`);
+      return;
+    }
+    
+    // Validate allocated strength doesn't exceed effective strength
+    if (allocatedStrength > effectiveMilitaryStrength) {
+      setError(`Allocated strength (${allocatedStrength}) exceeds effective military strength (${effectiveMilitaryStrength})`);
+      return;
+    }
+    
     setSubmitting(true);
     setError(null);
     try {
@@ -77,8 +90,16 @@ export function DefenseModal({
       const defenderId = defenderCountry.id;
       const cityOwnerId = defendingCity.countryId;
       const match = defenderId === cityOwnerId;
-      console.log('[DefenseModal] Submitting defense:', { defenderId, cityOwnerId, match, defenderName: defenderCountry.name, cityName: defendingCity.name });
-      fetch('http://127.0.0.1:7242/ingest/5cfd136f-1fa7-464e-84d5-bcaf3c90cae7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DefenseModal.tsx:submitDefense',message:'defense submit payload',data:{defenderCountryId:defenderId,targetCityId:defendingCity.id,cityOwnerId,match,defenderName:defenderCountry.name,cityName:defendingCity.name},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+      console.log('[DefenseModal] Submitting defense:', { 
+        defenderId, 
+        cityOwnerId, 
+        match, 
+        defenderName: defenderCountry.name, 
+        cityName: defendingCity.name,
+        allocatedStrength,
+        effectiveMilitaryStrength
+      });
+      fetch('http://127.0.0.1:7242/ingest/5cfd136f-1fa7-464e-84d5-bcaf3c90cae7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'DefenseModal.tsx:submitDefense',message:'defense submit payload',data:{defenderCountryId:defenderId,targetCityId:defendingCity.id,cityOwnerId,match,defenderName:defenderCountry.name,cityName:defendingCity.name,allocatedStrength,effectiveMilitaryStrength},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
       // #endregion
       const res = await fetch("/api/military/defend", {
         method: "POST",

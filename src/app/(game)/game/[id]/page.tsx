@@ -76,6 +76,8 @@ export default function GamePage() {
   const [defenseCity, setDefenseCity] = useState<City | null>(null);
   const [defenseAttackerCountry, setDefenseAttackerCountry] = useState<Country | null>(null);
   const [defenseAttackerStats, setDefenseAttackerStats] = useState<CountryStats | null>(null);
+  const [defenseDefenderCountry, setDefenseDefenderCountry] = useState<Country | null>(null);
+  const [defenseDefenderStats, setDefenseDefenderStats] = useState<CountryStats | null>(null);
   // Track cities where defense modal was dismissed (so it doesn't auto-reopen)
   const [dismissedDefenseCities, setDismissedDefenseCities] = useState<Set<string>>(new Set());
   // Track cities where defense has already been submitted
@@ -325,13 +327,22 @@ export default function GamePage() {
             const attackerCountry = countries.find(c => c.id === attackerId);
             const attackerStats = statsByCountryId[attackerId];
             
-            if (attackerCountry && attackerStats) {
-              console.log(`[Defense] Opening defense modal for ${cityUnderAttack.name} - attacked by ${attackerCountry.name}`);
+            // Find the country that owns the defending city (the actual defender)
+            const defenderCountry = countries.find(c => c.id === cityUnderAttack.countryId);
+            const defenderStats = defenderCountry ? statsByCountryId[cityUnderAttack.countryId] : null;
+            
+            if (attackerCountry && attackerStats && defenderCountry && defenderStats) {
+              console.log(`[Defense] Opening defense modal for ${cityUnderAttack.name} - defended by ${defenderCountry.name}, attacked by ${attackerCountry.name}`);
               setDefenseCity(cityUnderAttack);
               setDefenseAttackerCountry(attackerCountry);
               setDefenseAttackerStats(attackerStats);
+              setDefenseDefenderCountry(defenderCountry);
+              setDefenseDefenderStats(defenderStats);
             } else {
-              console.warn(`[Defense] Could not find attacker info for ${cityUnderAttack.name}`, { attackerId, attackerCountry, attackerStats });
+              console.warn(`[Defense] Could not find attacker/defender info for ${cityUnderAttack.name}`, { 
+                attackerId, attackerCountry, attackerStats,
+                defenderId: cityUnderAttack.countryId, defenderCountry, defenderStats
+              });
             }
           } else {
             console.warn(`[Defense] No attack action found for ${cityUnderAttack.name} (city may have been attacked in previous turn)`);
@@ -356,6 +367,8 @@ export default function GamePage() {
         setDefenseCity(null);
         setDefenseAttackerCountry(null);
         setDefenseAttackerStats(null);
+        setDefenseDefenderCountry(null);
+        setDefenseDefenderStats(null);
       }
       // Clear tracking for cities no longer under attack
       setDismissedDefenseCities(new Set());
@@ -663,10 +676,16 @@ export default function GamePage() {
                           const attackerCountry = countries.find(c => c.id === attackerId);
                           const attackerStats = statsByCountryId[attackerId];
                           
-                          if (attackerCountry && attackerStats) {
+                          // Find the country that owns the defending city (the actual defender)
+                          const defenderCountry = countries.find(c => c.id === city.countryId);
+                          const defenderStats = defenderCountry ? statsByCountryId[city.countryId] : null;
+                          
+                          if (attackerCountry && attackerStats && defenderCountry && defenderStats) {
                             setDefenseCity(city);
                             setDefenseAttackerCountry(attackerCountry);
                             setDefenseAttackerStats(attackerStats);
+                            setDefenseDefenderCountry(defenderCountry);
+                            setDefenseDefenderStats(defenderStats);
                           }
                         }
                       })
@@ -871,38 +890,36 @@ export default function GamePage() {
       )}
 
       {/* Defense Modal */}
-      {defenseCity && defenseAttackerCountry && defenseAttackerStats && (() => {
-        // Find the country that owns the defending city (the actual defender)
-        // This is the country that should defend, not the selected country on the map
-        const actualDefenderCountry = countries.find(c => c.id === defenseCity.countryId);
-        const actualDefenderStats = actualDefenderCountry ? statsByCountryId[actualDefenderCountry.id] : null;
-        if (!actualDefenderCountry || !actualDefenderStats) return null;
-        return (
-          <DefenseModal
-            gameId={gameId}
-            defendingCity={defenseCity}
-            defenderCountry={actualDefenderCountry}
-            defenderStats={actualDefenderStats}
-            attackerCountry={defenseAttackerCountry}
-            attackerStats={defenseAttackerStats}
-            onClose={() => {
-              // Mark city as dismissed so modal doesn't auto-reopen
-              setDismissedDefenseCities(prev => new Set(prev).add(defenseCity.id));
-              setDefenseCity(null);
-              setDefenseAttackerCountry(null);
-              setDefenseAttackerStats(null);
-            }}
-            onSubmitted={() => {
-              // Mark city as submitted so modal doesn't reopen
-              setSubmittedDefenseCities(prev => new Set(prev).add(defenseCity.id));
-              setDefenseCity(null);
-              setDefenseAttackerCountry(null);
-              setDefenseAttackerStats(null);
-              void refreshGameData();
-            }}
-          />
-        );
-      })()}
+      {defenseCity && defenseAttackerCountry && defenseAttackerStats && 
+       defenseDefenderCountry && defenseDefenderStats && (
+        <DefenseModal
+          gameId={gameId}
+          defendingCity={defenseCity}
+          defenderCountry={defenseDefenderCountry}
+          defenderStats={defenseDefenderStats}
+          attackerCountry={defenseAttackerCountry}
+          attackerStats={defenseAttackerStats}
+          onClose={() => {
+            // Mark city as dismissed so modal doesn't auto-reopen
+            setDismissedDefenseCities(prev => new Set(prev).add(defenseCity.id));
+            setDefenseCity(null);
+            setDefenseAttackerCountry(null);
+            setDefenseAttackerStats(null);
+            setDefenseDefenderCountry(null);
+            setDefenseDefenderStats(null);
+          }}
+          onSubmitted={() => {
+            // Mark city as submitted so modal doesn't reopen
+            setSubmittedDefenseCities(prev => new Set(prev).add(defenseCity.id));
+            setDefenseCity(null);
+            setDefenseAttackerCountry(null);
+            setDefenseAttackerStats(null);
+            setDefenseDefenderCountry(null);
+            setDefenseDefenderStats(null);
+            void refreshGameData();
+          }}
+        />
+      )}
 
       {/* Diplomatic Relations Modal */}
       {showDiplomacyModal && (

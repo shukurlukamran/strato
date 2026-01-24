@@ -1,6 +1,16 @@
 import { NextResponse } from "next/server";
+import { appendFileSync } from "fs";
 import { z } from "zod";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { MilitaryCalculator } from "@/lib/game-engine/MilitaryCalculator";
+import type { CountryStats } from "@/types/country";
+
+const DEBUG_LOG = "/Users/kamranshukurlu/Documents/Strato/.cursor/debug.log";
+function agentLog(msg: string, data: Record<string, unknown>, hypothesisId: string) {
+  try {
+    appendFileSync(DEBUG_LOG, JSON.stringify({ location: "defend/route.ts", message: msg, data, hypothesisId, timestamp: Date.now(), sessionId: "debug-session" }) + "\n");
+  } catch (_) {}
+}
 
 const BodySchema = z.object({
   gameId: z.string().uuid(),
@@ -44,16 +54,17 @@ export async function POST(req: Request) {
   const dbCountryId = targetCity.country_id;
   const idsMatch = dbCountryId === defenderCountryId;
   const types = { db: typeof dbCountryId, req: typeof defenderCountryId };
-  console.log('[Defend API] Own city check:', { defenderCountryId, dbCountryId, idsMatch, types, targetCityId });
-  await fetch('http://127.0.0.1:7242/ingest/5cfd136f-1fa7-464e-84d5-bcaf3c90cae7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'defend/route.ts:own-city-check',message:'own city check',data:{defenderCountryId,dbCountryId,idsMatch,types,targetCityId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
+  agentLog("own city check", { defenderCountryId, dbCountryId, idsMatch, types, targetCityId }, "H2");
   // #endregion
   if (targetCity.country_id !== defenderCountryId) {
     // #region agent log
-    console.log('[Defend API] REJECTED - country mismatch:', { defenderCountryId, dbCountryId: targetCity.country_id, targetCityId });
-    await fetch('http://127.0.0.1:7242/ingest/5cfd136f-1fa7-464e-84d5-bcaf3c90cae7',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'defend/route.ts:own-city-reject',message:'own city reject',data:{defenderCountryId,dbCountryId,targetCityId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
+    agentLog("own city REJECT", { defenderCountryId, dbCountryId: targetCity.country_id, targetCityId }, "H3");
     // #endregion
     return NextResponse.json({ error: "You can only defend your own cities" }, { status: 400 });
   }
+  // #region agent log
+  agentLog("own city OK", { defenderCountryId, dbCountryId, targetCityId }, "H2");
+  // #endregion
   if (!targetCity.is_under_attack) return NextResponse.json({ error: "City is not under attack" }, { status: 400 });
 
   // Check for existing attack action targeting this city
@@ -75,10 +86,10 @@ export async function POST(req: Request) {
   const attackData = attackAction.action_data as any;
   const attackerId = attackData.attackerId || attackAction.country_id;
 
-  // Defender stats (current turn) - fetch full stats including technology level
+  // Defender stats (current turn) - fetch full stats including technology level and resource profile
   const statsRes = await supabase
     .from("country_stats")
-    .select("id, country_id, turn, military_strength, technology_level, budget")
+    .select("id, country_id, turn, military_strength, technology_level, budget, resource_profile, created_at")
     .eq("country_id", defenderCountryId)
     .eq("turn", turn)
     .limit(1);
@@ -87,16 +98,40 @@ export async function POST(req: Request) {
 
   const defenderStats = statsRes.data[0];
   
-  // FIXED: Calculate effective strength (includes tech bonuses) for validation
-  // This matches what the DefenseModal uses for the slider
+  // Validate that stats match current turn
+  if (defenderStats.turn !== turn) {
+    return NextResponse.json({ 
+      error: `Stats are from turn ${defenderStats.turn} but current turn is ${turn}. Please refresh.` 
+    }, { status: 400 });
+  }
+  
+  // Use the same calculation as the frontend for consistency
+  // This includes tech bonuses and profile modifiers
   const rawStrength = Number(defenderStats.military_strength);
   const techLevel = Number(defenderStats.technology_level) || 0;
-  const techEffectiveness = 1 + (techLevel * 0.20); // 20% per tech level
-  const effectiveStrength = Math.floor(rawStrength * techEffectiveness);
+  const countryStats: CountryStats = {
+    id: defenderStats.id,
+    countryId: defenderCountryId,
+    turn: turn,
+    population: 0, // Not needed for calculation
+    budget: Number(defenderStats.budget) || 0,
+    technologyLevel: techLevel,
+    infrastructureLevel: 0, // Not needed for calculation
+    militaryStrength: rawStrength,
+    militaryEquipment: {},
+    resources: {},
+    diplomaticRelations: {},
+    resourceProfile: defenderStats.resource_profile as any,
+    createdAt: defenderStats.created_at || new Date().toISOString(),
+  };
+  
+  const effectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(countryStats);
   
   if (allocatedStrength > effectiveStrength) {
+    const baseStrength = rawStrength;
+    const techEffectiveness = 1 + (techLevel * 0.20);
     return NextResponse.json({ 
-      error: `Allocated strength (${allocatedStrength}) exceeds effective military strength (${effectiveStrength})` 
+      error: `Allocated strength (${allocatedStrength}) exceeds effective military strength (${effectiveStrength}). Base: ${baseStrength}, Tech Level: ${techLevel}, Tech Multiplier: ${techEffectiveness.toFixed(2)}` 
     }, { status: 400 });
   }
 

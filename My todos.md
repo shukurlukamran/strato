@@ -50,9 +50,7 @@ Fresh LLM: balanced - Upgrade infra, recruit, attack Borealis if advantage
 - History log should include any deals realized with details, including black market trades.
 
 In Defense window when player is attacked:
-- Estimated success chance isn't updated when allocated strength is changed in the slider.
-- When clicking X or "Close" button to close Defense window, it keeps popping up. Instead, it should be closed but stay somewhere in the UI with blinking red color showing that it requires attention. So the player can click it to open the window again to decide defense allocation later in the turn.
-- When defense allocation is chosen and submitted, the window pops up again.
+- "Allocated strength (58) exceeds effective military strength (56)" error after submitting the defense allocation even though effective military strength was 58, not 56.
 
 - Prevent cheating in the chat deals (you can get money for technology level now, but tech level isn't actually transferred, for example)
 - Prevent abuse in the LLM chat (It shouldn't be possible to use it for anything unrelated to game - we also need to have some hard limits to prevent spamming, but this limit shouldn't interrupt gameplay. And negotiations may even cost some small money in the game to slightly discourage people to overuse it unnecessarily - Come up with a rational fair plan)
@@ -73,4 +71,4 @@ Analyze root causes of these, understand what is happening, and then implement f
 
 Make sure everything we build is aligned with LLM in both Deals chat and End turn decisions and anywhere else it may be used, and also with Supabase database.
 
-Create a comprehensive plan for the implementation of the ideas below. Plan is for helping other AI models to build it.
+Analyze root causes of these, understand what is happening, and create a comprehensive plan for the implementation for helping other AI models to build it.
