@@ -218,7 +218,7 @@ export class EconomicAI {
         actionType: "economic",
         actionData: {
           subType: "infrastructure",
-          cost: infraCost,
+          cost: pricingResult.cost,
           targetLevel: (stats.infrastructureLevel || 0) + 1,
         },
         status: "pending",
