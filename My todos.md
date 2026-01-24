@@ -25,6 +25,7 @@
 - By turn 15-20, everyone is hostile to one another. We don't wanna discourage military actions much as the gameplay should be led by LLM strategy. But we should do something (such as implementing peace and non-agression treaties for X amount of turns as part of Deals)
 - Implement non-aggression deal (currently our deals only support single-turn deals though), alliance, etc.
 - Players have advantage in attack/defense logic: Player attacks are resolved in the next turn, AI attacks gives 1 turn to Player for defense allocation. Solution: When player ends turn, after AI countries made their moves, before moving to the next turn, if there's any attack on player, stay in the same turn and require the player to allocate defense on the same turn, and end turn once the defense allocation has been done by player for all incoming attacks.
+- Add different sounds to clicks (have an option to mute)
 -------
 
 Analyze root causes of these, understand what is happening, and then implement fixes. 

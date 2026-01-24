@@ -172,18 +172,15 @@ export async function POST(req: Request) {
   });
 
   // GENERATE AI ACTIONS for non-player countries
-  // Phase 2.2: Now async to support LLM strategic planning
-  // OPTIMIZED V2: BATCH all AI countries into SINGLE API call (80% cost reduction!)
-  console.log(`[Turn API] Generating AI actions for turn ${turn}...`);
-  
   const aiCountries = state.data.countries.filter(country => !country.isPlayerControlled);
-  // LLM is used at turn 2, then every 10 turns (2, 10, 20, 30, 40...)
   const isLLMTurn = turn === 2 || (turn >= 10 && turn % 10 === 0);
   
-  console.log(`[Turn API] Processing turn ${turn}. LLM mode: ${isLLMTurn ? 'ENABLED (PARALLEL)' : 'DISABLED (using rule-based AI)'}`);
+  // Minimal logging (only show LLM mode on LLM turns)
+  if (isLLMTurn) {
+    console.log(`[Turn API] T${turn}: LLM analysis (${aiCountries.length} countries)`);
+  }
   
   // PARALLEL INDIVIDUAL LLM CALLS: More reliable than batch (avoids json_validate_failed)
-  // Grok doesn't charge per request, so parallel individual calls are optimal
   let batchAnalyses: Map<string, any> | null = null;
   if (isLLMTurn && aiCountries.length > 0) {
     try {
@@ -193,19 +190,16 @@ export async function POST(req: Request) {
       const countriesForAnalysis = aiCountries.map(country => ({
         countryId: country.id,
         stats: state.data.countryStatsByCountryId[country.id]
-      })).filter(c => c.stats); // Only include countries with stats
+      })).filter(c => c.stats);
       
       if (countriesForAnalysis.length > 0) {
-        console.log(`[Turn API] 🚀 PARALLEL analyzing ${countriesForAnalysis.length} countries (individual calls for reliability)`);
-        console.log(`[Turn API] Country IDs: [${countriesForAnalysis.map(c => c.countryId.substring(0, 8)).join(', ')}...]`);
-        
         // Make all individual calls in parallel for best performance
         const startTime = Date.now();
         const analysisPromises = countriesForAnalysis.map(({ countryId, stats }) =>
           llmPlanner.analyzeSituation(state.data, countryId, stats)
             .then(analysis => ({ countryId, analysis }))
             .catch(error => {
-              console.error(`[Turn API] Failed to analyze ${countryId}:`, error);
+              console.error(`[Turn API] Analysis failed for ${countryId.substring(0, 8)}:`, error);
               return { countryId, analysis: null };
             })
         );
@@ -223,14 +217,14 @@ export async function POST(req: Request) {
           }
         }
         
-        console.log(`[Turn API] ✓ Parallel analysis complete in ${duration}ms: ${successCount}/${countriesForAnalysis.length} succeeded`);
+        console.log(`[Turn API] Analysis complete: ${duration}ms, ${successCount}/${countriesForAnalysis.length} succeeded`);
         
         if (successCount < countriesForAnalysis.length) {
-          console.warn(`[Turn API] ⚠️ ${countriesForAnalysis.length - successCount} countries failed analysis, will use cached plans`);
+          console.warn(`[Turn API] ${countriesForAnalysis.length - successCount} failed, using cached plans`);
         }
       }
     } catch (error) {
-      console.error(`[Turn API] Parallel analysis failed, will use cached plans:`, error);
+      console.error(`[Turn API] Parallel analysis failed:`, error);
     }
   }
   
@@ -243,17 +237,14 @@ export async function POST(req: Request) {
       const batchAnalysisForCountry = batchAnalyses?.get(country.id) || undefined;
       const actions = await aiController.decideTurnActions(state.data, country.id, cities, batchAnalysisForCountry);
       
-      console.log(`[AI] ${country.name}: Generated ${actions.length} actions`);
-      if (actions.length > 0) {
-        console.log(`[AI] ${country.name} actions:`, actions.map(a => ({
-          type: a.actionType,
-          data: a.actionData
-        })));
+      // Only log if actions were generated or error occurred
+      if (actions.length > 0 && process.env.LLM_PLAN_DEBUG === "1") {
+        console.log(`[AI] ${country.name}: ${actions.length} actions`, actions.map(a => `${a.actionType}:${(a.actionData as any)?.subType || ''}`).join(', '));
       }
       
       return actions;
     } catch (error) {
-      console.error(`[AI] Failed to generate actions for ${country.name}:`, error);
+      console.error(`[AI] Failed for ${country.name}:`, error);
       return [];
     }
   });

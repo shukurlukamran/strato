@@ -54,19 +54,22 @@ export class AIController {
     // Pass batch analysis to avoid redundant LLM calls
     const intent = await this.planner.plan(state, countryId, batchAnalysis);
     
-    console.log(`[AI Controller] Country ${countryId} strategic focus: ${intent.focus} - ${intent.rationale}`);
+    // Minimal logging (only if debug enabled OR planning failed)
+    if (this.debugLLMPlan) {
+      const country = state.countries.find(c => c.id === countryId);
+      console.log(`[AI Controller] ${country?.name} focus: ${intent.focus} - ${intent.rationale.substring(0, 60)}`);
 
-    if (this.debugLLMPlan && intent.llmPlan) {
-      const planItems = intent.llmPlan.planItems ?? [];
-      const stepCount = planItems.filter((i) => i.kind === "step").length;
-      const constraintCount = planItems.filter((i) => i.kind === "constraint").length;
-      const executableCount = planItems.filter((i) => i.kind === "step" && i.execution).length;
-      const executedCount = new Set(intent.llmPlan.executedStepIds ?? []).size;
+      if (intent.llmPlan) {
+        const planItems = intent.llmPlan.planItems ?? [];
+        const stepCount = planItems.filter((i) => i.kind === "step").length;
+        const executableCount = planItems.filter((i) => i.kind === "step" && i.execution).length;
+        const executedCount = new Set(intent.llmPlan.executedStepIds ?? []).size;
 
-      console.log(
-        `[LLM Plan Debug] ${countryId} T${state.turn} planTurn=${intent.llmPlan.turnAnalyzed} validUntil=${intent.llmPlan.validUntilTurn} ` +
-          `steps=${stepCount} executable=${executableCount} constraints=${constraintCount} executed=${executedCount}`
-      );
+        console.log(
+          `[LLM Plan Debug] ${countryId} T${state.turn} planTurn=${intent.llmPlan.turnAnalyzed} validUntil=${intent.llmPlan.validUntilTurn} ` +
+            `steps=${stepCount} executable=${executableCount} executed=${executedCount}`
+        );
+      }
     }
     
     // Step 2: Generate actions based on strategic intent
@@ -85,7 +88,11 @@ export class AIController {
     // This ensures plans span multiple turns instead of being exhausted in one
     const actions = this.enforceActionCap(allActions, intent, countryId, state.turn);
     
-    console.log(`[AI Controller] Country ${countryId} generated ${actions.length} action(s)${intent.llmPlan ? ` (capped from ${allActions.length}, limit: ${MAX_LLM_ACTIONS_PER_TURN})` : ''}`);
+    // Only log if debug enabled or capping occurred
+    if (this.debugLLMPlan || (intent.llmPlan && allActions.length > actions.length)) {
+      const country = state.countries.find(c => c.id === countryId);
+      console.log(`[AI Controller] ${country?.name} generated ${actions.length} action(s)${intent.llmPlan && allActions.length > actions.length ? ` (capped from ${allActions.length})` : ''}`);
+    }
 
     if (this.debugLLMPlan && intent.llmPlan) {
       const fromLLMSteps = actions
@@ -101,7 +108,7 @@ export class AIController {
       if (fromLLMSteps.length > 0) {
         console.log(`[LLM Plan Debug] ${countryId} executed-from-plan:`, fromLLMSteps);
       } else {
-        console.log(`[LLM Plan Debug] ${countryId} executed-from-plan: none (capped or no eligible steps)`);
+        console.log(`[LLM Plan Debug] ${countryId} executed-from-plan: none`);
       }
     }
     

@@ -72,21 +72,25 @@ export class StrategicPlanner {
     // Only make individual API call if no batch analysis was provided and it's an LLM turn
     if (!freshLLMAnalysis && this.llmPlanner && this.llmPlanner.shouldCallLLM(state.turn)) {
       try {
-        console.log(`[Strategic Planner] No batch analysis for ${countryId}, making individual LLM call`);
+        if (process.env.LLM_PLAN_DEBUG === "1") {
+          console.log(`[Strategic Planner] No batch analysis for ${countryId}, making individual call`);
+        }
         freshLLMAnalysis = await this.llmPlanner.analyzeSituation(state, countryId, stats);
         
-        if (freshLLMAnalysis) {
-          console.log(`[Strategic Planner] Country ${countryId}:`);
-          console.log(`  Rule-based: ${ruleBasedIntent.focus} - ${ruleBasedIntent.rationale}`);
-          console.log(`  Fresh LLM: ${freshLLMAnalysis.strategicFocus} - ${freshLLMAnalysis.rationale}`);
+        if (freshLLMAnalysis && process.env.LLM_PLAN_DEBUG === "1") {
+          const country = state.countries.find(c => c.id === countryId);
+          console.log(`[Strategic Planner] ${country?.name}:`);
+          console.log(`  Rule-based: ${ruleBasedIntent.focus} - ${ruleBasedIntent.rationale.substring(0, 50)}`);
+          console.log(`  Fresh LLM: ${freshLLMAnalysis.strategicFocus} - ${freshLLMAnalysis.rationale.substring(0, 50)}`);
         }
       } catch (error) {
-        console.error(`[Strategic Planner] LLM analysis failed, falling back to rule-based:`, error);
+        console.error(`[Strategic Planner] LLM failed:`, error);
       }
-    } else if (freshLLMAnalysis) {
-      console.log(`[Strategic Planner] Country ${countryId}:`);
-      console.log(`  Rule-based: ${ruleBasedIntent.focus} - ${ruleBasedIntent.rationale}`);
-      console.log(`  Fresh LLM: ${freshLLMAnalysis.strategicFocus} - ${freshLLMAnalysis.rationale}`);
+    } else if (freshLLMAnalysis && process.env.LLM_PLAN_DEBUG === "1") {
+      const country = state.countries.find(c => c.id === countryId);
+      console.log(`[Strategic Planner] ${country?.name}:`);
+      console.log(`  Rule-based: ${ruleBasedIntent.focus} - ${ruleBasedIntent.rationale.substring(0, 50)}`);
+      console.log(`  Fresh LLM: ${freshLLMAnalysis.strategicFocus} - ${freshLLMAnalysis.rationale.substring(0, 50)}`);
     }
     
     // STEP 3: Enhance intent with LLM guidance (fresh or cached from previous turns)
@@ -107,10 +111,11 @@ export class StrategicPlanner {
         executedStepIds = Array.from(executed);
       }
 
-      if (activePlan && !freshLLMAnalysis) {
+      if (activePlan && !freshLLMAnalysis && process.env.LLM_PLAN_DEBUG === "1") {
         const planAge = state.turn - activePlan.turnAnalyzed;
-        console.log(`[Strategic Planner] Country ${countryId}: Using cached LLM plan from turn ${activePlan.turnAnalyzed} (${planAge} turns ago)`);
-        console.log(`  Cached plan: ${activePlan.strategicFocus} - ${activePlan.rationale}`);
+        const country = state.countries.find(c => c.id === countryId);
+        console.log(`[Strategic Planner] ${country?.name}: Using cached plan from T${activePlan.turnAnalyzed} (${planAge}t ago)`);
+        console.log(`  ${activePlan.strategicFocus} - ${activePlan.rationale.substring(0, 60)}`);
       }
 
       return this.llmPlanner.enhanceStrategyIntent(

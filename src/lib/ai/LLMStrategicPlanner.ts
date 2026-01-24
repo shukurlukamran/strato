@@ -100,43 +100,19 @@ export interface LLMCostTracking {
 }
 
 /**
- * Game rules and mechanics that can be cached
- * This data rarely changes and should be part of cached context
- * UPDATED: Economic redesign - Tech and Infra have distinct roles
+ * Game rules and mechanics (OPTIMIZED for token efficiency)
  */
 const CACHED_GAME_RULES = `
-EXECUTABLE ACTIONS (only these can be done):
-1. TECHNOLOGY UPGRADE: Boosts production (1.25x→3.0x) & military (+20%/level). Cost: ${ECONOMIC_BALANCE.UPGRADES.TECH_BASE_COST}×${ECONOMIC_BALANCE.UPGRADES.TECH_COST_MULTIPLIER}^level×profile×resources
-2. INFRASTRUCTURE UPGRADE: Boosts tax (+12%/level) & capacity (200k+50k×level). Cost: ${ECONOMIC_BALANCE.UPGRADES.INFRA_BASE_COST}×${ECONOMIC_BALANCE.UPGRADES.INFRA_COST_MULTIPLIER}^level×profile×resources
-3. RECRUIT MILITARY: Add strength. Cost: ${ECONOMIC_BALANCE.MILITARY.COST_PER_STRENGTH_POINT}/point base (tech/profile reduce, resources increase). 15 units standard.
-4. ATTACK CITY: Conquer enemies to expand territory. Success requires strength advantage. Cost: 100 + 10×strength allocated
+ACTIONS:
+1. TECH: +production(1.25→3x), +mil(20%/L). Cost: ${ECONOMIC_BALANCE.UPGRADES.TECH_BASE_COST}×${ECONOMIC_BALANCE.UPGRADES.TECH_COST_MULTIPLIER}^L
+2. INFRA: +tax(12%/L), +cap(200k+50k×L). Cost: ${ECONOMIC_BALANCE.UPGRADES.INFRA_BASE_COST}×${ECONOMIC_BALANCE.UPGRADES.INFRA_COST_MULTIPLIER}^L
+3. RECRUIT: ${ECONOMIC_BALANCE.MILITARY.COST_PER_STRENGTH_POINT}/pt (std 15)
+4. ATTACK: 100+10×strength
 
-RESOURCES (8 types, simpler system):
-- Basic: Food (pop survival), Timber (infra/military)
-- Strategic: Iron (military), Oil (adv military)
-- Economic: Gold (diplomacy), Copper (research)
-- Industrial: Steel (tech/infra), Coal (energy/research)
+RESOURCES: Food,Timber,Iron,Oil,Gold,Copper,Steel,Coal
+Missing→+40% cost/resource (max 2.5x)
 
-SHORTAGE PENALTY: Missing resources increase budget cost (+40%/resource, max 2.5x)
-→ Plan around resource availability or accept higher costs
-→ Trade deals can secure missing resources
-
-RESOURCE STRATEGY:
-- Early game: Secure Food + Timber for growth
-- Military focus: Need Iron (always) + Oil (tech 2+)
-- Tech focus: Need Copper + Coal + Steel
-- Trade focus: Gold valuable for diplomacy
-
-WINNING STRATEGIES:
-- Economic: Build tech + infra for long-term dominance
-- Military: Build strength, then attack weak neighbors to expand
-- Balanced: Alternate economic growth with strategic conquests
-
-PROFILES:
-- Tech Innovator: 0.75x tech, 0.90x military
-- Industrial Powerhouse: 0.80x infra
-- Trade Hub: 0.85x infra, 1.25x trade
-- Others: 1.0-1.2x
+STRATEGY: Economic=tech+infra, Military=recruit+attack weak, Balanced=alternate
 `;
 
 export class LLMStrategicPlanner {
@@ -351,99 +327,41 @@ export class LLMStrategicPlanner {
           
           results.set(countryId, analysis);
           
-          // Log summary with recommended actions
+          // Minimal logging (only quality warnings and errors)
           const country = state.countries.find(c => c.id === countryId);
-          const planSource = analysis.planItems ? 'structured' : 'legacy';
-          const planItemsCount = analysis.planItems?.length || 0;
-          const executableSteps = analysis.planItems?.filter(item => item.kind === 'step' && item.execution).length || 0;
-
-          // PHASE D: Enhanced logging for plan quality tracking
+          
           if (analysis.planItems && analysis.planItems.length > 0) {
             const steps = analysis.planItems.filter(i => i.kind === 'step');
             const countryName = country?.name || countryId.substring(0, 8);
             
-            // Count by action type
-            const byType: Record<string, number> = {};
-            const repeatableCount = steps.filter(s => s.stop_when && Object.keys(s.stop_when).length > 0).length;
-            
-            steps.forEach(step => {
-              if (step.execution?.actionType) {
-                const type = step.execution.actionType;
-                byType[type] = (byType[type] || 0) + 1;
-              }
-            });
-            
-            const typeStr = Object.entries(byType)
-              .map(([type, count]) => `${type}=${count}`)
-              .join(', ');
-            
-            console.log(`[LLM Planner] ${countryName}: ${steps.length} steps | By Type: ${typeStr} | Repeatable: ${repeatableCount}`);
-            
-            // Quality warnings
+            // Only log quality issues (not successes)
             if (steps.length < 8) {
-              console.warn(`[LLM Planner] ⚠️ QUALITY WARNING: ${countryName} has only ${steps.length}/8 steps (BELOW MINIMUM)`);
-            }
-            
-            if (steps.length > 10) {
-              console.warn(`[LLM Planner] ⚠️ QUALITY WARNING: ${countryName} has ${steps.length}/10 steps (ABOVE MAXIMUM)`);
+              console.warn(`[LLM Planner] ⚠️ ${countryName}: ${steps.length}/8 steps (BELOW MIN)`);
+            } else if (steps.length > 10) {
+              console.warn(`[LLM Planner] ⚠️ ${countryName}: ${steps.length}/10 steps (ABOVE MAX)`);
             }
             
             const executableCount = steps.filter(s => s.execution).length;
-            if (executableCount < steps.length * 0.8) {
-              console.warn(`[LLM Planner] ⚠️ QUALITY WARNING: ${countryName} has only ${executableCount}/${steps.length} executable steps (low ratio)`);
-            }
-          } else {
-            console.log(`[LLM Planner] ✓ ${country?.name || countryId}: ${analysis.strategicFocus} (${planSource}, ${planItemsCount} items, ${executableSteps} executable)`);
-          }
-          
-          console.log(`[LLM Planner]   Rationale: ${analysis.rationale.substring(0, 80)}${analysis.rationale.length > 80 ? '...' : ''}`)
-
-          // Log recommended actions (always show in batch mode for Vercel visibility)
-          if (analysis.recommendedActions.length > 0) {
-            console.log(`[LLM Planner]   Actions: ${analysis.recommendedActions.slice(0, 3).join(' | ')}${analysis.recommendedActions.length > 3 ? ` (+${analysis.recommendedActions.length - 3} more)` : ''}`);
-          }
-
-          // Verbose logging (env-gated to avoid log spam)
-          if (process.env.LLM_PLANNER_LOG_ACTIONS === '1') {
-            if (analysis.planItems && analysis.planItems.length > 0) {
-              console.log(`[LLM Planner]   Plan Items:`);
-              analysis.planItems.slice(0, 3).forEach((item, i) => {
-                const execInfo = item.kind === 'step' && item.execution ? ` (${item.execution.actionType})` : '';
-                console.log(`[LLM Planner]     ${i+1}. ${item.instruction.substring(0, 60)}${item.instruction.length > 60 ? '...' : ''}${execInfo}`);
-              });
-              if (analysis.planItems.length > 3) {
-                console.log(`[LLM Planner]     ... and ${analysis.planItems.length - 3} more items`);
-              }
+            if (executableCount < steps.length * 0.7) {
+              console.warn(`[LLM Planner] ⚠️ ${countryName}: ${executableCount}/${steps.length} executable (low ratio)`);
             }
           }
         }
       }
       
-      // PHASE D: Log batch summary statistics
-      if (results.size > 0) {
-        const stats = {
-          total: results.size,
-          withPlans: 0,
-          avgSteps: 0,
-          minSteps: Infinity,
-          maxSteps: 0,
-          lowQuality: 0, // < 8 steps
-        };
-        
-        for (const [countryId, analysis] of results.entries()) {
-          if (analysis.planItems && analysis.planItems.length > 0) {
-            stats.withPlans++;
+      // Compact batch summary
+      if (results.size > 0 && process.env.LLM_PLAN_DEBUG === "1") {
+        const stats = { total: results.size, avgSteps: 0, lowQuality: 0 };
+        for (const [, analysis] of results.entries()) {
+          if (analysis.planItems) {
             const stepCount = analysis.planItems.filter(i => i.kind === 'step').length;
             stats.avgSteps += stepCount;
-            stats.minSteps = Math.min(stats.minSteps, stepCount);
-            stats.maxSteps = Math.max(stats.maxSteps, stepCount);
             if (stepCount < 8) stats.lowQuality++;
           }
         }
-        
-        if (stats.withPlans > 0) {
-          stats.avgSteps = Math.round(stats.avgSteps / stats.withPlans);
-          console.log(`[LLM Planner] 📊 Batch Summary: ${stats.total} countries | Avg steps: ${stats.avgSteps} | Range: ${stats.minSteps}-${stats.maxSteps} | Low quality: ${stats.lowQuality}`);
+        if (stats.total > 0) {
+          stats.avgSteps = Math.round(stats.avgSteps / stats.total);
+          console.log(`[LLM Planner] Batch: ${stats.total} countries, avg ${stats.avgSteps} steps${stats.lowQuality > 0 ? `, ${stats.lowQuality} low quality` : ''}`);
         }
       }
       
@@ -681,9 +599,18 @@ Return ONLY this JSON (copy this structure with 8+ steps):
   }
   
   /**
-   * Log detailed strategy information
+   * Log detailed strategy information (only if debug enabled)
    */
   private logStrategyDetails(state: GameStateSnapshot, countryId: string, analysis: LLMStrategicAnalysis): void {
+    // Only log detailed strategy if debug mode enabled
+    if (process.env.LLM_PLAN_DEBUG !== "1") {
+      // Minimal logging for production
+      const country = state.countries.find((c: any) => c.id === countryId);
+      console.log(`[LLM Plan] ${country?.name}: ${analysis.strategicFocus} - ${analysis.rationale.substring(0, 60)}`);
+      return;
+    }
+
+    // Full detailed logging for debug mode
     const country = state.countries.find((c: any) => c.id === countryId);
     const stats = state.countryStatsByCountryId[countryId];
     const neighborDistance = 200;
@@ -952,64 +879,20 @@ Return ONLY the JSON object. No markdown, no extra text.`;
 
     return `${CACHED_GAME_RULES}
 
-${country.name} (T${state.turn}): Pop ${(stats.population/1000).toFixed(0)}k | $${(stats.budget).toFixed(0)} | Tech L${stats.technologyLevel} | Infra L${stats.infrastructureLevel || 0} | Mil ${stats.militaryStrength} (${economicAnalysis.effectiveMilitaryStrength} effective) | ${stats.resourceProfile?.name || "Balanced"}
-Resources: ${resourcesStr}
-Affordability: ${affordabilityStr}
-Income: $${economicAnalysis.netIncome}/t | ${economicAnalysis.isUnderDefended ? `UNDER-DEFENDED (deficit: ${Math.round(economicAnalysis.militaryDeficit)})` : 'OK'} | ${economicAnalysis.turnsUntilBankrupt !== null ? `Bankrupt in ${economicAnalysis.turnsUntilBankrupt}t` : 'Stable'}
+${country.name} T${state.turn}: Pop ${(stats.population/1000).toFixed(0)}k|$${stats.budget.toFixed(0)}|Tech L${stats.technologyLevel}|Infra L${stats.infrastructureLevel || 0}|Mil ${stats.militaryStrength}(eff ${economicAnalysis.effectiveMilitaryStrength})|${stats.resourceProfile?.name || "Bal"}
+Res: ${resourcesStr}|Afford: ${affordabilityStr}|Inc $${economicAnalysis.netIncome}/t|${economicAnalysis.isUnderDefended ? `⚠DEF-${Math.round(economicAnalysis.militaryDeficit)}` : 'OK'}
 
 NEIGHBORS: ${neighbors}
 
-Plan ${this.LLM_CALL_FREQUENCY} turns (2-3 actions/turn, capped per turn). Include at least one fallback step with "when" condition. Consider BOTH economic AND military strategies.
-IMPORTANT: Use "stop_when" conditions (e.g., stop_when: {tech_level_gte: X}) to allow steps to repeat across multiple turns. Steps without stop_when are executed only once.
+Plan ${this.LLM_CALL_FREQUENCY}t (2-3 act/t). Use stop_when for repeatable steps. MUST: 8-10 steps min.
 
-CRITICAL REQUIREMENT: You MUST generate between 8-10 action steps. Plans with fewer than 8 steps will be marked as LOW QUALITY and may fail validation.
-- If a country is wealthy/stable: Add economic diversification (multiple infra upgrades, trading strategies)
-- If a country is weak: Add defensive military steps + economic recovery steps (infrastructure, resource management)
-- If a country is aggressive: Add attack sequences with preparatory recruitment
-- Use repeatable steps (with stop_when) to ensure plan longevity across multiple turns
-
-JSON ONLY - EXAMPLE STRATEGIES:
-
-ECONOMIC FOCUS:
-{"focus":"economy","rationale":"Build tech advantage","action_plan":[
-  {"id":"tech_l2","instruction":"Tech→L2","priority":1,"stop_when":{"tech_level_gte":2},"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
-  {"id":"recruit_30","instruction":"Recruit→30 for defense","priority":2,"stop_when":{"military_strength_gte":30},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}},
-  {"id":"infra_l2","instruction":"Infra→L2","priority":3,"when":{"budget_gte":1000},"stop_when":{"infra_level_gte":2},"execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}},
-  {"id":"conservative_infra","instruction":"Infra→L1 if budget tight","priority":4,"when":{"budget_lt":500},"execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":1}}}
-]}
-
-MILITARY FOCUS:
-{"focus":"military","rationale":"Strong mil, weak neighbors - expand","action_plan":[
-  {"id":"recruit_50","instruction":"Recruit→50","priority":1,"stop_when":{"military_strength_gte":50},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":15}}},
-  {"id":"attack_weak","instruction":"Attack weakest neighbor city","priority":2,"when":{"military_strength_gte":45},"execution":{"actionType":"military","actionData":{"subType":"attack","targetCityId":"<CITY_ID>","allocatedStrength":30}}},
-  {"id":"tech_l2","instruction":"Tech→L2 after conquest","priority":3,"when":{"budget_gte":1200},"stop_when":{"tech_level_gte":2},"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
-  {"id":"defensive_recruit","instruction":"Recruit→30 for defense if threatened","priority":4,"when":{"budget_lt":300},"stop_when":{"military_strength_gte":30},"execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}}
-]}
-
-CRITICAL: MILITARY ACTIONS MUST HAVE CORRECT SCHEMA
-
-❌ WRONG - Missing subType (WILL BE FILTERED OUT and not executed):
-{"id":"recruit","instruction":"Recruit troops","execution":{"actionType":"military","actionData":{"amount":15}}}
-^ This will be REJECTED. The game engine looks for subType field.
-
-✅ CORRECT - Always include subType:
-{"id":"recruit","instruction":"Recruit troops","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":15}}}
-
-EVERY military step MUST specify subType as either "recruit" or "attack". If you omit it, the step will be filtered out and NOT executed.
-
-REQUIRED STRUCTURE:
-{
-  "focus": "economy"|"military"|"balanced",
-  "rationale": "Brief strategic reasoning",
-  "action_plan": [
-    // REQUIRED: 8-10 executable steps (minimum 8, maximum 10)
-    // Use stop_when to allow repeatable steps, omit for one-time steps
-    // Example repeatable: {"id":"tech3","instruction":"Upgrade tech to L3","stop_when":{"tech_level_gte":3},"execution":{"actionType":"research","actionData":{"targetLevel":3}}}
-    // Example one-time: {"id":"attack1","instruction":"Attack weak neighbor","execution":{"actionType":"military","actionData":{"subType":"attack","targetCityId":"UUID","allocatedStrength":30}}}
-  ],
-  "risks": ["Top risk #1", "Top risk #2"],
-  "plan_rationale": "Why these specific steps",
-  "diplomacy": {${neighbors
+SCHEMA:
+{"focus":"economy|military|balanced","rationale":"<80ch","action_plan":[
+  {"id":"s1","instruction":"<action>","stop_when":{"tech_level_gte":2},"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
+  {"id":"s2","instruction":"<action>","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":15}}},
+  {"id":"s3","instruction":"<action>","execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}},
+  ...6-7 more steps
+],"risks":["<r1>"],"diplomacy":{${neighbors
   .split('\n')
   .filter(n => n.trim())
   .map(n => {
@@ -1017,21 +900,9 @@ REQUIRED STRUCTURE:
     return match ? `"${match[1].trim()}":"neutral"` : '';
   })
   .filter(Boolean)
-  .join(',')}},
-  "confidence": 0.9
-}
+  .join(',')}},"confidence":0.9}
 
-STEP FORMAT: {"id": "unique_id", "instruction": "What to do", "when": {...}, "stop_when": {...}, "execution": {"actionType": "research|economic|military", "actionData": {...}}}
-
-VALIDATION CHECKLIST (verify before responding):
-✓ EVERY action has an "execution" object
-✓ Military steps have execution.actionData.subType as "recruit" or "attack"
-✓ Economic steps have execution.actionData.subType as "infrastructure"
-✓ Research steps have execution.actionData.targetLevel
-✓ Plan has 8-10 total steps (REQUIRED: minimum 8, maximum 10)
-✓ countryId matches exactly one of the provided IDs (case-sensitive)
-
-BE LLM-LED: Choose the best strategy yourself. Only validate executability at engine boundary.`;
+CRITICAL: Military MUST have subType:"recruit"|"attack". Economic MUST have subType:"infrastructure". Research MUST have targetLevel.`;
   }
   
   /**
@@ -1269,14 +1140,9 @@ BE LLM-LED: Choose the best strategy yourself. Only validate executability at en
 
       return `
 ### ${country.name}
-⚠️ EXACT countryId TO USE: "${countryId}"
-⚠️ DO NOT USE: "${country.name}" (this is the name, NOT the ID!)
-Pop: ${(stats.population/1000).toFixed(0)}k | $${(stats.budget).toFixed(0)} | Tech L${stats.technologyLevel} | Infra L${stats.infrastructureLevel || 0} | Mil ${stats.militaryStrength} (${economicAnalysis.effectiveMilitaryStrength} effective) | ${stats.resourceProfile?.name || "Balanced"}
-Resources: ${resourcesStr}
-Affordability: ${affordabilityStr}
-Income: $${economicAnalysis.netIncome}/t | ${economicAnalysis.isUnderDefended ? `UNDER-DEFENDED (deficit: ${Math.round(economicAnalysis.militaryDeficit)})` : 'OK'} | ${economicAnalysis.turnsUntilBankrupt !== null ? `Bankrupt in ${economicAnalysis.turnsUntilBankrupt}t` : 'Stable'}
-Neighbors: ${neighbors.split('\n').join('; ')}
-Attack Candidates: ${attackCandidates}`;
+ID:"${countryId}"|Pop ${(stats.population/1000).toFixed(0)}k|$${stats.budget.toFixed(0)}|Tech L${stats.technologyLevel}|Infra L${stats.infrastructureLevel || 0}|Mil ${stats.militaryStrength}(eff ${economicAnalysis.effectiveMilitaryStrength})|${stats.resourceProfile?.name || "Bal"}
+Res:${resourcesStr}|Afford:${affordabilityStr}|Inc $${economicAnalysis.netIncome}/t|${economicAnalysis.isUnderDefended ? `⚠DEF-${Math.round(economicAnalysis.militaryDeficit)}` : 'OK'}
+Neighbors:${neighbors.split('\n').slice(0,3).join(';')}|Attacks:${attackCandidates}`;
     }).join('\n');
 
     const countryIdsList = countries.map(c => c.countryId).join(', ');

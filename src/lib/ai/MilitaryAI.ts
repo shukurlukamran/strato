@@ -214,19 +214,43 @@ export class MilitaryAI {
         // Verify the target city is valid and attackable
         let targetCity = neighboringCities.find(city => city.id === llmTargetCityId);
         
-        // RECOVERY: If cityId is invalid, try interpreting it as a countryId
+        // RECOVERY 1: If cityId is invalid, try interpreting it as a countryId
         if (!targetCity && llmTargetCityId.length > 5) {
-          // Might be a countryId instead; find a city owned by that country
           const citiesOwnedByCountry = neighboringCities.filter(city => city.countryId === llmTargetCityId);
           if (citiesOwnedByCountry.length > 0) {
-            // Pick the first/best city from that country
-            targetCity = citiesOwnedByCountry[0];
-            console.log(`[MilitaryAI] LLM provided countryId instead of cityId; recovered to city ${targetCity.name} (${targetCity.id})`);
+            // Pick the highest value city from that country
+            targetCity = citiesOwnedByCountry.reduce((best, current) => {
+              const bestValue = calculateCityValue(best);
+              const currentValue = calculateCityValue(current);
+              return currentValue > bestValue ? current : best;
+            });
+            if (this.debugLLMPlan) {
+              console.log(`[MilitaryAI] LLM provided countryId instead of cityId; recovered to city ${targetCity.name} (${targetCity.id})`);
+            }
+          }
+        }
+        
+        // RECOVERY 2: Target no longer exists/attackable - validate against all cities
+        if (!targetCity) {
+          // Check if target country still exists
+          const targetCountry = state.countries.find(c => c.id === llmTargetCityId);
+          if (!targetCountry) {
+            // Country eliminated - silently fall back to rule-based without logging spam
+            // This is expected when cached plans reference old targets
+            return this.ruleBasedAttackDecision(state, countryId, neighboringCities, stats, intent, remainingBudget, false);
+          }
+          
+          // Country exists but no cities are attackable (may have been moved away)
+          // Find best alternative target
+          if (this.debugLLMPlan) {
+            console.log(`[MilitaryAI] LLM target ${llmTargetCityId} no longer attackable, selecting alternative`);
           }
         }
         
         if (targetCity) {
-          console.log(`[MilitaryAI] Honoring LLM-specified target: ${targetCity.name} (${targetCity.id})`);
+          if (this.debugLLMPlan) {
+            console.log(`[MilitaryAI] Honoring LLM target: ${targetCity.name}`);
+          }
           const action = await this.attackSpecificCity(
             state,
             countryId,
@@ -241,8 +265,6 @@ export class MilitaryAI {
             (action.actionData as Record<string, unknown>).llmPlanTurn = intent.llmPlan?.turnAnalyzed;
           }
           return action;
-        } else {
-          console.log(`[MilitaryAI] LLM-specified target ${llmTargetCityId} not found or not attackable, falling back to rule-based`);
         }
       }
     }
@@ -906,12 +928,12 @@ Your decision:`;
 
       console.log(`[LLM Plan Debug] Military coverage (${requiredSubType}):`, coverage);
       
-      // Log non-executable steps so they're visible
-      if (skippedReasons.noExecution.length > 0) {
-        console.log(`[LLM Plan Debug] Non-executable military steps:`, skippedReasons.noExecution);
+      // Only log warnings about non-executable or banned steps (not full lists)
+      if (skippedReasons.noExecution.length > 2) {
+        console.log(`[LLM Plan Debug] ${skippedReasons.noExecution.length} non-executable military steps`);
       }
       if (skippedReasons.banned.length > 0) {
-        console.log(`[LLM Plan Debug] Banned military steps:`, skippedReasons.banned);
+        console.log(`[LLM Plan Debug] ${skippedReasons.banned.length} banned military steps`);
       }
     }
 
@@ -977,11 +999,10 @@ Your decision:`;
       
       console.log(`[LLM Plan Debug] Step filtering breakdown (${requiredSubType}):`, reasons);
       if (wrongDomainSteps.length > 0) {
-        // PHASE 4: Enhanced filtering log for military AI
-        console.log(`[Military AI] ⚠️ Filtered ${wrongDomainSteps.length} steps with wrong actionType (expected military):`);
-        wrongDomainSteps.forEach(step => {
-          console.log(`[Military AI]   - ${step.id}: ${step.type}`);
-        });
+        // Compact log (don't list every step individually)
+        console.log(`[Military AI] ⚠️ Filtered ${wrongDomainSteps.length} steps with wrong actionType (expected military):`, 
+          wrongDomainSteps.slice(0, 3).map(s => `${s.id}:${s.type}`).join(', ') + 
+          (wrongDomainSteps.length > 3 ? '...' : ''));
       }
     }
     return null;
