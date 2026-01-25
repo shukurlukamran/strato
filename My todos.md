@@ -1,7 +1,9 @@
 (DO NOT TOUCH THIS FILE. THIS FILE IS FOR MY PERSONAL NOTES.)
 
+Stil persistsI
 - History log still shows deals with the player but player didn't receive any deal offers or confirmed
 - LLM plan includes "attack aurum" for Cyrenia but Cyrenia isn't neighbor to Aurum right now so can't attack. LLM needs to know about this.
+- No deal being done
 
 ---
 - Log in system and saving games to profiles
