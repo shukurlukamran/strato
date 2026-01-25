@@ -38,6 +38,7 @@ export function CountryCard({
   const [extractedDeal, setExtractedDeal] = useState<DealExtractionResult | null>(null);
   const [extractionError, setExtractionError] = useState<string | null>(null);
   const [dealExecuted, setDealExecuted] = useState(false);
+  const [confirmingDeal, setConfirmingDeal] = useState(false);
   // Use the chatId from props (from game page state) or local state as fallback
   const [chatId, setChatId] = useState<string>(initialChatId || "");
 
@@ -55,6 +56,7 @@ export function CountryCard({
     setExtractedDeal(null);
     setExtractionError(null);
     setDealExecuted(false);
+    setConfirmingDeal(false);
   }, [country?.id]);
 
   if (!country || !stats) {
@@ -263,6 +265,7 @@ export function CountryCard({
     setExtractionError(null);
     setExtractedDeal(null);
     setDealExecuted(false);
+    setConfirmingDeal(false);
 
     try {
       const res = await fetch("/api/deals/extract", {
@@ -285,30 +288,11 @@ export function CountryCard({
         deal: DealExtractionResult | null; 
         message?: string;
         executed?: boolean;
-        createdDeal?: any;
-        executionErrors?: string[];
-        warning?: boolean;
       };
       
       if (data.deal) {
         setExtractedDeal(data.deal);
-        setDealExecuted(data.executed === true);
-        
-        if (data.executed) {
-          console.log("Deal automatically confirmed and executed:", data.createdDeal);
-          
-          // Refresh stats for both countries involved in the deal
-          if (onStatsUpdate && country && playerCountryId) {
-            // Refresh stats for both the player country and the counterpart country
-            onStatsUpdate([playerCountryId, country.id]);
-            console.log("Triggered stats refresh for countries:", [playerCountryId, country.id]);
-          }
-        } else if (data.warning) {
-          console.warn("Deal created but execution had issues:", data.executionErrors);
-          setExtractionError(
-            `Deal created but some terms failed: ${data.executionErrors?.join(", ") || "Unknown error"}`
-          );
-        }
+        setDealExecuted(false);
       } else {
         setExtractionError(data.message || "No deal detected in the conversation");
       }
@@ -318,6 +302,51 @@ export function CountryCard({
       console.error("Deal extraction error:", error);
     } finally {
       setExtracting(false);
+    }
+  };
+
+  const handleConfirmDeal = async () => {
+    if (confirmingDeal || !extractedDeal) return;
+    if (!gameId || !playerCountryId) {
+      setExtractionError("Cannot confirm deal: missing game or player information");
+      return;
+    }
+
+    // Receiver is the "other" party in the extracted deal.
+    const counterpartId = country.id;
+    const proposingCountryId = extractedDeal.proposerCountryId;
+    const receivingCountryId = proposingCountryId === playerCountryId ? counterpartId : playerCountryId;
+
+    setConfirmingDeal(true);
+    setExtractionError(null);
+    try {
+      const res = await fetch("/api/deals/confirm", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          gameId,
+          proposingCountryId,
+          receivingCountryId,
+          dealType: extractedDeal.dealType,
+          dealTerms: extractedDeal.dealTerms,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to confirm deal");
+      }
+
+      setDealExecuted(true);
+
+      // Refresh stats for both countries involved in the deal
+      if (onStatsUpdate && playerCountryId && counterpartId) {
+        onStatsUpdate([playerCountryId, counterpartId]);
+      }
+    } catch (e) {
+      setExtractionError(e instanceof Error ? e.message : "Failed to confirm deal");
+    } finally {
+      setConfirmingDeal(false);
     }
   };
 
@@ -529,15 +558,15 @@ export function CountryCard({
                 }`}>
                   <div className="flex items-center gap-2">
                     <div className={`font-semibold ${dealExecuted ? "text-green-300" : "text-blue-300"}`}>
-                      {dealExecuted ? "✓ Deal Confirmed & Executed!" : "Deal Extracted!"}
+                      {dealExecuted ? "✓ Deal Confirmed & Executed!" : "Deal Extracted (Draft)"}
                     </div>
                     {dealExecuted && (
                       <span className="text-green-400 text-lg">✓</span>
                     )}
                   </div>
-                  {dealExecuted && (
-                    <div className="mt-1 text-xs text-green-200/80">
-                      The deal has been automatically confirmed and implemented. Resources and budget have been transferred.
+                  {!dealExecuted && (
+                    <div className="mt-1 text-xs text-blue-200/80">
+                      Review the terms below, then click Confirm to execute the deal.
                     </div>
                   )}
                   <div className="mt-1 text-blue-200">
@@ -583,6 +612,32 @@ export function CountryCard({
                       </div>
                     )}
                   </div>
+
+                  {!dealExecuted && (
+                    <div className="mt-3 flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void handleConfirmDeal()}
+                        disabled={confirmingDeal}
+                        className="rounded-lg bg-gradient-to-r from-green-600 to-green-700 px-3 py-1.5 text-xs font-semibold text-white shadow-lg transition-all hover:from-green-500 hover:to-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {confirmingDeal ? "Confirming..." : "Confirm Deal"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setExtractedDeal(null);
+                          setExtractionError(null);
+                          setDealExecuted(false);
+                          setConfirmingDeal(false);
+                        }}
+                        disabled={confirmingDeal}
+                        className="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white/80 hover:text-white hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

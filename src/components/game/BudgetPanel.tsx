@@ -6,6 +6,7 @@ import {
   calculateEffectiveMilitaryStrength,
   calculateMilitaryEffectivenessMultiplier,
   calculatePopulationCapacity,
+  calculatePopulationGrowthBreakdownForDisplay,
   calculateTradeCapacity,
 } from "@/lib/game-engine/EconomicClientUtils";
 import { ECONOMIC_BALANCE } from "@/lib/game-engine/EconomicBalance";
@@ -41,6 +42,7 @@ export function BudgetPanel({ country, stats, activeDealsValue = 0 }: BudgetPane
   const militaryMultiplier = calculateMilitaryEffectivenessMultiplier(stats);
   const popCapacity = calculatePopulationCapacity(stats);
   const tradeCapacity = calculateTradeCapacity(stats);
+  const popGrowth = calculatePopulationGrowthBreakdownForDisplay(country, stats);
 
   // Tooltip content generators
   const getTaxRevenueTooltip = () => {
@@ -88,7 +90,7 @@ export function BudgetPanel({ country, stats, activeDealsValue = 0 }: BudgetPane
           </Tooltip>
 
           {/* Population */}
-          <Tooltip content={`👥 POPULATION\n\nYour citizens generate tax revenue and produce resources.\n\nCurrent: ${stats.population.toLocaleString()} / ${popCapacity.capacity.toLocaleString()}\nCapacity Usage: ${popCapacity.percentUsed.toFixed(1)}%\n\n📈 GROWTH MECHANICS:\n• Base Growth: +2% per turn\n• Food Surplus: +1% per 100 surplus food\n• Food Shortage: -3% if below 80% needs\n• Capacity: Grows to ${popCapacity.capacity.toLocaleString()}\n\n${popCapacity.isOvercrowded ? '⚠️ OVERCROWDED PENALTIES:\n• Growth Rate: -50% (half speed!)\n• Tax Revenue: -20%\n• Food Consumption: +10%\n\n→ BUILD INFRASTRUCTURE to increase capacity!' : '✓ Room to grow! No capacity penalties.'}\n\n💡 TIP: Each infrastructure level adds +50k capacity.`}>
+          <Tooltip content={`👥 POPULATION\n\nYour citizens generate tax revenue and produce resources.\n\nCurrent: ${stats.population.toLocaleString()} / ${popCapacity.capacity.toLocaleString()}\nCapacity Usage: ${popCapacity.percentUsed.toFixed(1)}%\n\n📈 CURRENT GROWTH (EST.): ${popGrowth.growthAfterCap >= 0 ? '+' : ''}${Math.floor(popGrowth.growthAfterCap).toLocaleString()} (${popGrowth.growthRatePercent >= 0 ? '+' : ''}${popGrowth.growthRatePercent.toFixed(2)}% / turn)\n\n🔎 BREAKDOWN:\n• Base: +${(popGrowth.baseRate * 100).toFixed(0)}% = +${Math.floor(popGrowth.baseGrowth).toLocaleString()}\n${popGrowth.isOvercrowded ? `• Overcrowding: ×${popGrowth.overcrowdingGrowthMultiplier.toFixed(2)} → +${Math.floor(popGrowth.baseGrowthAfterOvercrowding).toLocaleString()}` : `• Capacity OK: ×${popGrowth.overcrowdingGrowthMultiplier.toFixed(2)}`}\n• Food: ${Math.floor(popGrowth.foodCurrent).toLocaleString()} + ${Math.floor(popGrowth.foodProduced).toLocaleString()} − ${Math.floor(popGrowth.foodConsumed).toLocaleString()} = ${Math.floor(popGrowth.foodAfterConsumption).toLocaleString()}\n• Food Bonus: +${(popGrowth.foodBonusRate * 100).toFixed(0)}% = +${Math.floor(popGrowth.foodBonus).toLocaleString()}\n${popGrowth.starvationPenalty > 0 ? `• Starvation: -3% = -${Math.floor(popGrowth.starvationPenalty).toLocaleString()} (needs ≥ ${(popGrowth.starvationThreshold * 100).toFixed(0)}%)` : `• Starvation: none (≥ ${(popGrowth.starvationThreshold * 100).toFixed(0)}% needs)`}\n• Cap: max +${Math.floor(popGrowth.growthCap).toLocaleString()} (${(ECONOMIC_BALANCE.POPULATION.GROWTH_CAP_MULTIPLIER * 100).toFixed(0)}% of base)\n\n${popCapacity.isOvercrowded ? '⚠️ OVERCROWDING PENALTIES:\n• Growth Rate: -50% (half speed!)\n• Tax Revenue: -20%\n• Food Consumption: +10%\n\n→ BUILD INFRASTRUCTURE to increase capacity!' : '✓ Room to grow! No capacity penalties.'}\n\n💡 TIP: Each infrastructure level adds +50k capacity.`}>
             <div className={`rounded border ${popCapacity.isOvercrowded ? 'border-yellow-500/50' : 'border-white/10'} bg-slate-800/50 px-4 py-2 cursor-help`}>
               <div className="text-xs text-white/60 mb-1">
                 👥 Population {popCapacity.isOvercrowded && <span className="text-yellow-500">⚠️</span>}

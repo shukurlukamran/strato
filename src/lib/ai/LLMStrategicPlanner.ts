@@ -696,13 +696,15 @@ Return ONLY this JSON (copy this structure with 8+ steps):
       if (!country) return "";
 
       const economicAnalysis = RuleBasedAI.analyzeEconomicSituation(state, countryId, stats);
+      const attackCandidates = this.getAttackCandidates(state, countryId, stats, cities);
 
       return `
 ### ${country.name}
 - EXACT countryId TO USE: "${countryId}"
 - DO NOT USE: "${country.name}" (this is the name, not the ID!)
 - Pop: ${Math.floor(stats.population/1000)}k | Mil: ${stats.militaryStrength} | Budget: $${stats.budget}
-- Status: ${economicAnalysis.isUnderDefended ? `UNDER-DEFENDED (deficit: ${Math.round(economicAnalysis.militaryDeficit)})` : 'OK'}`;
+- Status: ${economicAnalysis.isUnderDefended ? `UNDER-DEFENDED (deficit: ${Math.round(economicAnalysis.militaryDeficit)})` : 'OK'}
+- Attacks: ${attackCandidates}`;
     }).join('\n');
 
     return `${CACHED_GAME_RULES}
@@ -715,6 +717,8 @@ ${countryDetails}
 ⚠️ CRITICAL: You MUST use the EXACT countryId UUID shown above. DO NOT use country names!
 Example CORRECT: "countryId": "${countries[0]?.countryId}"
 Example WRONG: "countryId": "${state.countries.find(c => c.id === countries[0]?.countryId)?.name}" ❌
+
+CRITICAL: Only include attack steps if "Attacks:" is NOT "None". If it is "None (...)", DO NOT include any attack steps.
 
 Return ONLY this JSON structure. NO markdown. NO code blocks. NO explanations. JUST THE JSON:
 
@@ -762,6 +766,23 @@ Return ONLY the JSON object. No markdown, no extra text.`;
     cities: City[]
   ): string {
     const ourEffectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(stats);
+    const attackerCities = cities.filter((c) => c.countryId === countryId);
+    if (attackerCities.length === 0) {
+      return "None (no cities owned)";
+    }
+
+    // Attack range should match player validation + MilitaryAI neighbor logic
+    const attackRange = 15;
+    const isNeighborCity = (enemy: City): boolean => {
+      for (const ours of attackerCities) {
+        const distance = Math.sqrt(
+          Math.pow(ours.positionX - enemy.positionX, 2) + Math.pow(ours.positionY - enemy.positionY, 2)
+        );
+        if (distance <= attackRange) return true;
+      }
+      return false;
+    };
+
     const candidates: Array<{
       city: City;
       defenderStats: CountryStats;
@@ -771,9 +792,10 @@ Return ONLY the JSON object. No markdown, no extra text.`;
       strengthRatio: number;
     }> = [];
 
-    // Find attackable cities (not owned by us, not under attack)
+    // Find attackable NEIGHBOR cities (not owned by us, not under attack)
     for (const city of cities) {
       if (city.countryId === countryId || city.isUnderAttack) continue;
+      if (!isNeighborCity(city)) continue;
 
       const defenderStats = state.countryStatsByCountryId[city.countryId];
       if (!defenderStats) continue;
@@ -804,7 +826,7 @@ Return ONLY the JSON object. No markdown, no extra text.`;
     const topCandidates = candidates.slice(0, 5);
 
     if (topCandidates.length === 0) {
-      return "No attack opportunities (insufficient military advantage)";
+      return "None (no attackable neighboring cities with advantage)";
     }
 
     const candidateStrings = topCandidates.map(c => {
@@ -1291,12 +1313,13 @@ CRITICAL: Military steps MUST include subType:
 ✅ CORRECT: {"execution": {"actionType": "military", "actionData": {"subType": "recruit", "amount": 15}}}
 
 For attack actions, include targetCityId from Attack Candidates list.
+CRITICAL: If Attacks is "None (...)" then you CANNOT attack this turn — DO NOT include any attack steps.
 For recruit actions, include amount (10-15 typical).
 Without subType, military steps will be filtered out and NOT executed.
 
 PLAN SIZE REQUIREMENT: Every country MUST have 8-10 steps. No exceptions. If a country is wealthy/stable, add economic diversification. If weak, add defensive military + economic recovery.
 
-ATTACKS: Include when militarily stronger than neighbors. Use targetCityId from Attack Candidates above.
+ATTACKS: Only include if "Attacks:" is NOT "None". Use targetCityId from Attack Candidates above (these are the ONLY legal targets).
 
 ECONOMIC FOCUS: For weak/bankrupt nations only.`;
   }

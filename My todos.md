@@ -5,10 +5,22 @@
 - History log still shows deals with the player but player didn't receive any deal offers or confirmed
 - LLM plan includes "attack aurum" for Cyrenia but Cyrenia isn't neighbor to Aurum right now so can't attack. LLM needs to know about this.
 
-- Prevent cheating in the chat deals (you can get money for technology level now, but tech level isn't actually transferred, for example)
-- Prevent abuse in the LLM chat (It shouldn't be possible to use it for anything unrelated to game - we also need to have some hard limits to prevent spamming, but this limit shouldn't interrupt gameplay. And negotiations may even cost some small money in the game to slightly discourage people to overuse it unnecessarily - Come up with a rational fair plan)
-- Borders are sometimes messed up, especially when cities are captured. Sometimes there are some blank areas that doesn't belong to any country. We need to make these super defined with almost no place for error. 
+---
 - Log in system and saving games to profiles
+- Prevent abuse in the LLM chat (It shouldn't be possible to use it for anything unrelated to game - we also need to have some hard limits to prevent spamming, but this limit shouldn't interrupt gameplay. And negotiations may even cost some small money in the game to slightly discourage people to overuse it unnecessarily - Come up with a rational fair plan)
+- Diplomacy system (simple for now) (non-agression pact, trade should increase relationship, ask for help, alliance)
+- Define a few winning conditions - and let LLM know them
+
+---
+**LLM CHAT**
+
+- LLM in the chat should be diplomatic, and strategic. For example, when a significantly obviously powerful Player demands tribute and threatening to attack unless tribute paid, LLM should analyze and decide if it should pay tribute or not. To prevent abuses, such cases should always be a way to make it official, such as non-agression pact for X amount of turns in this case.
+- Each country's LLM should have a random character (affecting decisions, talking style, etc.)
+- Chat conversations should be able to affect diplomatic relationships a bit. Build it in a way that can't be abused.
+
+---
+- Prevent cheating in the chat deals (you can get money for technology level now, but tech level isn't actually transferred, for example)
+- Borders are sometimes messed up, especially when cities are captured. Sometimes there are some blank areas that doesn't belong to any country. We need to make these super defined with almost no place for error. 
 
 - City transfer mechanism in Deal Chat (analyze and see what can be exchanged or agreed with the current state of the game but doesn't exist in the deal chat's implementation capabilities)
 - Pulsing red border or persistent indicator for isUnderAttack for cities
@@ -25,10 +37,7 @@
 - History log should include significant price changes in the base costs of resources between the current and previous turns. For example, "Iron price surged staggering 30%".
 - In the window showing current costs of resources, add a graph for each resource showing their price movement in the last 10 turns.
 - If LLM Planner takes too long, we may split it into 2 sessions (for example, on turn 5, planner is activated for half of the countries, and on turn 10, for the other half)
-- Define a few winning conditions - and let LLM know them
 - AI countries should consider more things when deciding which country and city to attack: Military strength, City's resources (if they need those resources), City's population (the more, the better for expansion), Diplomatic relationships with the other countries (good relationships should have some benefits such as trade bonuses, etc.)
-- Chat conversations should be able to affect diplomatic relationships a bit. Build it in a way that can't be abused.
-- LLM in the chat should be diplomatic, and strategic. For example, when a significantly obviously powerful Player demands tribute and threatening to attack unless tribute paid, LLM should analyze and decide if it should pay tribute or not. To prevent abuses, such cases should always be a way to make it official, such as non-agression pact for X amount of turns in this case.
 -------
 
 Analyze root causes of these, understand what is happening, and then implement fixes. 

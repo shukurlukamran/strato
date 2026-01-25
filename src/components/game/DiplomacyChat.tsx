@@ -26,6 +26,8 @@ export function DiplomacyChat({
   const [extracting, setExtracting] = useState(false);
   const [extractedDeal, setExtractedDeal] = useState<DealExtractionResult | null>(null);
   const [extractionError, setExtractionError] = useState<string | null>(null);
+  const [confirmingDeal, setConfirmingDeal] = useState(false);
+  const [dealExecuted, setDealExecuted] = useState(false);
 
   const sorted = useMemo(
     () => [...messages].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
@@ -65,6 +67,8 @@ export function DiplomacyChat({
     setExtracting(true);
     setExtractionError(null);
     setExtractedDeal(null);
+    setDealExecuted(false);
+    setConfirmingDeal(false);
     try {
       const res = await fetch("/api/deals/extract", {
         method: "POST",
@@ -80,9 +84,10 @@ export function DiplomacyChat({
         const errorText = await res.text();
         throw new Error(errorText || "Failed to extract deal");
       }
-      const data = (await res.json()) as { deal: DealExtractionResult | null; message?: string };
+      const data = (await res.json()) as { deal: DealExtractionResult | null; message?: string; executed?: boolean };
       if (data.deal) {
         setExtractedDeal(data.deal);
+        setDealExecuted(false);
         if (onDealExtracted) {
           onDealExtracted(data.deal);
         }
@@ -95,6 +100,39 @@ export function DiplomacyChat({
       console.error("Deal extraction error:", error);
     } finally {
       setExtracting(false);
+    }
+  }
+
+  async function confirmDeal() {
+    if (confirmingDeal || !extractedDeal) return;
+    setConfirmingDeal(true);
+    setExtractionError(null);
+    try {
+      const proposingCountryId = extractedDeal.proposerCountryId;
+      const receivingCountryId = proposingCountryId === playerCountryId ? counterpartCountryId : playerCountryId;
+
+      const res = await fetch("/api/deals/confirm", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          gameId,
+          proposingCountryId,
+          receivingCountryId,
+          dealType: extractedDeal.dealType,
+          dealTerms: extractedDeal.dealTerms,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to confirm deal");
+      }
+
+      setDealExecuted(true);
+    } catch (e) {
+      setExtractionError(e instanceof Error ? e.message : "Failed to confirm deal");
+    } finally {
+      setConfirmingDeal(false);
     }
   }
 
@@ -182,7 +220,9 @@ export function DiplomacyChat({
 
       {extractedDeal && (
         <div className="mt-3 rounded border border-blue-200 bg-blue-50 p-3 text-sm">
-          <div className="font-semibold text-blue-900">Deal Extracted!</div>
+          <div className="font-semibold text-blue-900">
+            {dealExecuted ? "✓ Deal Confirmed & Executed!" : "Deal Extracted (Draft)"}
+          </div>
           <div className="mt-1 text-xs text-blue-700">
             Type: <span className="font-medium">{extractedDeal.dealType}</span>
             {extractedDeal.reasoning && (
@@ -226,6 +266,32 @@ export function DiplomacyChat({
               </div>
             )}
           </div>
+
+          {!dealExecuted && (
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                className="rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+                onClick={() => void confirmDeal()}
+                disabled={confirmingDeal}
+              >
+                {confirmingDeal ? "Confirming..." : "Confirm Deal"}
+              </button>
+              <button
+                type="button"
+                className="rounded border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                onClick={() => {
+                  setExtractedDeal(null);
+                  setExtractionError(null);
+                  setDealExecuted(false);
+                  setConfirmingDeal(false);
+                }}
+                disabled={confirmingDeal}
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
         </div>
       )}
 

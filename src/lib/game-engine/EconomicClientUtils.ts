@@ -11,6 +11,29 @@ import { ResourceAmount } from './ResourceTypes';
 import { ECONOMIC_BALANCE } from './EconomicBalance';
 import { getProfileTechCostModifier, getProfileInfraCostModifier } from './ProfileModifiers';
 
+export type PopulationGrowthBreakdownForDisplay = {
+  population: number;
+  capacity: number;
+  isOvercrowded: boolean;
+  baseRate: number;
+  baseGrowth: number;
+  overcrowdingGrowthMultiplier: number;
+  baseGrowthAfterOvercrowding: number;
+  foodCurrent: number;
+  foodProduced: number;
+  foodConsumed: number;
+  foodAfterConsumption: number;
+  foodBonusRate: number;
+  foodBonus: number;
+  starvationThreshold: number;
+  foodRatio: number;
+  starvationPenalty: number;
+  totalGrowthBeforeCap: number;
+  growthCap: number;
+  growthAfterCap: number;
+  growthRatePercent: number;
+};
+
 /**
  * Calculate production output for display (client-side)
  */
@@ -92,6 +115,102 @@ export function calculatePopulationCapacity(stats: CountryStats): {
     current,
     isOvercrowded,
     percentUsed: Math.min(percentUsed, 100),
+  };
+}
+
+/**
+ * Calculate population growth rate + breakdown (client-side).
+ * Mirrors `EconomicEngine.calculateConsumption` + `EconomicEngine.calculatePopulationChange`.
+ *
+ * Note: This is an estimate shown in tooltips; it assumes next turn production matches current production.
+ */
+export function calculatePopulationGrowthBreakdownForDisplay(
+  country: Country,
+  stats: CountryStats
+): PopulationGrowthBreakdownForDisplay {
+  const population = Number(stats.population || 0);
+  const infraLevel = stats.infrastructureLevel || 0;
+  const capacity =
+    ECONOMIC_BALANCE.POPULATION.BASE_CAPACITY +
+    infraLevel * ECONOMIC_BALANCE.POPULATION.CAPACITY_PER_INFRASTRUCTURE;
+  const isOvercrowded = population > capacity;
+
+  // Food production estimate (uses current production rules)
+  const production = ResourceProduction.calculateProduction(country, stats);
+  const foodProduced = Number(
+    production.resources.find((r) => r.resourceId === "food")?.amount ?? 0
+  );
+
+  const foodCurrent = Number((stats.resources as any)?.food ?? 0);
+
+  // Food consumption (mirrors EconomicEngine.calculateConsumption, INCLUDING overcrowding penalty)
+  const populationUnits = population / 10000;
+  const foodConsumptionBase =
+    populationUnits * ECONOMIC_BALANCE.CONSUMPTION.FOOD_PER_10K_POPULATION;
+  const overcrowdingFoodMult = isOvercrowded
+    ? ECONOMIC_BALANCE.POPULATION.OVERCROWDING_FOOD_PENALTY
+    : 1.0;
+  const foodConsumed = Math.ceil(foodConsumptionBase * overcrowdingFoodMult);
+
+  const foodAfterProduction = foodCurrent + foodProduced;
+  const foodAfterConsumption = Math.max(0, foodAfterProduction - foodConsumed);
+
+  // Base growth (2%), with overcrowding growth penalty if over capacity
+  const baseRate = ECONOMIC_BALANCE.POPULATION.GROWTH_RATE_BASE;
+  const baseGrowth = population * baseRate;
+  const overcrowdingGrowthMultiplier = isOvercrowded
+    ? ECONOMIC_BALANCE.POPULATION.OVERCROWDING_GROWTH_PENALTY
+    : 1.0;
+  const baseGrowthAfterOvercrowding = baseGrowth * overcrowdingGrowthMultiplier;
+
+  // Food surplus bonus (mirrors EconomicEngine: uses remaining food after consumption)
+  const foodBonusRate =
+    Math.floor(foodAfterConsumption / 100) *
+    ECONOMIC_BALANCE.POPULATION.FOOD_SURPLUS_GROWTH_BONUS;
+  const foodBonus = foodAfterConsumption > 0 ? foodBonusRate * population : 0;
+
+  // Starvation penalty (mirrors EconomicEngine starvation check)
+  const requiredFood =
+    (population / 10000) * ECONOMIC_BALANCE.CONSUMPTION.FOOD_PER_10K_POPULATION;
+  const foodRatio = foodConsumed > 0 ? foodConsumed / requiredFood : 0;
+  const starvationThreshold = ECONOMIC_BALANCE.POPULATION.STARVATION_THRESHOLD;
+  const starvationPenalty =
+    foodRatio < starvationThreshold ? Math.floor(population * 0.03) : 0;
+
+  const totalGrowthBeforeCap =
+    baseGrowthAfterOvercrowding + foodBonus - starvationPenalty;
+
+  // Growth cap (150% of base growth)
+  const growthCap =
+    population *
+    ECONOMIC_BALANCE.POPULATION.GROWTH_CAP_MULTIPLIER *
+    ECONOMIC_BALANCE.POPULATION.GROWTH_RATE_BASE;
+  const growthAfterCap = Math.min(totalGrowthBeforeCap, growthCap);
+
+  const growthRatePercent =
+    population > 0 ? (growthAfterCap / population) * 100 : 0;
+
+  return {
+    population,
+    capacity,
+    isOvercrowded,
+    baseRate,
+    baseGrowth,
+    overcrowdingGrowthMultiplier,
+    baseGrowthAfterOvercrowding,
+    foodCurrent,
+    foodProduced,
+    foodConsumed,
+    foodAfterConsumption,
+    foodBonusRate,
+    foodBonus,
+    starvationThreshold,
+    foodRatio,
+    starvationPenalty,
+    totalGrowthBeforeCap,
+    growthCap,
+    growthAfterCap,
+    growthRatePercent,
   };
 }
 
