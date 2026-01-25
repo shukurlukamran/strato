@@ -21,19 +21,40 @@ export class DealMessageGenerator {
     const hasProposerBudget = proposerBudget.length > 0;
     const hasReceiverResources = receiverResources.length > 0;
     const hasReceiverBudget = receiverBudget.length > 0;
+    const isSimpleResourceExchange =
+      hasProposerResources &&
+      hasReceiverResources &&
+      !hasProposerBudget &&
+      !hasReceiverBudget &&
+      proposerResources.length === 1 &&
+      receiverResources.length === 1;
+    const isSimpleResourceForBudget =
+      hasProposerResources &&
+      hasReceiverBudget &&
+      !hasProposerBudget &&
+      !hasReceiverResources &&
+      proposerResources.length === 1 &&
+      receiverBudget.length === 1;
+    const isSimpleBudgetForResource =
+      hasProposerBudget &&
+      hasReceiverResources &&
+      !hasProposerResources &&
+      !hasReceiverBudget &&
+      proposerBudget.length === 1 &&
+      receiverResources.length === 1;
 
     // Select appropriate template based on deal type (deterministic seed)
     // Use content-based seed for reproducibility
     const contentSeed = `${proposerName}${receiverName}${JSON.stringify(proposerCommitments)}${JSON.stringify(receiverCommitments)}`.charCodeAt(0) % 100;
     let templateIndex: number;
 
-    if (hasProposerResources && hasReceiverResources && !hasProposerBudget && !hasReceiverBudget) {
+    if (isSimpleResourceExchange) {
       // Resource-for-resource deal
       templateIndex = contentSeed % 7; // Templates 0-6
-    } else if (hasProposerResources && hasReceiverBudget && !hasProposerBudget && !hasReceiverResources) {
+    } else if (isSimpleResourceForBudget) {
       // Resource-for-budget deal (proposer gives resources, receiver gives budget)
       templateIndex = 7 + (contentSeed % 4); // Templates 7-10
-    } else if (hasProposerBudget && hasReceiverResources && !hasProposerResources && !hasReceiverBudget) {
+    } else if (isSimpleBudgetForResource) {
       // Budget-for-resource deal (proposer gives budget, receiver gives resources)
       templateIndex = 11 + (contentSeed % 4); // Templates 11-14
     } else {
