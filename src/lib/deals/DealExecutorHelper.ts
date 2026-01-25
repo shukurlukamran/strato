@@ -50,6 +50,15 @@ export async function executeDealTerms(
       return { success: false, errors };
     }
 
+    // Verify stats rows belong to the correct game by verifying countries belong to this game
+    // (This ensures no cross-game data corruption from stats table)
+    const statsCountriesMatch = countriesRes.data?.find((c) => c.id === proposingCountryId) &&
+                                countriesRes.data?.find((c) => c.id === receivingCountryId);
+    if (!statsCountriesMatch) {
+      errors.push("Stats rows do not match the specified game");
+      return { success: false, errors };
+    }
+
     // Calculate all deltas in-memory first to ensure atomic execution
     const proposerDeltas = calculateDeltasForCommitments(dealTerms.proposerCommitments, proposerStats, receiverStats, errors);
     const receiverDeltas = calculateDeltasForCommitments(dealTerms.receiverCommitments, receiverStats, proposerStats, errors);

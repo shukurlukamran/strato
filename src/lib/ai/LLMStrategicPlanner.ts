@@ -893,7 +893,7 @@ SCHEMA:
   {"id":"s1","instruction":"<action>","stop_when":{"tech_level_gte":2},"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
   {"id":"s2","instruction":"<action>","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":15}}},
   {"id":"s3","instruction":"<action>","execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}},
-  {"id":"s4","instruction":"<action>","execution":{"actionType":"trade","actionData":{"subType":"surplus_resources"}}},
+  {"id":"s4","instruction":"Arrange trade deal with nearby country for missing resources (execute via diplomacy chat)","execution":null},
   ...5-6 more steps
 ],"risks":["<r1>"],"diplomacy":{${neighbors
   .split('\n')
@@ -905,14 +905,14 @@ SCHEMA:
   .filter(Boolean)
   .join(',')}},"confidence":0.9}
 
-CRITICAL: Military MUST have subType:"recruit"|"attack". Economic MUST have subType:"infrastructure". Research MUST have targetLevel. Trade MUST have subType:"surplus_resources".
+CRITICAL: Military MUST have subType:"recruit"|"attack". Economic MUST have subType:"infrastructure". Research MUST have targetLevel. Advice-level steps (like trading) should have execution:null.
 
 STRATEGIC GUIDANCE:
 - If resources are missing for planned actions, recommend trading with other countries or using black market as fallback
 - Use market prices to evaluate fair trade terms
 - Black market provides immediate access at premium prices (80% markup for buying, 45% of market for selling)
 - Consider diplomatic relations when planning trades
-- Use "trade" actionType with "surplus_resources" subType to trade excess resources for needed ones`;
+- IMPORTANT: Trade deals must be arranged via diplomacy chat (they are NOT directly executable actions) - include as advice steps with execution:null`;
   }
 
   private async getMarketPricesBlock(state: GameStateSnapshot): Promise<string> {
