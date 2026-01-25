@@ -79,14 +79,49 @@ export class AITradeOfferService {
 
   /**
    * Generate and send trade offer message via diplomacy chat
+   * Creates a proposed deal that requires player confirmation
    */
   async sendTradeOffer(
     gameId: string,
     aiCountryId: string,
     playerCountryId: string,
-    proposal: TradeProposal
+    proposal: TradeProposal,
+    currentTurn: number
   ): Promise<void> {
     try {
+      const supabase = await this.getSupabaseClient();
+      const now = new Date().toISOString();
+
+      // Create a proposed deal in the database
+      const dealData = {
+        game_id: gameId,
+        proposing_country_id: aiCountryId,
+        receiving_country_id: playerCountryId,
+        deal_type: 'trade',
+        deal_terms: {
+          proposerCommitments: proposal.terms.proposerCommitments,
+          receiverCommitments: proposal.terms.receiverCommitments
+        },
+        status: 'proposed', // Requires player confirmation
+        proposed_at: now,
+        accepted_at: null,
+        turn_created: currentTurn,
+        turn_expires: currentTurn + 3, // Offer expires in 3 turns
+        created_at: now,
+        updated_at: now
+      };
+
+      const { data: deal, error: dealError } = await supabase
+        .from('deals')
+        .insert(dealData)
+        .select()
+        .single();
+
+      if (dealError || !deal) {
+        console.error('[AI Trade Offer] Failed to create deal:', dealError);
+        return;
+      }
+
       // Find or create diplomacy chat between AI and player
       const chatId = await this.findOrCreateDiplomacyChat(gameId, aiCountryId, playerCountryId);
 
@@ -95,13 +130,10 @@ export class AITradeOfferService {
         return;
       }
 
-      // Generate offer message using existing TradePlanner logic
-      const offerMessage = this.generateOfferMessage(proposal);
+      // Generate offer message with deal reference
+      const offerMessage = this.generateOfferMessage(proposal, deal.id);
 
       // Insert message directly into database
-      const supabase = await this.getSupabaseClient();
-      const now = new Date().toISOString();
-
       const messageInsert = await supabase
         .from("chat_messages")
         .insert({
@@ -127,7 +159,7 @@ export class AITradeOfferService {
         })
         .eq("id", chatId);
 
-      console.log(`[AI Trade Offer] ${aiCountryId} sent trade offer to ${playerCountryId}`);
+      console.log(`[AI Trade Offer] ${aiCountryId} sent trade offer to ${playerCountryId} (Deal ID: ${deal.id})`);
     } catch (error) {
       console.error('[AI Trade Offer] Failed to send trade offer:', error);
     }
@@ -198,7 +230,7 @@ export class AITradeOfferService {
   /**
    * Generate a natural language trade offer message
    */
-  private generateOfferMessage(proposal: TradeProposal): string {
+  private generateOfferMessage(proposal: TradeProposal, dealId: string): string {
     const proposerCommitments = proposal.terms.proposerCommitments;
     const receiverCommitments = proposal.terms.receiverCommitments;
 
@@ -212,7 +244,7 @@ export class AITradeOfferService {
       message += `We have surplus ${proposerDesc} and are seeking ${receiverDesc}. `;
       message += `Would you be interested in this trade proposal: ${this.formatCommitments(proposerCommitments)} in exchange for ${this.formatCommitments(receiverCommitments)}?`;
 
-      message += "\n\nYou can accept this offer by using the 'Extract Deal' feature in our chat.";
+      message += `\n\n📋 **Trade Offer ID: ${dealId}**\nThis offer will expire in 3 turns. You will receive a notification to accept or reject this trade.`;
     } else {
       message += "We are interested in establishing trade relations. Perhaps we can discuss mutual benefits.";
     }

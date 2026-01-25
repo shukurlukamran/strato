@@ -1893,6 +1893,10 @@ ECONOMIC FOCUS: For weak/bankrupt nations only.`;
             diplomatic_stance: analysis.diplomaticStance,
             confidence_score: analysis.confidenceScore,
             created_at: new Date().toISOString(),
+            // Nullable fields with defaults (migration 006)
+            rationale: '',
+            threat_assessment: '',
+            opportunity_identified: '',
           },
           { onConflict: "game_id,country_id,turn_analyzed" }
         );

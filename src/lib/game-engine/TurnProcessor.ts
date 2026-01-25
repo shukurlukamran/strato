@@ -237,18 +237,7 @@ export class TurnProcessor {
           );
 
           if (executionResult.success) {
-            // Add success event
-            tradeEvents.push({
-              type: 'deal.ai_trade.executed',
-              message: `${country.name} completed an automated trade`,
-              data: {
-                proposer: bestProposal.proposerId,
-                receiver: bestProposal.receiverId,
-                dealId: executionResult.dealId,
-                terms: bestProposal.terms
-              }
-            });
-
+            // Trade succeeded - no history event needed (AI-to-AI trades are internal)
             console.log(`[AI Trading] ${country.name} executed trade: ${executionResult.dealId}`);
             continue; // Trade succeeded, move to next country
           }

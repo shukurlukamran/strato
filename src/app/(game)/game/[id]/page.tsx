@@ -10,11 +10,13 @@ import { Map } from "@/components/game/Map";
 import { CountryCard } from "@/components/game/CountryCard";
 import { TurnIndicator } from "@/components/game/TurnIndicator";
 import { DefenseAlert } from "@/components/game/DefenseAlert";
+import { TradeOfferAlert } from "@/components/game/TradeOfferAlert";
 import { ResourceDisplay } from "@/components/game/ResourceDisplay";
 import { BudgetPanel } from "@/components/game/BudgetPanel";
 import { ActionPanel } from "@/components/game/ActionPanel";
 import { AttackModal } from "@/components/game/AttackModal";
 import { DefenseModal } from "@/components/game/DefenseModal";
+import { TradeOfferModal } from "@/components/game/TradeOfferModal";
 import { AllProfilesInfo } from "@/components/game/AllProfilesInfo";
 import { HistoryLog } from "@/components/game/HistoryLog";
 import { DiplomaticRelationsModal } from "@/components/game/DiplomaticRelationsModal";
@@ -84,6 +86,12 @@ export default function GamePage() {
   const [dismissedDefenseCities, setDismissedDefenseCities] = useState<Set<string>>(new Set());
   // Track cities where defense has already been submitted
   const [submittedDefenseCities, setSubmittedDefenseCities] = useState<Set<string>>(new Set());
+  // Trade offer modal state
+  const [tradeOfferDeal, setTradeOfferDeal] = useState<Deal | null>(null);
+  const [tradeOfferProposer, setTradeOfferProposer] = useState<Country | null>(null);
+  const [tradeOfferReceiver, setTradeOfferReceiver] = useState<Country | null>(null);
+  // Track dismissed trade offers
+  const [dismissedTradeOffers, setDismissedTradeOffers] = useState<Set<string>>(new Set());
 
   useEffect(() => setGameId(gameId), [gameId, setGameId]);
 
@@ -399,6 +407,61 @@ export default function GamePage() {
     }
   }, [cities, playerCountryId, defenseCity]);
 
+  // Check for pending trade offers and auto-open modal
+  useEffect(() => {
+    if (!playerCountryId || deals.length === 0) return;
+
+    // Find proposed deals where player is the receiver
+    const pendingTradeOffers = deals.filter(
+      d => d.status === 'proposed' && 
+           d.receivingCountryId === playerCountryId &&
+           !dismissedTradeOffers.has(d.id)
+    );
+
+    // Only open modal if there are pending offers AND modal is not already open
+    if (pendingTradeOffers.length > 0 && !tradeOfferDeal) {
+      const firstOffer = pendingTradeOffers[0];
+      const proposer = countries.find(c => c.id === firstOffer.proposingCountryId);
+      const receiver = countries.find(c => c.id === firstOffer.receivingCountryId);
+
+      if (proposer && receiver) {
+        setTradeOfferDeal(firstOffer);
+        setTradeOfferProposer(proposer);
+        setTradeOfferReceiver(receiver);
+      }
+    }
+  }, [deals, playerCountryId, countries, tradeOfferDeal, dismissedTradeOffers]);
+
+  // Cleanup trade offer modal when no pending offers
+  useEffect(() => {
+    if (!playerCountryId || deals.length === 0) return;
+
+    const pendingTradeOffers = deals.filter(
+      d => d.status === 'proposed' && d.receivingCountryId === playerCountryId
+    );
+
+    // Clear modal if no pending offers but modal is open
+    if (pendingTradeOffers.length === 0 && tradeOfferDeal) {
+      setTradeOfferDeal(null);
+      setTradeOfferProposer(null);
+      setTradeOfferReceiver(null);
+    }
+
+    // Clean up dismissed tracking for offers that are no longer pending
+    if (dismissedTradeOffers.size > 0) {
+      const pendingOfferIds = new Set(pendingTradeOffers.map(d => d.id));
+      setDismissedTradeOffers(prev => {
+        const newSet = new Set<string>();
+        for (const offerId of prev) {
+          if (pendingOfferIds.has(offerId)) {
+            newSet.add(offerId);
+          }
+        }
+        return newSet;
+      });
+    }
+  }, [deals, playerCountryId, tradeOfferDeal, dismissedTradeOffers]);
+
   // Automatically redirect to latest game if current game doesn't exist
   useEffect(() => {
     if (gameExists === false && !hasAttemptedRedirect.current) {
@@ -707,6 +770,40 @@ export default function GamePage() {
             }
             return null;
           })()}
+          {(() => {
+            // Show trade offer alert for dismissed offers that are still pending
+            const dismissedPendingOffers = deals.filter(
+              d => d.status === 'proposed' && 
+                   d.receivingCountryId === playerCountryId &&
+                   dismissedTradeOffers.has(d.id)
+            );
+            
+            if (dismissedPendingOffers.length > 0) {
+              return (
+                <TradeOfferAlert
+                  deals={dismissedPendingOffers}
+                  onClick={(deal) => {
+                    // Reopen modal for this deal
+                    setDismissedTradeOffers(prev => {
+                      const newSet = new Set(prev);
+                      newSet.delete(deal.id);
+                      return newSet;
+                    });
+                    
+                    const proposer = countries.find(c => c.id === deal.proposingCountryId);
+                    const receiver = countries.find(c => c.id === deal.receivingCountryId);
+                    
+                    if (proposer && receiver) {
+                      setTradeOfferDeal(deal);
+                      setTradeOfferProposer(proposer);
+                      setTradeOfferReceiver(receiver);
+                    }
+                  }}
+                />
+              );
+            }
+            return null;
+          })()}
           <TurnIndicator turn={turn} />
         </div>
       </div>
@@ -948,6 +1045,29 @@ export default function GamePage() {
           statsByCountryId={statsByCountryId}
           playerCountryId={playerCountryId}
           onClose={() => setShowDiplomacyModal(false)}
+        />
+      )}
+
+      {/* Trade Offer Modal */}
+      {tradeOfferDeal && tradeOfferProposer && tradeOfferReceiver && (
+        <TradeOfferModal
+          gameId={gameId}
+          deal={tradeOfferDeal}
+          proposerCountry={tradeOfferProposer}
+          receiverCountry={tradeOfferReceiver}
+          onClose={() => {
+            // Mark deal as dismissed so modal doesn't auto-reopen
+            setDismissedTradeOffers(prev => new Set(prev).add(tradeOfferDeal.id));
+            setTradeOfferDeal(null);
+            setTradeOfferProposer(null);
+            setTradeOfferReceiver(null);
+          }}
+          onResponded={() => {
+            setTradeOfferDeal(null);
+            setTradeOfferProposer(null);
+            setTradeOfferReceiver(null);
+            void refreshGameData();
+          }}
         />
       )}
     </div>

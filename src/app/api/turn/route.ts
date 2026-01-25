@@ -595,7 +595,7 @@ export async function POST(req: Request) {
         const playerProposals = proposals.filter(p => p.receiverId === playerCountry.id);
 
         if (playerProposals.length > 0) {
-          await tradeOfferService.sendTradeOffer(gameId, aiCountry.id, playerCountry.id, playerProposals[0]);
+          await tradeOfferService.sendTradeOffer(gameId, aiCountry.id, playerCountry.id, playerProposals[0], turn);
         }
       }
     }
