@@ -99,7 +99,6 @@ export function DiplomacyChat({
   }
 
   // Debug: Log render to verify component is executing
-  console.log('DiplomacyChat render', { messagesLength: messages.length, extracting, busy });
 
   return (
     <div className="rounded-lg border bg-white p-4" style={{ overflow: 'visible' }}>
@@ -169,7 +168,6 @@ export function DiplomacyChat({
             padding: '0.375rem 0.75rem'
           }}
           onClick={() => {
-            console.log('Extract Deal button clicked', { messagesLength: messages.length, extracting, busy });
             void extractDeal();
           }}
           disabled={extracting || busy || messages.length === 0}
@@ -193,7 +191,7 @@ export function DiplomacyChat({
           </div>
           <div className="mt-2 text-xs text-blue-800">
             <div>
-              <strong>You commit:</strong>{" "}
+              <strong>{extractedDeal.proposerCountryId === playerCountryId ? "You" : "They"} commit:</strong>{" "}
               {extractedDeal.dealTerms.proposerCommitments.length > 0
                 ? extractedDeal.dealTerms.proposerCommitments
                     .map((c) => {
@@ -208,7 +206,7 @@ export function DiplomacyChat({
                 : "Nothing"}
             </div>
             <div className="mt-1">
-              <strong>They commit:</strong>{" "}
+              <strong>{extractedDeal.proposerCountryId === playerCountryId ? "They" : "You"} commit:</strong>{" "}
               {extractedDeal.dealTerms.receiverCommitments.length > 0
                 ? extractedDeal.dealTerms.receiverCommitments
                     .map((c) => {

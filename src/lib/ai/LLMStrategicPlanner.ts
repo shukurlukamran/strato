@@ -110,7 +110,7 @@ ACTIONS:
 4. ATTACK: 100+10×strength
 
 RESOURCES: Food,Timber,Iron,Oil,Gold,Copper,Steel,Coal
-Missing→+40% cost/resource (max 2.5x)
+Missing→BLOCKED (trade/black market to acquire)
 
 STRATEGY: Economic=tech+infra, Military=recruit+attack weak, Balanced=alternate
 `;
@@ -408,7 +408,7 @@ export class LLMStrategicPlanner {
       console.log(`[LLM Planner] 🤖 Calling Groq for strategic analysis (Turn ${state.turn})`);
       
       // Build context-rich prompt
-      const prompt = this.buildStrategicPrompt(state, countryId, stats);
+      const prompt = await this.buildStrategicPrompt(state, countryId, stats);
       
       // Attempt 1: Normal analysis with higher token cap
       let response = await fetch(this.apiUrl, {
@@ -790,8 +790,8 @@ Return ONLY the JSON object. No markdown, no extra text.`;
   }
 
   /**
-   * Generate affordability block showing action costs and resource penalties
-   * Format: "Research:$1200(1.4x,missing:coal,oil) Infra:$800(1.0x) Recruit15:$450(1.2x,missing:iron)"
+   * Generate affordability block showing action costs and resource blocking
+   * Format: "Research:$1200(missing:coal,oil,BLOCKED) Infra:$800 Recruit15:$450(missing:iron,BLOCKED)"
    */
   private getAffordabilityBlock(stats: CountryStats): string {
     const parts: string[] = [];
@@ -800,8 +800,8 @@ Return ONLY the JSON object. No markdown, no extra text.`;
     try {
       const researchPricing = ActionPricing.calculateResearchPricing(stats);
       const missing = researchPricing.resourceCostInfo.missing.map(r => r.resourceId).join(',');
-      const missingStr = missing ? `,missing:${missing}` : '';
-      parts.push(`Research:$${researchPricing.cost}(${researchPricing.resourceCostInfo.penaltyMultiplier}x${missingStr})`);
+      const statusStr = missing ? `(missing:${missing},BLOCKED)` : '';
+      parts.push(`Research:$${researchPricing.cost}${statusStr}`);
     } catch (e) {
       parts.push('Research:ERROR');
     }
@@ -810,8 +810,8 @@ Return ONLY the JSON object. No markdown, no extra text.`;
     try {
       const infraPricing = ActionPricing.calculateInfrastructurePricing(stats);
       const missing = infraPricing.resourceCostInfo.missing.map(r => r.resourceId).join(',');
-      const missingStr = missing ? `,missing:${missing}` : '';
-      parts.push(`Infra:$${infraPricing.cost}(${infraPricing.resourceCostInfo.penaltyMultiplier}x${missingStr})`);
+      const statusStr = missing ? `(missing:${missing},BLOCKED)` : '';
+      parts.push(`Infra:$${infraPricing.cost}${statusStr}`);
     } catch (e) {
       parts.push('Infra:ERROR');
     }
@@ -820,8 +820,8 @@ Return ONLY the JSON object. No markdown, no extra text.`;
     try {
       const recruitPricing = ActionPricing.calculateRecruitmentPricing(15, stats);
       const missing = recruitPricing.resourceCostInfo.missing.map(r => r.resourceId).join(',');
-      const missingStr = missing ? `,missing:${missing}` : '';
-      parts.push(`Recruit15:$${recruitPricing.cost}(${recruitPricing.resourceCostInfo.penaltyMultiplier}x${missingStr})`);
+      const statusStr = missing ? `(missing:${missing},BLOCKED)` : '';
+      parts.push(`Recruit15:$${recruitPricing.cost}${statusStr}`);
     } catch (e) {
       parts.push('Recruit15:ERROR');
     }
@@ -859,11 +859,11 @@ Return ONLY the JSON object. No markdown, no extra text.`;
   /**
    * Build strategic analysis prompt with rich context
    */
-  private buildStrategicPrompt(
+  private async buildStrategicPrompt(
     state: GameStateSnapshot,
     countryId: string,
     stats: CountryStats
-  ): string {
+  ): Promise<string> {
     const country = state.countries.find(c => c.id === countryId);
     if (!country) return "";
     
@@ -884,6 +884,8 @@ Res: ${resourcesStr}|Afford: ${affordabilityStr}|Inc $${economicAnalysis.netInco
 
 NEIGHBORS: ${neighbors}
 
+${await this.getMarketPricesBlock(state)}
+
 Plan ${this.LLM_CALL_FREQUENCY}t (2-3 act/t). Use stop_when for repeatable steps. MUST: 8-10 steps min.
 
 SCHEMA:
@@ -891,7 +893,8 @@ SCHEMA:
   {"id":"s1","instruction":"<action>","stop_when":{"tech_level_gte":2},"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
   {"id":"s2","instruction":"<action>","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":15}}},
   {"id":"s3","instruction":"<action>","execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}},
-  ...6-7 more steps
+  {"id":"s4","instruction":"<action>","execution":{"actionType":"trade","actionData":{"subType":"surplus_resources"}}},
+  ...5-6 more steps
 ],"risks":["<r1>"],"diplomacy":{${neighbors
   .split('\n')
   .filter(n => n.trim())
@@ -902,9 +905,31 @@ SCHEMA:
   .filter(Boolean)
   .join(',')}},"confidence":0.9}
 
-CRITICAL: Military MUST have subType:"recruit"|"attack". Economic MUST have subType:"infrastructure". Research MUST have targetLevel.`;
+CRITICAL: Military MUST have subType:"recruit"|"attack". Economic MUST have subType:"infrastructure". Research MUST have targetLevel. Trade MUST have subType:"surplus_resources".
+
+STRATEGIC GUIDANCE:
+- If resources are missing for planned actions, recommend trading with other countries or using black market as fallback
+- Use market prices to evaluate fair trade terms
+- Black market provides immediate access at premium prices (80% markup for buying, 45% of market for selling)
+- Consider diplomatic relations when planning trades
+- Use "trade" actionType with "surplus_resources" subType to trade excess resources for needed ones`;
   }
-  
+
+  private async getMarketPricesBlock(state: GameStateSnapshot): Promise<string> {
+    try {
+      const { MarketPricing } = await import('@/lib/game-engine/MarketPricing');
+      const marketPrices = await MarketPricing.computeMarketPricesForGame(state.gameId, state.turn);
+      return `
+MARKET PRICES (T${state.turn}):
+${Object.entries(marketPrices.marketPrices).map(([r, p]) =>
+  `${r}: $${p.toFixed(1)} (BM: Buy$${marketPrices.blackMarketBuyPrices[r].toFixed(1)} Sell$${marketPrices.blackMarketSellPrices[r].toFixed(1)})`
+).join(' | ')}`;
+    } catch (error) {
+      console.error('[LLM Planner] Failed to fetch market prices:', error);
+      return 'MARKET PRICES: Currently unavailable';
+    }
+  }
+
   /**
    * Get summary of neighboring countries (show threats AND opportunities)
    */

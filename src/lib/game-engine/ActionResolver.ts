@@ -59,9 +59,15 @@ export class ActionResolver {
           return { ...action, status: "failed" };
         }
 
-        // Check if country can afford the action
+        // Strict resource gating: Block if resources are missing
+        if (!pricingResult.resourceCostInfo.canAfford) {
+          console.log(`AI action failed: missing resources`, pricingResult.resourceCostInfo.missing);
+          return { ...action, status: "failed" };
+        }
+
+        // Check if country can afford the action (budget only)
         if (!ActionPricing.canAffordAction(pricingResult, prev.budget)) {
-          console.log(`AI action failed: insufficient funds/resources. Cost: $${pricingResult.cost}, Budget: $${prev.budget}, Can afford resources: ${pricingResult.resourceCostInfo.canAfford}`);
+          console.log(`AI action failed: insufficient budget. Cost: $${pricingResult.cost}, Budget: $${prev.budget}`);
           return { ...action, status: "failed" };
         }
 
@@ -72,7 +78,6 @@ export class ActionResolver {
         actionData.cost = pricingResult.cost;
         actionData.requiredResources = pricingResult.requiredResources;
         actionData.shortage = pricingResult.resourceCostInfo.shortage;
-        actionData.penaltyMultiplier = pricingResult.resourceCostInfo.penaltyMultiplier;
 
         state.withUpdatedStats(action.countryId, updatedStats);
       } catch (error) {

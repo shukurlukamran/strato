@@ -23,7 +23,7 @@ function createTestCountryStats(overrides: Partial<CountryStats> = {}): CountryS
     technologyLevel: 1,
     infrastructureLevel: 1,
     militaryStrength: 40,
-    resources: { food: 10, metals: 5, rare_earths: 2 },
+    resources: { food: 10, timber: 5, iron: 2, oil: 0, gold: 0, copper: 0, steel: 0, coal: 0 },
     resourceProfile: 'balanced',
     diplomaticRelations: {},
     militaryEquipment: {},
@@ -76,88 +76,68 @@ function createTestGameState(): GameState {
 
 describe('Action Pricing Parity', () => {
   describe('Resource Shortage Parity', () => {
-    it('should accept actions with penalized budget cost when resources are missing', () => {
-      // Create a country with insufficient resources for research
+    it('should block actions when resources are missing (strict gating)', () => {
+      // Create a country with insufficient resources for research at tech 1
+      // Research at tech 1 needs: copper 10, coal 8
       const stats = createTestCountryStats({
         budget: 1000, // Sufficient budget
-        resources: { food: 0, metals: 0, rare_earths: 0 } // No resources
+        technologyLevel: 1,
+        resources: { food: 100, timber: 100, iron: 100, oil: 0, gold: 0, copper: 0, steel: 0, coal: 0 } // No copper/coal
       });
 
-      // Calculate research pricing - should include penalty
+      // Calculate research pricing - should mark as not affordable
       const pricingResult = ActionPricing.calculateResearchPricing(stats);
 
-      // Verify penalty is applied
+      // Verify action is marked as not affordable due to missing resources
       expect(pricingResult.resourceCostInfo.canAfford).toBe(false);
-      expect(pricingResult.resourceCostInfo.penaltyMultiplier).toBeGreaterThan(1);
+      expect(pricingResult.resourceCostInfo.missing.length).toBeGreaterThan(0);
 
-      // Verify canAffordAction only checks budget (not resources)
-      const canAfford = ActionPricing.canAffordAction(pricingResult, stats.budget);
-      expect(canAfford).toBe(true); // Should accept despite missing resources
-    });
-
-    it('should reject actions when budget is insufficient even with penalty', () => {
-      // Create a country with insufficient resources AND insufficient budget
-      const stats = createTestCountryStats({
-        budget: 10, // Insufficient budget even with penalty
-        resources: { food: 0, metals: 0, rare_earths: 0 } // No resources
-      });
-
-      const pricingResult = ActionPricing.calculateResearchPricing(stats);
-
-      // Verify penalty is applied but budget is still insufficient
-      expect(pricingResult.resourceCostInfo.canAfford).toBe(false);
-      expect(pricingResult.resourceCostInfo.penaltyMultiplier).toBeGreaterThan(1);
-
-      const canAfford = ActionPricing.canAffordAction(pricingResult, stats.budget);
-      expect(canAfford).toBe(false); // Should reject due to insufficient budget
+      // Verify resources were listed as missing
+      const missingResourceIds = pricingResult.resourceCostInfo.missing.map(m => m.resourceId);
+      expect(missingResourceIds).toContain('copper');
+      expect(missingResourceIds).toContain('coal');
     });
 
     it('should accept actions when both budget and resources are sufficient', () => {
       // Create a country with sufficient resources and budget
       const stats = createTestCountryStats({
         budget: 1000, // Sufficient budget
-        resources: { food: 50, metals: 50, rare_earths: 20 } // Sufficient resources
+        technologyLevel: 1,
+        resources: { food: 50, timber: 50, iron: 50, oil: 0, gold: 0, copper: 50, steel: 0, coal: 50 } // Sufficient resources
       });
 
       const pricingResult = ActionPricing.calculateResearchPricing(stats);
 
-      // Verify no penalty is applied
+      // Verify action is affordable
       expect(pricingResult.resourceCostInfo.canAfford).toBe(true);
-      expect(pricingResult.resourceCostInfo.penaltyMultiplier).toBe(1);
+      expect(pricingResult.resourceCostInfo.missing.length).toBe(0);
 
       const canAfford = ActionPricing.canAffordAction(pricingResult, stats.budget);
       expect(canAfford).toBe(true);
     });
 
-    it('AI ActionResolver should use same affordability logic as player actions', () => {
+    it('AI ActionResolver should enforce strict resource gating (block if missing)', () => {
       const state = createTestGameState();
 
-      // Create AI action with insufficient resources but sufficient budget
+      // Create AI action with insufficient resources
       const action = createTestAction({
         actionType: 'research',
         actionData: { immediate: false } // AI action
       });
 
-      // Modify state to have insufficient resources but sufficient budget
+      // Modify state to have insufficient resources
       const modifiedStats = createTestCountryStats({
         budget: 1000,
-        resources: { food: 0, metals: 0, rare_earths: 0 }
+        technologyLevel: 1,
+        resources: { food: 100, timber: 100, iron: 100, oil: 0, gold: 0, copper: 0, steel: 0, coal: 0 }
       });
       state.withUpdatedStats('test-country-id', modifiedStats);
 
       const resolver = new ActionResolver();
       const result = resolver.resolve(state, action);
 
-      // AI should accept the action (same as player would)
-      expect(result.status).toBe('executed');
-
-      // Verify resources were NOT deducted (since canAfford was false)
-      const updatedStats = state.data.countryStatsByCountryId['test-country-id'];
-      expect(updatedStats.resources.food).toBe(0); // Should remain unchanged
-      expect(updatedStats.resources.metals).toBe(0); // Should remain unchanged
-
-      // But budget should be deducted
-      expect(updatedStats.budget).toBeLessThan(1000);
+      // AI should BLOCK the action (strict gating)
+      expect(result.status).toBe('failed');
     });
   });
 
@@ -192,37 +172,42 @@ describe('Action Pricing Parity', () => {
 
   describe('Resource Deduction Logic', () => {
     it('should deduct resources only when canAfford is true', () => {
-      // With sufficient resources
+      // With sufficient resources for research at tech 1
       const sufficientStats = createTestCountryStats({
         budget: 1000,
-        resources: { food: 50, metals: 50, rare_earths: 20 }
+        technologyLevel: 1,
+        resources: { food: 50, timber: 50, iron: 50, oil: 50, gold: 50, copper: 50, steel: 50, coal: 50 }
       });
 
       const pricingResult = ActionPricing.calculateResearchPricing(sufficientStats);
       const updatedStats = ActionPricing.applyActionCost(pricingResult, sufficientStats);
 
-      // Resources should be deducted
-      expect(updatedStats.resources.food).toBeLessThan(sufficientStats.resources.food);
-      expect(updatedStats.resources.metals).toBeLessThan(sufficientStats.resources.metals);
+      // Resources should be deducted (only copper and coal for tech 1 research)
+      expect(updatedStats.resources.copper).toBeLessThan(sufficientStats.resources.copper);
+      expect(updatedStats.resources.coal).toBeLessThan(sufficientStats.resources.coal);
     });
 
     it('should NOT deduct resources when canAfford is false', () => {
       // With insufficient resources
       const insufficientStats = createTestCountryStats({
         budget: 1000,
-        resources: { food: 0, metals: 0, rare_earths: 0 }
+        technologyLevel: 1,
+        resources: { food: 100, timber: 100, iron: 100, oil: 0, gold: 0, copper: 0, steel: 0, coal: 0 }
       });
 
       const pricingResult = ActionPricing.calculateResearchPricing(insufficientStats);
+      
+      // Verify action is not affordable due to missing resources
+      expect(pricingResult.resourceCostInfo.canAfford).toBe(false);
+      
+      // In the ActionResolver, if canAfford is false, the action is rejected before
+      // applyActionCost is called. However, if applyActionCost is called anyway,
+      // it should NOT deduct resources when canAfford is false.
       const updatedStats = ActionPricing.applyActionCost(pricingResult, insufficientStats);
-
-      // Resources should NOT be deducted
-      expect(updatedStats.resources.food).toBe(insufficientStats.resources.food);
-      expect(updatedStats.resources.metals).toBe(insufficientStats.resources.metals);
-      expect(updatedStats.resources.rare_earths).toBe(insufficientStats.resources.rare_earths);
-
-      // But budget should still be deducted (with penalty)
-      expect(updatedStats.budget).toBeLessThan(insufficientStats.budget);
+      
+      // Verify that applyActionCost respects canAfford flag for resources
+      expect(updatedStats.resources.copper).toBe(insufficientStats.resources.copper);
+      expect(updatedStats.resources.coal).toBe(insufficientStats.resources.coal);
     });
   });
 });

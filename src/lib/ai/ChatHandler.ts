@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import type { LLMStrategicAnalysis } from "@/lib/ai/LLMStrategicPlanner";
 import { getDiplomaticScore } from "@/lib/game-engine/DiplomaticRelations";
+import { MarketPricing } from "@/lib/game-engine/MarketPricing";
 import type { Country, CountryStats } from "@/types/country";
 import type { ChatMessage } from "@/types/chat";
 
@@ -227,7 +228,7 @@ export class ChatHandler {
     }
   }
 
-  private buildSystemPrompt(context: GameContext): string {
+  private async buildSystemPrompt(context: GameContext): Promise<string> {
     const { senderCountry, receiverCountry, senderStats, receiverStats, turn } = context;
     const diplomaticScore = getDiplomaticScore(
       receiverStats.diplomaticRelations,
@@ -271,6 +272,8 @@ THEIR COUNTRY (${senderCountry.name}) STATS:
 DIPLOMATIC RELATIONS:
 - Your relations with them: ${diplomaticScore}/100
 
+${await this.getMarketPricesBlock(context)}
+
 ${strategicPlanBlock}
 
 INSTRUCTIONS:
@@ -285,6 +288,24 @@ INSTRUCTIONS:
 9. Align your response with the current strategic plan focus and recommended actions when present
 
 Respond naturally and strategically.`;
+  }
+
+  private async getMarketPricesBlock(context: GameContext): Promise<string> {
+    try {
+      const marketPrices = await MarketPricing.computeMarketPricesForGame(context.gameId, context.turn);
+      return `
+CURRENT MARKET RATES (Turn ${context.turn}):
+${Object.entries(marketPrices.marketPrices).map(([r, p]) =>
+  `- ${r}: Market $${p.toFixed(1)}, Black Market Buy $${marketPrices.blackMarketBuyPrices[r].toFixed(1)}, Sell $${marketPrices.blackMarketSellPrices[r].toFixed(1)}`
+).join('\n')}
+
+Use these prices as reference for fair trade negotiations.`;
+    } catch (error) {
+      console.error('[ChatHandler] Failed to fetch market prices:', error);
+      return `
+CURRENT MARKET RATES:
+- Market prices currently unavailable. Use reasonable estimates for negotiations.`;
+    }
   }
 
   private buildHistoryMessages(context: GameContext): Array<{ role: "user" | "model"; parts: Array<{ text: string }> }> {
@@ -422,7 +443,7 @@ Respond naturally and strategically.`;
       }
     }
 
-    const systemPrompt = this.buildSystemPrompt(context);
+    const systemPrompt = await this.buildSystemPrompt(context);
     const historyMessages = this.buildHistoryMessages(context);
 
     try {
@@ -475,9 +496,16 @@ Respond naturally and strategically.`;
           console.error("API quota or rate limit exceeded.");
         }
       }
-      // Fallback response on error
+      // Natural fallback response on error
+      const naturalFallbacks = [
+        "I'm considering your proposal carefully. Let's continue our discussion when we have more information.",
+        "That's an interesting proposition. Let me review our current situation.",
+        "I understand your interest. Let's discuss this further.",
+        "We value our diplomatic relations. I'll need to consult with our advisors.",
+        "Your proposal deserves careful consideration. I'll get back to you soon."
+      ];
       return {
-        messageText: `I've received your message: "${turn.messageText}". Let me consider this carefully and get back to you.`,
+        messageText: naturalFallbacks[Math.floor(Math.random() * naturalFallbacks.length)],
       };
     }
   }
@@ -557,8 +585,15 @@ Respond naturally and strategically.`;
     
     // If all models fail, return fallback
     console.error("All Gemini models failed. Returning fallback response.");
+    const naturalFallbacks = [
+      "I'm considering your proposal carefully. Let's continue our discussion when we have more information.",
+      "That's an interesting proposition. Let me review our current situation.",
+      "I understand your interest. Let's discuss this further.",
+      "We value our diplomatic relations. I'll need to consult with our advisors.",
+      "Your proposal deserves careful consideration. I'll get back to you soon."
+    ];
     return {
-      messageText: `I've received your message: "${messageText}". Let me consider this carefully and get back to you.`,
+      messageText: naturalFallbacks[Math.floor(Math.random() * naturalFallbacks.length)],
     };
   }
 

@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { MarketPricing } from "@/lib/game-engine/MarketPricing";
 import type { ChatMessage } from "@/types/chat";
 import type { DealType, DealTerms, DealCommitment } from "@/types/deals";
 import type { Country, CountryStats } from "@/types/country";
@@ -8,6 +9,7 @@ import type { Country, CountryStats } from "@/types/country";
 export interface DealExtractionResult {
   dealType: DealType;
   dealTerms: DealTerms;
+  proposerCountryId: string; // Which country is actually the proposer
   confidence: number; // 0-1
   extractedFromMessages: string[]; // message IDs
   reasoning?: string; // Why this deal was extracted
@@ -197,7 +199,7 @@ export class DealExtractor {
   /**
    * Builds the prompt for LLM to extract deal terms
    */
-  private buildExtractionPrompt(context: ExtractionContext): string {
+  private async buildExtractionPrompt(context: ExtractionContext): Promise<string> {
     const { countryA, countryB, countryAStats, countryBStats, chatMessages, turn } = context;
 
 
@@ -233,6 +235,9 @@ COUNTRY B (${countryB.name}) RESOURCES:
 - Military Strength: ${countryBStats.militaryStrength}
 
 
+${await this.getMarketPricesBlock(context)}
+
+
 CHAT HISTORY:
 ${chatHistory}
 
@@ -251,6 +256,21 @@ AVAILABLE RESOURCES (8 types):
 - Strategic: "iron" (military), "oil" (advanced military/energy)
 - Economic: "gold" (diplomacy/luxury), "copper" (research/trade)
 - Industrial: "steel" (tech/infrastructure), "coal" (energy/research)
+
+
+DIRECTIONALITY - WHO GIVES WHAT:
+- CountryA = ${countryA.name} (${countryA.isPlayerControlled ? "Player" : "AI"})
+- CountryB = ${countryB.name} (${countryB.isPlayerControlled ? "Player" : "AI"})
+- proposerCommitments = what CountryA gives to CountryB
+- receiverCommitments = what CountryB gives to CountryA
+
+If CountryA says "I want to SELL you 100 food for 200 credits":
+  - proposerCommitments: [{"type": "resource_transfer", "resource": "food", "amount": 100}]
+  - receiverCommitments: [{"type": "budget_transfer", "amount": 200}]
+
+If CountryA says "I want to BUY 100 food from you for 200 credits":
+  - proposerCommitments: [{"type": "budget_transfer", "amount": 200}]
+  - receiverCommitments: [{"type": "resource_transfer", "resource": "food", "amount": 100}]
 
 
 COMMITMENT TYPES:
@@ -288,15 +308,14 @@ CRITICAL INSTRUCTIONS - READ CAREFULLY:
    - Look for keywords: "trade", "exchange", "deal", "agreement", "alliance", "give", "offer", "help", "support"
 
 4. EXAMPLES OF WHAT TO EXTRACT:
-   - "Want to trade?" → "Yes" = hasDeal: true (even without terms yet)
-   - "I can give you 100 oil" → "Thanks" = hasDeal: true
-   - "Let's be allies" → "OK" = hasDeal: true
-   - "How about a non-aggression pact?" → "Sure" = hasDeal: true
-   - Any discussion of trade terms without explicit rejection
+   - CountryA: "I'll give you 100 oil for 200 credits" → CountryA gives oil (proposer), CountryB gives credits (receiver)
+   - CountryB: "Deal!" = hasDeal: true
+   - CountryA: "I want to BUY 100 oil for 200 credits" → CountryA gives credits (proposer), CountryB gives oil (receiver)
 
 Return ONLY valid JSON in this exact format (no markdown, no code blocks):
 {
   "hasDeal": true/false,
+  "proposerIsCountryA": true/false,  // true if CountryA is the proposer, false if CountryB is the proposer
   "dealType": "trade" | "alliance" | "non_aggression" | "military_aid" | "technology_share" | "custom" | null,
   "proposerCommitments": [
     {
@@ -322,6 +341,23 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks):
 If absolutely NO negotiation or deal discussion is happening, return: {"hasDeal": false, "reasoning": "No trade or agreement discussion detected"}`;
   }
 
+  private async getMarketPricesBlock(context: ExtractionContext): Promise<string> {
+    try {
+      const marketPrices = await MarketPricing.computeMarketPricesForGame(context.gameId, context.turn);
+      return `
+CURRENT MARKET RATES (Turn ${context.turn}):
+${Object.entries(marketPrices.marketPrices).map(([r, p]) =>
+  `- ${r}: Market $${p.toFixed(1)}, Black Market Buy $${marketPrices.blackMarketBuyPrices[r].toFixed(1)}, Sell $${marketPrices.blackMarketSellPrices[r].toFixed(1)}`
+).join('\n')}
+
+Use these prices as reference for fair deal evaluation.`;
+    } catch (error) {
+      console.error('[DealExtractor] Failed to fetch market prices:', error);
+      return `
+CURRENT MARKET RATES:
+- Market prices currently unavailable. Use reasonable estimates for deal evaluation.`;
+    }
+  }
 
   /**
    * Simple pattern matching to detect if there's likely a deal without LLM
@@ -329,38 +365,37 @@ If absolutely NO negotiation or deal discussion is happening, return: {"hasDeal"
    */
   private quickDealDetection(messages: ChatMessage[]): { hasDeal: boolean; confidence: number } {
     const chatText = messages.map(m => m.messageText.toLowerCase()).join(' ');
-    
-    // No deal keywords at all - skip LLM
-    const dealKeywords = ['trade', 'deal', 'exchange', 'give', 'offer', 'alliance', 'agreement', 'pact'];
-    const hasDealKeywords = dealKeywords.some(kw => chatText.includes(kw));
-    
+
+    // Word-boundary regex for deal keywords
+    const dealKeywords = ['\\btrade\\b', '\\bdeal\\b', '\\bexchange\\b', '\\bgive\\b', '\\boffer\\b',
+                        '\\balliance\\b', '\\bagreement\\b', '\\bpact\\b', '\\bbuy\\b', '\\bsell\\b',
+                        '\\bpurchase\\b', '\\bpay\\b'];
+    const hasDealKeywords = dealKeywords.some(kw => new RegExp(kw).test(chatText));
+
     if (!hasDealKeywords) {
-      console.log('[DealExtractor] No deal keywords detected, skipping LLM call');
       return { hasDeal: false, confidence: 0.9 };
     }
-    
-    // Check for acceptance/confirmation keywords
-    const acceptanceKeywords = ['accept', 'agreed', 'deal', 'ok', 'sure', 'yes', 'sounds good', 'that works'];
-    const hasAcceptance = acceptanceKeywords.some(kw => chatText.includes(kw));
-    
-    // Check for rejection keywords
-    const rejectionKeywords = ['no', 'reject', 'decline', 'not interested', 'can\'t', 'won\'t', 'refuse'];
-    const hasRejection = rejectionKeywords.some(kw => chatText.includes(kw));
-    
-    // If explicit rejection, skip LLM
+
+    // Acceptance keywords (word boundaries)
+    const acceptanceKeywords = ['\\baccept\\b', '\\bagreed\\b', '\\bdeal\\b', '\\bok\\b', '\\bsure\\b',
+                              '\\byes\\b', 'sounds good', 'that works', '\\bfine\\b'];
+    const hasAcceptance = acceptanceKeywords.some(kw => new RegExp(kw).test(chatText));
+
+    // Rejection keywords (word boundaries) - removed standalone "no"
+    const rejectionKeywords = ['\\breject\\b', '\\bdecline\\b', 'not interested', "can't", "won't", '\\brefuse\\b', 'no way', 'absolutely not'];
+    const hasRejection = rejectionKeywords.some(kw => new RegExp(kw).test(chatText));
+
+    // If explicit rejection WITHOUT acceptance, skip LLM
     if (hasRejection && !hasAcceptance) {
-      console.log('[DealExtractor] Rejection detected, skipping LLM call');
       return { hasDeal: false, confidence: 0.8 };
     }
-    
-    // If just casual chat with deal keywords but no negotiation
+
     if (messages.length < 2) {
-      console.log('[DealExtractor] Too few messages for deal negotiation, skipping LLM call');
       return { hasDeal: false, confidence: 0.7 };
     }
-    
-    // Likely has a deal - use LLM for proper extraction
-    return { hasDeal: true, confidence: 0.0 }; // 0 confidence means "use LLM"
+
+    // Likely has a deal - use LLM
+    return { hasDeal: true, confidence: 0.0 }; // 0 confidence = "use LLM"
   }
 
   /**
@@ -399,34 +434,40 @@ If absolutely NO negotiation or deal discussion is happening, return: {"hasDeal"
       return null;
     }
 
-    // ADD THIS DEBUGGING CODE (around line 321, before calling buildExtractionPrompt)
-console.log("\n=== CHAT MESSAGES DEBUG ===");
-console.log("Number of messages:", context.chatMessages.length);
-context.chatMessages.forEach((msg, idx) => {
-  const sender = msg.senderCountryId === context.countryA.id ? context.countryA.name : context.countryB.name;
-  console.log(`[${idx + 1}] ${sender}: "${msg.messageText}"`);
-});
-console.log("=== END CHAT DEBUG ===\n");
+    // Debug logging (gated by environment variable)
+    if (process.env.DEAL_DEBUG === "1") {
+      console.log("\n=== CHAT MESSAGES DEBUG ===");
+      console.log("Number of messages:", context.chatMessages.length);
+      context.chatMessages.forEach((msg, idx) => {
+        const sender = msg.senderCountryId === context.countryA.id ? context.countryA.name : context.countryB.name;
+        console.log(`[${idx + 1}] ${sender}: "${msg.messageText}"`);
+      });
+      console.log("=== END CHAT DEBUG ===\n");
+    }
 
 
-    const prompt = this.buildExtractionPrompt(context);
+    const prompt = await this.buildExtractionPrompt(context);
 
 
     try {
-      console.log("DealExtractor: Sending prompt to LLM with", {
-        messageCount: context.chatMessages.length,
-        countryA: context.countryA.name,
-        countryB: context.countryB.name,
-      });
+      if (process.env.DEAL_DEBUG === "1") {
+        console.log("DealExtractor: Sending prompt to LLM with", {
+          messageCount: context.chatMessages.length,
+          countryA: context.countryA.name,
+          countryB: context.countryB.name,
+        });
+      }
 
 
       const result = await this.model.generateContent(prompt);
       const response = result.response;
-      let responseText = response.text().trim();
+      const responseText = response.text().trim();
 
 
-      console.log("\n=== DEAL EXTRACTION DEBUG ===");
-      console.log("Full LLM Response:", responseText);
+      if (process.env.DEAL_DEBUG === "1") {
+        console.log("\n=== DEAL EXTRACTION DEBUG ===");
+        console.log("Full LLM Response:", responseText);
+      }
 
 
       // IMPROVED JSON EXTRACTION - Handle markdown code blocks from Gemini
@@ -442,6 +483,7 @@ console.log("=== END CHAT DEBUG ===\n");
       // Parse JSON response
       let parsed: {
         hasDeal: boolean;
+        proposerIsCountryA?: boolean;
         dealType?: DealType | null;
         proposerCommitments?: DealCommitment[];
         receiverCommitments?: DealCommitment[];
@@ -461,7 +503,9 @@ console.log("=== END CHAT DEBUG ===\n");
           return null;
         }
         
-        console.log("Parsed Response:", JSON.stringify(parsed, null, 2));
+        if (process.env.DEAL_DEBUG === "1") {
+          console.log("Parsed Response:", JSON.stringify(parsed, null, 2));
+        }
       } catch (parseError) {
         console.error("DealExtractor: Failed to parse LLM response as JSON");
         console.error("Cleaned response:", cleanedResponse);
@@ -472,12 +516,14 @@ console.log("=== END CHAT DEBUG ===\n");
 
 
       // Log detailed extraction info
-      console.log("hasDeal:", parsed.hasDeal);
-      console.log("dealType:", parsed.dealType);
-      console.log("Proposer commitments:", parsed.proposerCommitments?.length || 0);
-      console.log("Receiver commitments:", parsed.receiverCommitments?.length || 0);
-      console.log("Confidence:", parsed.confidence);
-      console.log("Reasoning:", parsed.reasoning);
+      if (process.env.DEAL_DEBUG === "1") {
+        console.log("hasDeal:", parsed.hasDeal);
+        console.log("dealType:", parsed.dealType);
+        console.log("Proposer commitments:", parsed.proposerCommitments?.length || 0);
+        console.log("Receiver commitments:", parsed.receiverCommitments?.length || 0);
+        console.log("Confidence:", parsed.confidence);
+        console.log("Reasoning:", parsed.reasoning);
+      }
 
 
       // Check for keyword fallback if LLM says no deal
@@ -490,7 +536,9 @@ console.log("=== END CHAT DEBUG ===\n");
           console.warn("DealExtractor: Keywords suggest deal, but LLM said no. Reasoning:", parsed.reasoning);
         }
         
-        console.log("=== END DEBUG (NO DEAL) ===\n");
+        if (process.env.DEAL_DEBUG === "1") {
+          console.log("=== END DEBUG (NO DEAL) ===\n");
+        }
         return null;
       }
 
@@ -499,8 +547,10 @@ console.log("=== END CHAT DEBUG ===\n");
       const dealType = parsed.dealType || "custom";
       
       if (!dealType) {
-        console.log("DealExtractor: No deal type specified, rejecting");
-        console.log("=== END DEBUG (NO TYPE) ===\n");
+        if (process.env.DEAL_DEBUG === "1") {
+          console.log("DealExtractor: No deal type specified, rejecting");
+          console.log("=== END DEBUG (NO TYPE) ===\n");
+        }
         return null;
       }
 
@@ -515,11 +565,15 @@ console.log("=== END CHAT DEBUG ===\n");
       if (proposerCommitments.length === 0 && receiverCommitments.length === 0) {
         const confidence = parsed.confidence ?? 0;
         if (confidence < 0.4) {
-          console.log("DealExtractor: No commitments and low confidence, rejecting");
-          console.log("=== END DEBUG (NO COMMITMENTS) ===\n");
+          if (process.env.DEAL_DEBUG === "1") {
+            console.log("DealExtractor: No commitments and low confidence, rejecting");
+            console.log("=== END DEBUG (NO COMMITMENTS) ===\n");
+          }
           return null;
         }
-        console.log("DealExtractor: No immediate commitments but treating as agreement/pact");
+        if (process.env.DEAL_DEBUG === "1") {
+          console.log("DealExtractor: No immediate commitments but treating as agreement/pact");
+        }
       }
 
 
@@ -533,12 +587,40 @@ console.log("=== END CHAT DEBUG ===\n");
       const extractedFromMessages = context.chatMessages.map((m) => m.id);
 
 
-      console.log("=== DEAL EXTRACTED SUCCESSFULLY ===\n");
+      if (process.env.DEAL_DEBUG === "1") {
+        console.log("=== DEAL EXTRACTED SUCCESSFULLY ===\n");
+      }
 
+
+      // Determine who the actual proposer is
+      const proposerIsCountryA = parsed.proposerIsCountryA ?? true; // Default to CountryA if not specified
+      const proposerCountryId = proposerIsCountryA ? countryAId : countryBId;
+
+      // If CountryB is the proposer, we need to swap the commitments
+      let finalDealTerms = dealTerms;
+      if (!proposerIsCountryA) {
+        // Log directionality swap for validation
+        if (process.env.DEAL_DEBUG === "1") {
+          console.log(`[DealExtractor] Deal directionality swapped: Proposer is CountryB (${countryBId})`);
+          console.log(`[DealExtractor] Swapped commitments:`, {
+            proposerA_gives: dealTerms.proposerCommitments,
+            proposerB_gives: dealTerms.receiverCommitments
+          });
+        }
+        
+        finalDealTerms = {
+          proposerCommitments: dealTerms.receiverCommitments, // What B gives becomes proposer commitments
+          receiverCommitments: dealTerms.proposerCommitments,  // What A gives becomes receiver commitments
+          conditions: dealTerms.conditions,
+        };
+      } else if (process.env.DEAL_DEBUG === "1") {
+        console.log(`[DealExtractor] Deal directionality normal: Proposer is CountryA (${countryAId})`);
+      }
 
       return {
         dealType,
-        dealTerms,
+        dealTerms: finalDealTerms,
+        proposerCountryId,
         confidence: parsed.confidence ?? 0.5,
         extractedFromMessages,
         reasoning: parsed.reasoning,

@@ -1,6 +1,8 @@
 /**
  * Action Pricing Module
  * Single source of truth for all action costs and resource requirements.
+ * IMPORTANT: Resources are REQUIRED for research/infrastructure/military actions. Missing resources
+ * will cause action to fail - no penalty costs applied. Use trading or black market to acquire resources.
  * Ensures AI and player actions use identical pricing formulas.
  */
 
@@ -64,10 +66,7 @@ export class ActionPricing {
     );
     const researchModifier = 1 - researchBonus;
 
-    // Apply resource shortage penalty
-    const resourcePenalty = resourceCostInfo.penaltyMultiplier;
-
-    const cost = Math.floor(baseCost * profileModifier * researchModifier * resourcePenalty);
+    const cost = Math.floor(baseCost * profileModifier * researchModifier);
 
     return {
       cost,
@@ -93,10 +92,7 @@ export class ActionPricing {
     // Profile modifier (e.g., Industrial Complex gets 20% discount)
     const profileModifier = getProfileInfraCostModifier(stats.resourceProfile);
 
-    // Apply resource shortage penalty
-    const resourcePenalty = resourceCostInfo.penaltyMultiplier;
-
-    const cost = Math.floor(baseCost * profileModifier * resourcePenalty);
+    const cost = Math.floor(baseCost * profileModifier);
 
     return {
       cost,
@@ -116,10 +112,7 @@ export class ActionPricing {
     // Base cost calculation with tech and profile modifiers
     const baseCost = MilitaryCalculator.calculateRecruitmentCost(amount, stats);
 
-    // Apply resource shortage penalty
-    const resourcePenalty = resourceCostInfo.penaltyMultiplier;
-
-    const cost = Math.floor(baseCost * resourcePenalty);
+    const cost = Math.floor(baseCost);
 
     return {
       cost,
@@ -160,7 +153,7 @@ export class ActionPricing {
   }
 
   /**
-   * Check if a country can afford an action (budget only; resources optional but penalized)
+   * Check if a country can afford an action (budget and resources required; no penalties applied)
    */
   static canAffordAction(result: ActionPricingResult, currentBudget: number): boolean {
     return currentBudget >= result.cost;

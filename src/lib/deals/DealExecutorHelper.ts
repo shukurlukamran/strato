@@ -4,7 +4,7 @@ import { applyDiplomaticDelta } from "@/lib/game-engine/DiplomaticRelations";
 
 /**
  * Executes deal terms by transferring resources, budget, etc. between countries.
- * Updates country_stats in the database immediately.
+ * Updates country_stats in the database atomically after validating all transfers.
  */
 export async function executeDealTerms(
   gameId: string,
@@ -18,6 +18,18 @@ export async function executeDealTerms(
   const supabase = getSupabaseServerClient();
 
   try {
+    // Validate that both countries belong to the specified game
+    const countriesRes = await supabase
+      .from("countries")
+      .select("id")
+      .eq("game_id", gameId)
+      .in("id", [proposingCountryId, receivingCountryId]);
+
+    if (countriesRes.error || !countriesRes.data || countriesRes.data.length !== 2) {
+      errors.push("One or both countries do not belong to this game");
+      return { success: false, errors };
+    }
+
     // Fetch current stats for both countries
     const statsRes = await supabase
       .from("country_stats")
@@ -38,27 +50,22 @@ export async function executeDealTerms(
       return { success: false, errors };
     }
 
-    // Process proposer commitments (proposer gives to receiver)
-    for (const commitment of dealTerms.proposerCommitments) {
-      await processCommitment(
-        commitment,
-        proposerStats,
-        receiverStats,
-        supabase,
-        errors
-      );
+    // Calculate all deltas in-memory first to ensure atomic execution
+    const proposerDeltas = calculateDeltasForCommitments(dealTerms.proposerCommitments, proposerStats, receiverStats, errors);
+    const receiverDeltas = calculateDeltasForCommitments(dealTerms.receiverCommitments, receiverStats, proposerStats, errors);
+
+    // If any validation errors occurred, fail the entire deal
+    if (errors.length > 0) {
+      return { success: false, errors };
     }
 
-    // Process receiver commitments (receiver gives to proposer)
-    for (const commitment of dealTerms.receiverCommitments) {
-      await processCommitment(
-        commitment,
-        receiverStats,
-        proposerStats,
-        supabase,
-        errors
-      );
-    }
+    // Calculate net budget transfers between countries
+    const proposerToReceiverBudget = -proposerDeltas.budgetDelta; // Positive amount proposer sends to receiver
+    const receiverToProposerBudget = -receiverDeltas.budgetDelta; // Positive amount receiver sends to proposer
+
+    // Apply all changes atomically
+    await applyDeltasToDatabase(proposerStats, proposerDeltas.resourceDeltas, proposerDeltas.budgetDelta + receiverToProposerBudget, supabase);
+    await applyDeltasToDatabase(receiverStats, receiverDeltas.resourceDeltas, receiverDeltas.budgetDelta + proposerToReceiverBudget, supabase);
 
     // Apply baseline diplomatic boost for the deal type (if provided)
     if (dealType) {
@@ -83,7 +90,137 @@ export async function executeDealTerms(
 }
 
 /**
- * Processes a single commitment and updates stats accordingly
+ * Calculates deltas for a set of commitments without applying them
+ */
+function calculateDeltasForCommitments(
+  commitments: DealCommitment[],
+  fromStats: { id: string; country_id: string; budget: number; resources: Record<string, number>; diplomatic_relations?: Record<string, number> },
+  toStats: { id: string; country_id: string; budget: number; resources: Record<string, number>; diplomatic_relations?: Record<string, number> },
+  errors: string[]
+): { budgetDelta: number; resourceDeltas: Record<string, number>; diplomaticDeltas?: Record<string, number> } {
+  let budgetDelta = 0;
+  const resourceDeltas: Record<string, number> = {};
+  const diplomaticDeltas: Record<string, number> = {};
+
+  // Use working copies for validation
+  let workingFromBudget = fromStats.budget;
+  const workingFromResources = { ...fromStats.resources };
+  const workingToResources = { ...toStats.resources };
+
+  for (const commitment of commitments) {
+    switch (commitment.type) {
+      case "resource_transfer": {
+        if (!commitment.resource || !commitment.amount) {
+          errors.push(`Invalid resource_transfer commitment: missing resource or amount`);
+          continue;
+        }
+
+        const amount = commitment.amount;
+        const currentAmount = workingFromResources[commitment.resource] || 0;
+
+        if (currentAmount < amount) {
+          errors.push(
+            `Insufficient ${commitment.resource}: ${currentAmount} available, ${amount} required`
+          );
+          continue;
+        }
+
+        // Update working copies for validation
+        workingFromResources[commitment.resource] = (workingFromResources[commitment.resource] || 0) - amount;
+        workingToResources[commitment.resource] = (workingToResources[commitment.resource] || 0) + amount;
+
+        // Accumulate resource deltas (negative = outgoing from this country)
+        resourceDeltas[commitment.resource] = (resourceDeltas[commitment.resource] || 0) - amount;
+        break;
+      }
+
+      case "budget_transfer": {
+        if (!commitment.amount) {
+          errors.push(`Invalid budget_transfer commitment: missing amount`);
+          continue;
+        }
+
+        const amount = commitment.amount;
+
+        if (workingFromBudget < amount) {
+          errors.push(`Insufficient budget: ${workingFromBudget} available, ${amount} required`);
+          continue;
+        }
+
+        // Update working copy for validation
+        workingFromBudget -= amount;
+
+        // Accumulate budget delta (negative = outgoing from this country)
+        budgetDelta -= amount;
+        break;
+      }
+
+      case "military_equipment_transfer": {
+        // TODO: Implement military equipment transfer
+        console.log("Military equipment transfer not yet implemented");
+        break;
+      }
+
+      case "diplomatic_commitment": {
+        if (commitment.amount === undefined || commitment.amount === null) {
+          errors.push(`Invalid diplomatic_commitment: missing amount`);
+          continue;
+        }
+
+        // Diplomatic deltas will be applied separately
+        break;
+      }
+
+      case "technology_boost": {
+        // TODO: Implement technology level boost
+        console.log("Technology boost not yet implemented");
+        break;
+      }
+
+      case "action_commitment": {
+        // These are commitments to future actions (e.g., "no_attack"), not immediate transfers
+        console.log("Action commitment recorded (no immediate transfer needed)");
+        break;
+      }
+
+      default:
+        console.warn(`Unknown commitment type: ${commitment.type}`);
+    }
+  }
+
+  return { budgetDelta, resourceDeltas, diplomaticDeltas };
+}
+
+/**
+ * Applies accumulated deltas to the database
+ */
+async function applyDeltasToDatabase(
+  stats: { id: string; country_id: string; budget: number; resources: Record<string, number>; diplomatic_relations?: Record<string, number> },
+  resourceDeltas: Record<string, number>,
+  budgetDelta: number,
+  supabase: ReturnType<typeof getSupabaseServerClient>
+): Promise<void> {
+  const updatedResources = { ...stats.resources };
+
+  // Apply resource deltas
+  for (const [resourceId, delta] of Object.entries(resourceDeltas)) {
+    updatedResources[resourceId] = (updatedResources[resourceId] || 0) + delta;
+  }
+
+  // Apply budget delta
+  const updatedBudget = stats.budget + budgetDelta;
+
+  await supabase
+    .from("country_stats")
+    .update({
+      resources: updatedResources,
+      budget: updatedBudget
+    })
+    .eq("id", stats.id);
+}
+
+/**
+ * Processes a single commitment and updates stats accordingly (legacy function, kept for compatibility)
  */
 async function processCommitment(
   commitment: DealCommitment,

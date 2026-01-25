@@ -7,6 +7,8 @@ import { GameState } from "@/lib/game-engine/GameState";
 import { CombatResolver } from "@/lib/game-engine/CombatResolver";
 import { CityTransfer } from "@/lib/game-engine/CityTransfer";
 import { DefenseAI } from "@/lib/ai/DefenseAI";
+import { TradePlanner } from "@/lib/ai/TradePlanner";
+import { MarketPricing } from "@/lib/game-engine/MarketPricing";
 import { applyDiplomaticDelta, applyMutualDiplomaticDelta } from "@/lib/game-engine/DiplomaticRelations";
 
 export interface CombatResult {
@@ -38,6 +40,7 @@ export class TurnProcessor {
     private readonly actionResolver = new ActionResolver(),
     private readonly dealExecutor = new DealExecutor(),
     private readonly eventSystem = new EventSystem(),
+    private readonly tradePlanner = new TradePlanner(),
   ) {}
 
   async processTurn(
@@ -46,6 +49,9 @@ export class TurnProcessor {
   ): Promise<TurnProcessResult> {
     // 1) Execute/advance deals
     const dealEvents = this.dealExecutor.processDeals(state);
+
+    // 1.5) AI Trading - Execute trades before actions to resolve resource shortages
+    const tradeEvents = await this.executeAITrades(state);
 
     // 2) Separate attack actions from other actions
     const attackActions = state.data.pendingActions.filter(
@@ -197,6 +203,55 @@ export class TurnProcessor {
     };
 
     return result;
+  }
+
+  private async executeAITrades(state: GameState): Promise<Array<{ type: string; message: string; data?: Record<string, unknown> }>> {
+    const tradeEvents: Array<{ type: string; message: string; data?: Record<string, unknown> }> = [];
+
+    try {
+      // Get current market prices
+      const marketPrices = await MarketPricing.computeMarketPricesForGame(state.data.gameId, state.data.turn);
+
+      // Process each AI country
+      for (const country of state.data.countries) {
+        if (country.isPlayerControlled) continue; // Skip player countries
+
+        // Plan trades for this AI country
+        const proposals = await this.tradePlanner.planTrades(country.id, state.data, marketPrices.marketPrices);
+
+        if (proposals.length > 0) {
+          // Execute the best trade proposal
+          const bestProposal = proposals[0];
+          const executionResult = await this.tradePlanner.executeTrade(
+            state.data.gameId,
+            state.data.turn,
+            bestProposal
+          );
+
+          if (executionResult.success) {
+            // Add success event
+            tradeEvents.push({
+              type: 'deal.ai_trade.executed',
+              message: `${country.name} completed an automated trade`,
+              data: {
+                proposer: bestProposal.proposerId,
+                receiver: bestProposal.receiverId,
+                dealId: executionResult.dealId,
+                terms: bestProposal.terms
+              }
+            });
+
+            console.log(`[AI Trading] ${country.name} executed trade: ${executionResult.dealId}`);
+          } else {
+            console.warn(`[AI Trading] ${country.name} trade failed: ${executionResult.error}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[AI Trading] Error during AI trading:', error);
+    }
+
+    return tradeEvents;
   }
 
   private applyDiplomaticEffectsFromCombat(state: GameState, combatResults: CombatResult[]): void {

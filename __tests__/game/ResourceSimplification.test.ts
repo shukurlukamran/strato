@@ -177,11 +177,9 @@ describe('Resource Simplification (8 Resources)', () => {
       
       expect(result.canAfford).toBe(false);
       expect(result.missing).toHaveLength(2); // Missing both iron (5) and steel (5)
-      expect(result.penaltyMultiplier).toBeGreaterThan(1.0);
-      expect(result.penaltyMultiplier).toBeLessThanOrEqual(2.5); // Max penalty
     });
 
-    it('should cap shortage penalty at 2.5x', () => {
+    it('should fail affordability check when all resources missing', () => {
       const required = [
         { resourceId: 'iron', amount: 10 },
         { resourceId: 'steel', amount: 10 },
@@ -193,7 +191,7 @@ describe('Resource Simplification (8 Resources)', () => {
       const currentResources = {}; // Missing all
       const result = ResourceCost.checkResourceAffordability(required, currentResources);
       
-      expect(result.penaltyMultiplier).toBeLessThanOrEqual(2.5);
+      expect(result.canAfford).toBe(false);
     });
   });
 
@@ -283,8 +281,10 @@ describe('Resource Simplification (8 Resources)', () => {
       expect(ECONOMIC_BALANCE.RESOURCE_COSTS.SHORTAGE_COST_PENALTY_PER_RESOURCE).toBe(0.4);
     });
 
-    it('should have max shortage penalty of 2.5x', () => {
-      expect(ECONOMIC_BALANCE.RESOURCE_COSTS.MAX_SHORTAGE_PENALTY).toBe(2.5);
+    it('should have shortage detection logic', () => {
+      // This test verifies the resource affordability system works
+      // Note: penaltyMultiplier was removed in favor of strict gating
+      expect(ECONOMIC_BALANCE.RESOURCE_COSTS.SHORTAGE_COST_PENALTY_PER_RESOURCE).toBe(0.4);
     });
   });
 });

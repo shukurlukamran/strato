@@ -97,41 +97,47 @@ export class EconomicAI {
     if (intent.focus === "research") {
       if (canDoResearch && shouldResearch) {
         const pricingResult = ActionPricing.calculateResearchPricing(stats);
-        if (hasLLMGuidance) {
-          console.log(`[EconomicAI] Following LLM focus (research) with rule-based execution`);
+        // Check both budget and resource affordability
+        if (stats.budget >= pricingResult.cost && pricingResult.resourceCostInfo.canAfford) {
+          if (hasLLMGuidance) {
+            console.log(`[EconomicAI] Following LLM focus (research) with rule-based execution`);
+          }
+          actions.push({
+            id: '',
+            gameId: state.gameId,
+            countryId,
+            turn: state.turn,
+            actionType: "research",
+            actionData: {
+              cost: pricingResult.cost,
+              targetLevel: stats.technologyLevel + 1,
+            },
+            status: "pending",
+            createdAt: new Date().toISOString(),
+          });
         }
-        actions.push({
-          id: '',
-          gameId: state.gameId,
-          countryId,
-          turn: state.turn,
-          actionType: "research",
-          actionData: {
-            cost: pricingResult.cost,
-            targetLevel: stats.technologyLevel + 1,
-          },
-          status: "pending",
-          createdAt: new Date().toISOString(),
-        });
       } else if (canDoInfrastructure && shouldInfrastructure) {
         const pricingResult = ActionPricing.calculateInfrastructurePricing(stats);
-        if (hasLLMGuidance) {
-          console.log(`[EconomicAI] Following LLM focus (research) with infrastructure fallback`);
+        // Check both budget and resource affordability
+        if (stats.budget >= pricingResult.cost && pricingResult.resourceCostInfo.canAfford) {
+          if (hasLLMGuidance) {
+            console.log(`[EconomicAI] Following LLM focus (research) with infrastructure fallback`);
+          }
+          actions.push({
+            id: '',
+            gameId: state.gameId,
+            countryId,
+            turn: state.turn,
+            actionType: "economic",
+            actionData: {
+              subType: "infrastructure",
+              cost: pricingResult.cost,
+              targetLevel: (stats.infrastructureLevel || 0) + 1,
+            },
+            status: "pending",
+            createdAt: new Date().toISOString(),
+          });
         }
-        actions.push({
-          id: '',
-          gameId: state.gameId,
-          countryId,
-          turn: state.turn,
-          actionType: "economic",
-          actionData: {
-            subType: "infrastructure",
-            cost: pricingResult.cost,
-            targetLevel: (stats.infrastructureLevel || 0) + 1,
-          },
-          status: "pending",
-          createdAt: new Date().toISOString(),
-        });
       }
       return actions;
     }
@@ -139,41 +145,47 @@ export class EconomicAI {
     if (intent.focus === "economy") {
       if (canDoInfrastructure && shouldInfrastructure) {
         const pricingResult = ActionPricing.calculateInfrastructurePricing(stats);
-        if (hasLLMGuidance) {
-          console.log(`[EconomicAI] Following LLM focus (economy) with infrastructure upgrade`);
+        // Check both budget and resource affordability
+        if (stats.budget >= pricingResult.cost && pricingResult.resourceCostInfo.canAfford) {
+          if (hasLLMGuidance) {
+            console.log(`[EconomicAI] Following LLM focus (economy) with infrastructure upgrade`);
+          }
+          actions.push({
+            id: '',
+            gameId: state.gameId,
+            countryId,
+            turn: state.turn,
+            actionType: "economic",
+            actionData: {
+              subType: "infrastructure",
+              cost: pricingResult.cost,
+              targetLevel: (stats.infrastructureLevel || 0) + 1,
+            },
+            status: "pending",
+            createdAt: new Date().toISOString(),
+          });
         }
-        actions.push({
-          id: '',
-          gameId: state.gameId,
-          countryId,
-          turn: state.turn,
-          actionType: "economic",
-          actionData: {
-            subType: "infrastructure",
-            cost: pricingResult.cost,
-            targetLevel: (stats.infrastructureLevel || 0) + 1,
-          },
-          status: "pending",
-          createdAt: new Date().toISOString(),
-        });
       } else if (canDoResearch && shouldResearch) {
         const pricingResult = ActionPricing.calculateResearchPricing(stats);
-        if (hasLLMGuidance) {
-          console.log(`[EconomicAI] Following LLM focus (economy) with research fallback`);
+        // Check both budget and resource affordability
+        if (stats.budget >= pricingResult.cost && pricingResult.resourceCostInfo.canAfford) {
+          if (hasLLMGuidance) {
+            console.log(`[EconomicAI] Following LLM focus (economy) with research fallback`);
+          }
+          actions.push({
+            id: '',
+            gameId: state.gameId,
+            countryId,
+            turn: state.turn,
+            actionType: "research",
+            actionData: {
+              cost: pricingResult.cost,
+              targetLevel: stats.technologyLevel + 1,
+            },
+            status: "pending",
+            createdAt: new Date().toISOString(),
+          });
         }
-        actions.push({
-          id: '',
-          gameId: state.gameId,
-          countryId,
-          turn: state.turn,
-          actionType: "research",
-          actionData: {
-            cost: pricingResult.cost,
-            targetLevel: stats.technologyLevel + 1,
-          },
-          status: "pending",
-          createdAt: new Date().toISOString(),
-        });
       }
       return actions;
     }
@@ -185,45 +197,51 @@ export class EconomicAI {
     // DECISION 1: Research investment
     if (canDoResearch && shouldResearch) {
       const pricingResult = ActionPricing.calculateResearchPricing(stats);
-      if (hasLLMGuidance) {
-        console.log(`[EconomicAI] Fallback: Rule-based research decision (LLM focus: ${intent.focus})`);
+      // Check both budget and resource affordability
+      if (stats.budget >= pricingResult.cost && pricingResult.resourceCostInfo.canAfford) {
+        if (hasLLMGuidance) {
+          console.log(`[EconomicAI] Fallback: Rule-based research decision (LLM focus: ${intent.focus})`);
+        }
+        actions.push({
+          id: '', // Will be auto-generated by database
+          gameId: state.gameId,
+          countryId,
+          turn: state.turn,
+          actionType: "research",
+          actionData: {
+            cost: pricingResult.cost,
+            targetLevel: stats.technologyLevel + 1,
+          },
+          status: "pending",
+          createdAt: new Date().toISOString(),
+        });
       }
-      actions.push({
-        id: '', // Will be auto-generated by database
-        gameId: state.gameId,
-        countryId,
-        turn: state.turn,
-        actionType: "research",
-        actionData: {
-          cost: pricingResult.cost,
-          targetLevel: stats.technologyLevel + 1,
-        },
-        status: "pending",
-        createdAt: new Date().toISOString(),
-      });
     }
 
     // DECISION 2: Infrastructure investment
     // Only if we didn't research this turn (one major investment per turn)
     if (actions.length === 0 && canDoInfrastructure && shouldInfrastructure) {
       const pricingResult = ActionPricing.calculateInfrastructurePricing(stats);
-      if (hasLLMGuidance) {
-        console.log(`[EconomicAI] Fallback: Rule-based infrastructure decision (LLM focus: ${intent.focus})`);
+      // Check both budget and resource affordability
+      if (stats.budget >= pricingResult.cost && pricingResult.resourceCostInfo.canAfford) {
+        if (hasLLMGuidance) {
+          console.log(`[EconomicAI] Fallback: Rule-based infrastructure decision (LLM focus: ${intent.focus})`);
+        }
+        actions.push({
+          id: '', // Will be auto-generated by database
+          gameId: state.gameId,
+          countryId,
+          turn: state.turn,
+          actionType: "economic",
+          actionData: {
+            subType: "infrastructure",
+            cost: pricingResult.cost,
+            targetLevel: (stats.infrastructureLevel || 0) + 1,
+          },
+          status: "pending",
+          createdAt: new Date().toISOString(),
+        });
       }
-      actions.push({
-        id: '', // Will be auto-generated by database
-        gameId: state.gameId,
-        countryId,
-        turn: state.turn,
-        actionType: "economic",
-        actionData: {
-          subType: "infrastructure",
-          cost: pricingResult.cost,
-          targetLevel: (stats.infrastructureLevel || 0) + 1,
-        },
-        status: "pending",
-        createdAt: new Date().toISOString(),
-      });
     }
 
     return actions;
@@ -610,6 +628,9 @@ export class EconomicAI {
         Number.isFinite(desired) && desired > stats.technologyLevel ? Math.floor(desired) : stats.technologyLevel + 1;
       const pricingResult = ActionPricing.calculateResearchPricing(stats);
 
+      // Check both budget and resource affordability
+      if (stats.budget < pricingResult.cost || !pricingResult.resourceCostInfo.canAfford) return null;
+
       return {
         id: "",
         gameId: state.gameId,
@@ -640,6 +661,9 @@ export class EconomicAI {
       const targetLevel =
         Number.isFinite(desired) && desired > currentInfra ? Math.min(10, Math.floor(desired)) : currentInfra + 1;
       const pricingResult = ActionPricing.calculateInfrastructurePricing(stats);
+
+      // Check both budget and resource affordability
+      if (stats.budget < pricingResult.cost || !pricingResult.resourceCostInfo.canAfford) return null;
 
       return {
         id: "",

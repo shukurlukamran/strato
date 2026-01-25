@@ -548,7 +548,7 @@ export function CountryCard({
                   </div>
                   <div className="mt-2 space-y-1 text-blue-200">
                     <div>
-                      <strong>You commit:</strong>{" "}
+                      <strong>{extractedDeal.proposerCountryId === playerCountryId ? "You" : "They"} commit:</strong>{" "}
                       {extractedDeal.dealTerms.proposerCommitments.length > 0
                         ? extractedDeal.dealTerms.proposerCommitments
                             .map((c) => {
@@ -563,7 +563,7 @@ export function CountryCard({
                         : "Nothing"}
                     </div>
                     <div>
-                      <strong>They commit:</strong>{" "}
+                      <strong>{extractedDeal.proposerCountryId === playerCountryId ? "They" : "You"} commit:</strong>{" "}
                       {extractedDeal.dealTerms.receiverCommitments.length > 0
                         ? extractedDeal.dealTerms.receiverCommitments
                             .map((c) => {

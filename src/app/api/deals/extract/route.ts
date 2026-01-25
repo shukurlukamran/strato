@@ -33,6 +33,18 @@ export async function POST(req: Request) {
 
   const { gameId, chatId, countryAId, countryBId } = parsed.data;
 
+  // Verify both countries belong to the game
+  const supabase = getSupabaseServerClient();
+  const countriesRes = await supabase
+    .from("countries")
+    .select("id")
+    .eq("game_id", gameId)
+    .in("id", [countryAId, countryBId]);
+
+  if (countriesRes.error || !countriesRes.data || countriesRes.data.length !== 2) {
+    return NextResponse.json({ error: "One or both countries do not belong to this game" }, { status: 403 });
+  }
+
   try {
     const extractor = new DealExtractor();
     const result = await extractor.extractDealFromChat(gameId, chatId, countryAId, countryBId);
@@ -80,8 +92,8 @@ export async function POST(req: Request) {
       .from("deals")
       .insert({
         game_id: gameId,
-        proposing_country_id: countryAId,
-        receiving_country_id: countryBId,
+        proposing_country_id: result.proposerCountryId,
+        receiving_country_id: result.proposerCountryId === countryAId ? countryBId : countryAId,
         deal_type: result.dealType,
         deal_terms: result.dealTerms,
         status: "accepted", // Automatically accepted since extracted from agreed conversation
@@ -108,8 +120,8 @@ export async function POST(req: Request) {
     const executionResult = await executeDealTerms(
       gameId,
       currentTurn,
-      countryAId,
-      countryBId,
+      result.proposerCountryId,
+      result.proposerCountryId === countryAId ? countryBId : countryAId,
       result.dealTerms,
       result.dealType
     );
@@ -129,13 +141,15 @@ export async function POST(req: Request) {
     // Update deal status to "active" after successful execution
     await supabase
       .from("deals")
-      .update({ 
+      .update({
         status: "active",
         updated_at: new Date().toISOString()
       })
       .eq("id", dealInsert.data[0].id);
 
     console.log(`Deal ${dealInsert.data[0].id} automatically created, accepted, and executed`);
+
+    // Turn history logging will be handled by the turn processing API
 
     return NextResponse.json({
       deal: result,

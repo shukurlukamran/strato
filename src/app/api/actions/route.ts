@@ -148,11 +148,18 @@ export async function POST(req: Request) {
         cost = pricingResult.cost;
         resourceCostInfo = pricingResult.resourceCostInfo;
 
+        // Strict resource gating: Block if resources are missing
+        if (!resourceCostInfo.canAfford) {
+          return NextResponse.json({
+            error: `Missing required resources: ${resourceCostInfo.missing.map(m => `${m.amount}x ${m.resourceId}`).join(', ')}. Use trading or black market to acquire them.`,
+            missingResources: resourceCostInfo.missing
+          }, { status: 400 });
+        }
+
         if (currentBudget < cost) {
-          const message = resourceCostInfo.shortage
-            ? `Insufficient budget. Need $${cost.toLocaleString()}, have $${currentBudget.toLocaleString()}. (Cost increased by ${((resourceCostInfo.penaltyMultiplier - 1) * 100).toFixed(0)}% due to resource shortage)`
-            : `Insufficient budget. Need $${cost.toLocaleString()}, have $${currentBudget.toLocaleString()}`;
-          return NextResponse.json({ error: message }, { status: 400 });
+          return NextResponse.json({
+            error: `Insufficient budget. Need $${cost.toLocaleString()}, have $${currentBudget.toLocaleString()}.`
+          }, { status: 400 });
         }
 
         // Apply cost and resource deduction
@@ -172,11 +179,18 @@ export async function POST(req: Request) {
         cost = pricingResult.cost;
         resourceCostInfo = pricingResult.resourceCostInfo;
 
+        // Strict resource gating: Block if resources are missing
+        if (!resourceCostInfo.canAfford) {
+          return NextResponse.json({
+            error: `Missing required resources: ${resourceCostInfo.missing.map(m => `${m.amount}x ${m.resourceId}`).join(', ')}. Use trading or black market to acquire them.`,
+            missingResources: resourceCostInfo.missing
+          }, { status: 400 });
+        }
+
         if (currentBudget < cost) {
-          const message = resourceCostInfo.shortage
-            ? `Insufficient budget. Need $${cost.toLocaleString()}, have $${currentBudget.toLocaleString()}. (Cost increased by ${((resourceCostInfo.penaltyMultiplier - 1) * 100).toFixed(0)}% due to resource shortage)`
-            : `Insufficient budget. Need $${cost.toLocaleString()}, have $${currentBudget.toLocaleString()}`;
-          return NextResponse.json({ error: message }, { status: 400 });
+          return NextResponse.json({
+            error: `Insufficient budget. Need $${cost.toLocaleString()}, have $${currentBudget.toLocaleString()}.`
+          }, { status: 400 });
         }
 
         // Apply cost and resource deduction
@@ -200,11 +214,18 @@ export async function POST(req: Request) {
         cost = pricingResult.cost;
         resourceCostInfo = pricingResult.resourceCostInfo;
 
+        // Strict resource gating: Block if resources are missing
+        if (!resourceCostInfo.canAfford) {
+          return NextResponse.json({
+            error: `Missing required resources: ${resourceCostInfo.missing.map(m => `${m.amount}x ${m.resourceId}`).join(', ')}. Use trading or black market to acquire them.`,
+            missingResources: resourceCostInfo.missing
+          }, { status: 400 });
+        }
+
         if (currentBudget < cost) {
-          const message = resourceCostInfo.shortage
-            ? `Insufficient budget. Need $${cost.toLocaleString()}, have $${currentBudget.toLocaleString()}. (Cost increased by ${((resourceCostInfo.penaltyMultiplier - 1) * 100).toFixed(0)}% due to resource shortage)`
-            : `Insufficient budget. Need $${cost.toLocaleString()}, have $${currentBudget.toLocaleString()}`;
-          return NextResponse.json({ error: message }, { status: 400 });
+          return NextResponse.json({
+            error: `Insufficient budget. Need $${cost.toLocaleString()}, have $${currentBudget.toLocaleString()}.`
+          }, { status: 400 });
         }
 
         // Apply cost and resource deduction

@@ -886,6 +886,25 @@ export async function POST(req: Request) {
       // Don't show generic "took military action" for attacks - they're handled separately
     } else if (action.actionType === "diplomacy") {
       actionMessage = `${countryName} engaged in diplomacy`;
+    } else if (action.actionType === "market") {
+      // Handle black market transactions
+      const subType = (action.actionData as any)?.subType;
+      if (subType === "black_market") {
+        const side = (action.actionData as any)?.side;
+        const resourceId = (action.actionData as any)?.resourceId;
+        const amount = (action.actionData as any)?.amount || 0;
+        const unitPrice = (action.actionData as any)?.unitPrice || 0;
+        const totalCost = amount * unitPrice;
+
+        if (side === "buy") {
+          actionMessage = `${countryName} bought ${amount}x ${resourceId} from black market for $${totalCost}`;
+        } else if (side === "sell") {
+          actionMessage = `${countryName} sold ${amount}x ${resourceId} to black market for $${totalCost}`;
+        } else {
+          actionMessage = `${countryName} made a black market transaction`;
+        }
+        eventType = "deal.black_market.executed";
+      }
     }
     
     if (actionMessage) {
@@ -934,10 +953,74 @@ export async function POST(req: Request) {
     }
   }
 
+  // 3. Add executed deals from this turn
+  const dealEvents: Array<{ type: string; message: string; data?: Record<string, unknown> }> = [];
+  try {
+    const dealsRes = await supabase
+      .from("deals")
+      .select(`
+        id,
+        deal_type,
+        deal_terms,
+        proposing_country_id,
+        receiving_country_id,
+        turn_created
+      `)
+      .eq("game_id", gameId)
+      .eq("turn_created", turn)
+      .in("status", ["active", "accepted"]);
+
+    if (dealsRes.data && dealsRes.data.length > 0) {
+      // Get country names for display
+      const countryIds = [...new Set(dealsRes.data.flatMap(d => [d.proposing_country_id, d.receiving_country_id]))];
+      const countriesRes = await supabase
+        .from("countries")
+        .select("id, name")
+        .in("id", countryIds);
+
+      const countryNames = new Map(countriesRes.data?.map(c => [c.id, c.name]) || []);
+
+      for (const deal of dealsRes.data) {
+        const proposerName = countryNames.get(deal.proposing_country_id) || "Unknown";
+        const receiverName = countryNames.get(deal.receiving_country_id) || "Unknown";
+
+        let commitments = "";
+        if (deal.deal_terms.proposerCommitments?.length > 0) {
+          commitments += `${proposerName} gives: ${deal.deal_terms.proposerCommitments.map((c: any) =>
+            c.type === 'resource_transfer' ? `${c.amount}x ${c.resource}` :
+            c.type === 'budget_transfer' ? `$${c.amount}` : c.type
+          ).join(', ')}`;
+        }
+        if (deal.deal_terms.receiverCommitments?.length > 0) {
+          if (commitments) commitments += "; ";
+          commitments += `${receiverName} gives: ${deal.deal_terms.receiverCommitments.map((c: any) =>
+            c.type === 'resource_transfer' ? `${c.amount}x ${c.resource}` :
+            c.type === 'budget_transfer' ? `$${c.amount}` : c.type
+          ).join(', ')}`;
+        }
+
+        dealEvents.push({
+          type: 'deal.trade.executed',
+          message: `${proposerName} and ${receiverName} executed a ${deal.deal_type} deal`,
+          data: {
+            dealId: deal.id,
+            dealType: deal.deal_type,
+            proposerName,
+            receiverName,
+            commitments,
+            turnExecuted: turn
+          }
+        });
+      }
+    }
+  } catch (error) {
+    console.error('[Turn API] Failed to fetch deal events:', error);
+  }
+
   // Only include action events in turn history (exclude economic background events)
   // Turn history should only show player-visible actions, deals, and natural events
   // Include combat events with detailed outcomes
-  const allEvents = [...combatEvents, ...actionSummaryEvents, ...result.events.filter(e => !e.type.startsWith('economic'))];
+  const allEvents = [...combatEvents, ...actionSummaryEvents, ...dealEvents, ...result.events.filter(e => !e.type.startsWith('economic'))];
 
   // Generate narrative statements for flavor text
   const narrativeEngine = new NarrativeEngine();

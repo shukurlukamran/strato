@@ -12,7 +12,6 @@ export interface ResourceCostResult {
   canAfford: boolean;
   missing: ResourceAmount[];
   shortage: boolean;      // True if missing ANY resources
-  penaltyMultiplier: number; // Cost multiplier if resources are missing (1.0 = no penalty, 2.0 = double cost)
 }
 
 /**
@@ -141,6 +140,7 @@ export class ResourceCost {
     const missing: ResourceAmount[] = [];
     let canAfford = true;
     
+    // Calculate all resource shortages
     for (const req of required) {
       const available = currentResources[req.resourceId] || 0;
       if (available < req.amount) {
@@ -152,21 +152,11 @@ export class ResourceCost {
       }
     }
     
-    // Calculate penalty multiplier based on shortage severity
-    // If you're missing resources, budget cost increases
-    let penaltyMultiplier = 1.0;
-    if (!canAfford) {
-      // For each missing resource, add 40% penalty (can stack up to 2.5x cost)
-      const missingCount = missing.length;
-      penaltyMultiplier = Math.min(1.0 + (missingCount * 0.4), 2.5);
-    }
-    
     return {
       required,
       canAfford,
       missing,
-      shortage: !canAfford,
-      penaltyMultiplier
+      shortage: !canAfford
     };
   }
   

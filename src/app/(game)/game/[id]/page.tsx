@@ -18,6 +18,7 @@ import { DefenseModal } from "@/components/game/DefenseModal";
 import { AllProfilesInfo } from "@/components/game/AllProfilesInfo";
 import { HistoryLog } from "@/components/game/HistoryLog";
 import { DiplomaticRelationsModal } from "@/components/game/DiplomaticRelationsModal";
+import { MarketRatesModal } from "@/components/game/MarketRatesModal";
 import { useGameStore } from "@/lib/store/gameStore";
 
 type ApiGame = { id: string; name: string; current_turn: number; status: string; player_country_id: string };
@@ -70,6 +71,7 @@ export default function GamePage() {
   const [showSidebar, setShowSidebar] = useState(true);
   const [showHistoryLog, setShowHistoryLog] = useState(true);
   const [showDiplomacyModal, setShowDiplomacyModal] = useState(false);
+  const [showMarketRatesModal, setShowMarketRatesModal] = useState(false);
   const [endingTurn, setEndingTurn] = useState(false);
   const [turnProcessing, setTurnProcessing] = useState(false);
   const [attackTargetCity, setAttackTargetCity] = useState<City | null>(null);
@@ -631,6 +633,15 @@ export default function GamePage() {
           </button>
           <button
             type="button"
+            onClick={() => setShowMarketRatesModal(true)}
+            className="inline-flex items-center gap-1 rounded-full bg-purple-600/80 px-3 py-1 text-xs font-medium text-white hover:bg-purple-600 transition-colors"
+            title="View current market rates and black market prices"
+          >
+            <span>📊</span>
+            <span>Market Rates</span>
+          </button>
+          <button
+            type="button"
             onClick={() => setShowDiplomacyModal(true)}
             className="inline-flex items-center gap-1 rounded-full bg-blue-600/80 px-3 py-1 text-xs font-medium text-white hover:bg-blue-600 transition-colors"
             title="View all diplomatic relations"
@@ -918,6 +929,15 @@ export default function GamePage() {
             setDefenseDefenderStats(null);
             void refreshGameData();
           }}
+        />
+      )}
+
+      {/* Market Rates Modal */}
+      {showMarketRatesModal && (
+        <MarketRatesModal
+          gameId={gameId}
+          turn={turn}
+          onClose={() => setShowMarketRatesModal(false)}
         />
       )}
 
