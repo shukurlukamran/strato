@@ -138,6 +138,23 @@ export class LLMStrategicPlanner {
   
   // Strategic plan persistence - LLM analysis guides next N turns
   private activeStrategicPlans: Map<string, LLMStrategicAnalysis> = new Map();
+
+  private isTradeAdviceText(text: string): boolean {
+    // We consider these "unexecutable trade recommendations" for now: they require diplomacy chat / deal systems.
+    // Keep this intentionally broad to avoid polluting planItems with advice-only trade steps.
+    return /\b(trade|deal|exchange|barter|swap)\b/i.test(text);
+  }
+
+  private stripUnexecutableTradeSteps(items: LLMPlanItem[]): LLMPlanItem[] {
+    return items.filter((item) => {
+      if (item.kind !== "step") return true;
+      const instruction = typeof item.instruction === "string" ? item.instruction : "";
+      const hasExecution = !!item.execution;
+      if (hasExecution) return true;
+      // Remove advice-only trade steps
+      return !this.isTradeAdviceText(instruction);
+    });
+  }
   
   // Call LLM every N turns (optimized: 10 turns to reduce API costs by 30%)
   private readonly LLM_CALL_FREQUENCY = 10;
@@ -346,7 +363,8 @@ export class LLMStrategicPlanner {
           
           if (analysis.planItems && analysis.planItems.length > 0) {
             const steps = analysis.planItems.filter(i => i.kind === 'step');
-            const countryName = country?.name || countryId.substring(0, 8);
+            const safeId = typeof countryId === "string" ? countryId : "unknown";
+            const countryName = country?.name || safeId.substring(0, 8);
             
             // Only log quality issues (not successes)
             if (steps.length < 8) {
@@ -1671,7 +1689,7 @@ ECONOMIC FOCUS: For weak/bankrupt nations only.`;
       }
     }
 
-    return items;
+    return this.stripUnexecutableTradeSteps(items);
   }
   
   /**
@@ -1700,9 +1718,14 @@ ECONOMIC FOCUS: For weak/bankrupt nations only.`;
     
     // Combine LLM insight with rule-based safety
     // LLM provides strategic direction, rules ensure execution safety
+    const safeRationale =
+      typeof guidingAnalysis.rationale === "string" && guidingAnalysis.rationale.trim()
+        ? guidingAnalysis.rationale
+        : "Strategic analysis completed";
+
     return {
       focus: guidingAnalysis.strategicFocus,
-      rationale: `[${planSource}] ${guidingAnalysis.rationale}`,
+      rationale: `[${planSource}] ${safeRationale}`,
       llmPlan: {
         source: planSourceKey,
         turnAnalyzed: guidingAnalysis.turnAnalyzed,
@@ -1772,7 +1795,7 @@ ECONOMIC FOCUS: For weak/bankrupt nations only.`;
       const planRes = await supabase
         .from("llm_strategic_plans")
         .select(
-          "turn_analyzed, valid_until_turn, strategic_focus, recommended_actions, diplomatic_stance, confidence_score"
+          "turn_analyzed, valid_until_turn, strategic_focus, rationale, recommended_actions, diplomatic_stance, confidence_score"
         )
         .eq("game_id", gameId)
         .eq("country_id", countryId)
@@ -1788,7 +1811,10 @@ ECONOMIC FOCUS: For weak/bankrupt nations only.`;
 
       const analysis: LLMStrategicAnalysis = {
         strategicFocus: planRes.data.strategic_focus,
-        rationale: undefined,
+        rationale:
+          typeof (planRes.data as any).rationale === "string" && (planRes.data as any).rationale.trim()
+            ? (planRes.data as any).rationale
+            : "Strategic analysis completed",
         threatAssessment: undefined,
         opportunityIdentified: undefined,
         recommendedActions: [],
@@ -1809,25 +1835,34 @@ ECONOMIC FOCUS: For weak/bankrupt nations only.`;
         for (const item of ra) {
           if (typeof item === "string") {
             const s = item.trim();
-            if (s) actionStrings.push(s);
+            // Filter out trade advice strings too (they're not executable and clutter plans)
+            if (s && !this.isTradeAdviceText(s)) actionStrings.push(s);
             continue;
           }
           if (!item || typeof item !== "object") continue;
           const kind = (item as any).kind;
           if (kind === "step" || kind === "constraint") {
             steps.push(item as LLMPlanItem);
-            if (kind === "step" && typeof (item as any).instruction === "string") {
-              const s = (item as any).instruction.trim();
-              if (s) actionStrings.push(s);
-            }
           }
         }
-        analysis.planItems = steps.length > 0 ? steps : undefined;
-        analysis.recommendedActions = actionStrings.length > 0 ? actionStrings.slice(0, 5) : [];
+
+        const filteredSteps = this.stripUnexecutableTradeSteps(steps);
+        analysis.planItems = filteredSteps.length > 0 ? filteredSteps : undefined;
+
+        // Derive a compact display list from filtered planItems (steps) plus legacy strings
+        const fromSteps: string[] = [];
+        for (const it of filteredSteps) {
+          if (it.kind === "step" && typeof it.instruction === "string") {
+            const s = it.instruction.trim();
+            if (s && !this.isTradeAdviceText(s)) fromSteps.push(s);
+          }
+        }
+        const merged = [...fromSteps, ...actionStrings].filter(Boolean);
+        analysis.recommendedActions = merged.length > 0 ? merged.slice(0, 5) : [];
         
         // DEBUG: Log what we retrieved
-        if (steps.length > 0) {
-          console.log(`[LLM Planner] ✓ Retrieved plan for ${countryId}: ${steps.length} plan items`);
+        if (filteredSteps.length > 0) {
+          console.log(`[LLM Planner] ✓ Retrieved plan for ${countryId}: ${filteredSteps.length} plan items`);
         } else if (actionStrings.length > 0) {
           console.log(`[LLM Planner] ✓ Retrieved legacy plan for ${countryId}: ${actionStrings.length} action strings`);
         }

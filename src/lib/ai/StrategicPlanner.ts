@@ -115,7 +115,12 @@ export class StrategicPlanner {
         const planAge = state.turn - activePlan.turnAnalyzed;
         const country = state.countries.find(c => c.id === countryId);
         console.log(`[Strategic Planner] ${country?.name}: Using cached plan from T${activePlan.turnAnalyzed} (${planAge}t ago)`);
-        console.log(`  ${activePlan.strategicFocus} - ${activePlan.rationale.substring(0, 60)}`);
+      const focus = String((activePlan as any)?.strategicFocus ?? "balanced");
+      const rationale =
+        typeof (activePlan as any)?.rationale === "string" && (activePlan as any).rationale.trim()
+          ? (activePlan as any).rationale
+          : "Strategic analysis completed";
+      console.log(`  ${focus} - ${rationale.substring(0, 60)}`);
       }
 
       return this.llmPlanner.enhanceStrategyIntent(

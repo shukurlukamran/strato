@@ -57,7 +57,11 @@ export class AIController {
     // Minimal logging (only if debug enabled OR planning failed)
     if (this.debugLLMPlan) {
       const country = state.countries.find(c => c.id === countryId);
-      console.log(`[AI Controller] ${country?.name} focus: ${intent.focus} - ${intent.rationale.substring(0, 60)}`);
+      const rationale =
+        typeof (intent as any)?.rationale === "string" && (intent as any).rationale.trim()
+          ? (intent as any).rationale
+          : "No rationale";
+      console.log(`[AI Controller] ${country?.name} focus: ${intent.focus} - ${rationale.substring(0, 60)}`);
 
       if (intent.llmPlan) {
         const planItems = intent.llmPlan.planItems ?? [];
