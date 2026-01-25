@@ -6,6 +6,7 @@ import { TurnProcessor } from "@/lib/game-engine/TurnProcessor";
 import { EconomicEngine } from "@/lib/game-engine/EconomicEngine";
 import { NarrativeEngine } from "@/lib/game-engine/NarrativeEngine";
 import { AIController } from "@/lib/ai/AIController";
+import { AITradeOfferService } from "@/lib/ai/AITradeOfferService";
 import { ActionPricing } from "@/lib/game-engine/ActionPricing";
 
 const BodySchema = z.object({
@@ -578,6 +579,28 @@ export async function POST(req: Request) {
     return null;
   };
 
+  // AI Trade Offers to Player
+  const tradeOfferService = new AITradeOfferService();
+  const tradePlanner = new (await import("@/lib/ai/TradePlanner")).TradePlanner();
+  const { MarketPricing } = await import("@/lib/game-engine/MarketPricing");
+
+  // Get market prices for trade planning
+  const marketPrices = await MarketPricing.computeMarketPricesForGame(gameId, turn);
+
+  for (const aiCountry of state.data.countries.filter(c => !c.isPlayerControlled)) {
+    for (const playerCountry of state.data.countries.filter(c => c.isPlayerControlled)) {
+      if (tradeOfferService.shouldOfferTrade(aiCountry.id, playerCountry.id, turn, state.data)) {
+        // Find beneficial trade
+        const proposals = await tradePlanner.planTrades(aiCountry.id, state.data, marketPrices.marketPrices);
+        const playerProposals = proposals.filter(p => p.receiverId === playerCountry.id);
+
+        if (playerProposals.length > 0) {
+          await tradeOfferService.sendTradeOffer(gameId, aiCountry.id, playerCountry.id, playerProposals[0]);
+        }
+      }
+    }
+  }
+
   const processor = new TurnProcessor();
   const result = await processor.processTurn(state, getCityData);
 
@@ -984,30 +1007,24 @@ export async function POST(req: Request) {
         const proposerName = countryNames.get(deal.proposing_country_id) || "Unknown";
         const receiverName = countryNames.get(deal.receiving_country_id) || "Unknown";
 
-        let commitments = "";
-        if (deal.deal_terms.proposerCommitments?.length > 0) {
-          commitments += `${proposerName} gives: ${deal.deal_terms.proposerCommitments.map((c: any) =>
-            c.type === 'resource_transfer' ? `${c.amount}x ${c.resource}` :
-            c.type === 'budget_transfer' ? `$${c.amount}` : c.type
-          ).join(', ')}`;
-        }
-        if (deal.deal_terms.receiverCommitments?.length > 0) {
-          if (commitments) commitments += "; ";
-          commitments += `${receiverName} gives: ${deal.deal_terms.receiverCommitments.map((c: any) =>
-            c.type === 'resource_transfer' ? `${c.amount}x ${c.resource}` :
-            c.type === 'budget_transfer' ? `$${c.amount}` : c.type
-          ).join(', ')}`;
-        }
+        const { DealMessageGenerator } = await import("@/lib/game-engine/DealMessageGenerator");
+        const messageGenerator = new DealMessageGenerator();
+
+        const message = messageGenerator.generateDealMessage(
+          proposerName,
+          receiverName,
+          deal.deal_terms.proposerCommitments || [],
+          deal.deal_terms.receiverCommitments || []
+        );
 
         dealEvents.push({
           type: 'deal.trade.executed',
-          message: `${proposerName} and ${receiverName} executed a ${deal.deal_type} deal`,
+          message,  // Now detailed and varied
           data: {
             dealId: deal.id,
             dealType: deal.deal_type,
             proposerName,
             receiverName,
-            commitments,
             turnExecuted: turn
           }
         });

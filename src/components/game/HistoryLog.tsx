@@ -73,18 +73,13 @@ export function HistoryLog({ gameId, currentTurn }: HistoryLogProps) {
     );
   }
 
-  // Filter to only show relevant events (actions, deals, natural events, statements)
-  // Exclude economic events like population growth and treasury increases
-  const actionEvents = history?.events.filter(e => e.type.startsWith('action') || e.type.startsWith('statement')) || [];
-  const dealEvents = history?.events.filter(e => e.type.startsWith('deal')) || [];
-  const naturalEvents = history?.events.filter(e => e.type.startsWith('natural')) || [];
+  // Don't filter - use events as-is from backend (already shuffled)
+  const allEvents = history?.events || [];
 
-  const totalRelevantEvents = actionEvents.length + dealEvents.length + naturalEvents.length;
-
-  if (!history || totalRelevantEvents === 0) {
+  if (!history || allEvents.length === 0) {
     return (
       <div className="flex h-full items-center justify-center">
-        <div className="text-sm text-white/40">No actions in previous turn</div>
+        <div className="text-sm text-white/40">No events in previous turn</div>
       </div>
     );
   }
@@ -92,39 +87,14 @@ export function HistoryLog({ gameId, currentTurn }: HistoryLogProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="mb-3 flex items-center justify-between border-b border-white/10 pb-2">
-        <h3 className="text-sm font-semibold text-white">Turn {history.turn} Actions</h3>
-        <span className="text-xs text-white/50">{totalRelevantEvents}</span>
+        <h3 className="text-sm font-semibold text-white">Turn {history.turn} Events</h3>
+        <span className="text-xs text-white/50">{allEvents.length}</span>
       </div>
 
-      <div className="flex-1 space-y-2 overflow-y-auto">
-        {/* Country Actions */}
-        {actionEvents.length > 0 && (
-          <div className="space-y-1.5">
-            {actionEvents.map((event, idx) => (
-              <EventItem key={`action-${idx}`} event={event} />
-            ))}
-          </div>
-        )}
-
-        {/* Deals (future feature) */}
-        {dealEvents.length > 0 && (
-          <div className="space-y-1.5">
-            <div className="mb-1 mt-3 text-xs font-medium text-amber-400">Deals</div>
-            {dealEvents.map((event, idx) => (
-              <EventItem key={`deal-${idx}`} event={event} />
-            ))}
-          </div>
-        )}
-
-        {/* Natural Events (future feature) */}
-        {naturalEvents.length > 0 && (
-          <div className="space-y-1.5">
-            <div className="mb-1 mt-3 text-xs font-medium text-purple-400">Natural Events</div>
-            {naturalEvents.map((event, idx) => (
-              <EventItem key={`natural-${idx}`} event={event} />
-            ))}
-          </div>
-        )}
+      <div className="flex-1 space-y-1.5 overflow-y-auto">
+        {allEvents.map((event, idx) => (
+          <EventItem key={`event-${idx}`} event={event} />
+        ))}
       </div>
     </div>
   );

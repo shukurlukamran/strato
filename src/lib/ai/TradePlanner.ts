@@ -92,7 +92,7 @@ export class TradePlanner {
    * Detect resource shortages that might block future actions
    * Uses actual ResourceCost requirements instead of hardcoded heuristics
    */
-  private detectShortages(
+  detectShortages(
     country: any,
     gameState: GameStateSnapshot
   ): Array<{ resourceId: string; needed: number; available: number }> {
@@ -379,6 +379,69 @@ export class TradePlanner {
       .join(' and ');
   }
 
+  /**
+   * Buy resources from black market as fallback
+   * Called when no trade partners available or trades fail
+   */
+  async buyFromBlackMarket(
+    gameId: string,
+    countryId: string,
+    shortages: Array<{ resourceId: string; needed: number; available: number }>,
+    stats: any,
+    marketPrices: Record<string, number>
+  ): Promise<Array<{ resourceId: string; amount: number; cost: number }>> {
+    const purchases: Array<{ resourceId: string; amount: number; cost: number }> = [];
+    const supabase = await this.getSupabaseClient();
+
+    let remainingBudget = stats.budget || 0;
+
+    // Sort shortages by priority (most critical first)
+    const sortedShortages = shortages.sort((a, b) =>
+      (b.needed - b.available) - (a.needed - a.available)
+    );
+
+    for (const shortage of sortedShortages) {
+      const blackMarketBuyPrice = marketPrices[shortage.resourceId] * 1.8;  // Black market markup
+      const amountNeeded = shortage.needed - shortage.available;
+      const cost = amountNeeded * blackMarketBuyPrice;
+
+      // Only buy if we can afford it and have enough budget buffer (keep 20% reserve)
+      if (cost <= remainingBudget * 0.8) {
+        // Update country resources and budget
+        const newResourceAmount = (stats.resources[shortage.resourceId] || 0) + amountNeeded;
+        const newBudget = remainingBudget - cost;
+
+        // Update database
+        await supabase
+          .from('country_stats')
+          .update({
+            resources: {
+              ...stats.resources,
+              [shortage.resourceId]: newResourceAmount
+            },
+            budget: newBudget
+          })
+          .eq('game_id', gameId)
+          .eq('country_id', countryId);
+
+        purchases.push({
+          resourceId: shortage.resourceId,
+          amount: amountNeeded,
+          cost
+        });
+
+        remainingBudget = newBudget;
+      }
+    }
+
+    return purchases;
+  }
+
+  private async getSupabaseClient() {
+    const { getSupabaseServerClient } = await import('../supabase/server');
+    return getSupabaseServerClient();
+  }
+
   private formatCommitments(commitments: any[]): string {
     return commitments
       .map(c => {
@@ -386,9 +449,9 @@ export class TradePlanner {
           return `${c.amount}x ${c.resource}`;
         } else if (c.type === 'budget_transfer') {
           return `$${c.amount}`;
-        }
-        return 'items';
-      })
-      .join(' and ');
+      }
+      return 'items';
+    })
+    .join(' and ');
   }
 }

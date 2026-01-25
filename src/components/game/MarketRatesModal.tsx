@@ -110,10 +110,12 @@ export function MarketRatesModal({ gameId, turn, onClose }: MarketRatesModalProp
                           <td className={`px-4 py-3 text-sm text-right font-mono ${getPriceColor(marketPrice, basePrice)}`}>
                             ${marketPrice.toFixed(1)}
                           </td>
-                          <td className={`px-4 py-3 text-sm text-right font-mono ${getPriceColor(blackMarketBuyPrice, basePrice)}`}>
+
+                          {/* Black Market Prices - NO color coding (always white) */}
+                          <td className="px-4 py-3 text-sm text-right font-mono text-white">
                             ${blackMarketBuyPrice.toFixed(1)}
                           </td>
-                          <td className={`px-4 py-3 text-sm text-right font-mono ${getPriceColor(blackMarketSellPrice, basePrice)}`}>
+                          <td className="px-4 py-3 text-sm text-right font-mono text-white">
                             ${blackMarketSellPrice.toFixed(1)}
                           </td>
                         </tr>

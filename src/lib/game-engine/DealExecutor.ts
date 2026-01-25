@@ -8,22 +8,9 @@ export class DealExecutor {
     for (const deal of activeDeals) {
       // Placeholder: execute simple trade commitments by adjusting resources/budget in stats.
       // Real implementation will enforce terms over time and validate availability.
-      if (deal.dealType === "trade") {
-        events.push({
-          type: "deal.trade.tick",
-          message: `Trade deal active between ${deal.proposingCountryId} and ${deal.receivingCountryId}`,
-          data: { dealId: deal.id },
-        });
-      }
 
-      // Example expiration handling:
-      if (deal.turnExpires != null && state.turn >= deal.turnExpires) {
-        events.push({
-          type: "deal.expired",
-          message: `Deal expired: ${deal.id}`,
-          data: { dealId: deal.id },
-        });
-      }
+      // Note: Removed deal activation and expiration messages since we only have single-turn deals
+      // that are executed immediately and logged in the deal history.
     }
 
     return events;

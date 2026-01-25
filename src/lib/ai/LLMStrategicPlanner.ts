@@ -54,9 +54,21 @@ export type LLMPlanItem =
 
 export interface LLMStrategicAnalysis {
   strategicFocus: "economy" | "military" | "diplomacy" | "research" | "balanced";
-  rationale: string;
-  threatAssessment: string;
-  opportunityIdentified: string;
+  /**
+   * @deprecated This field is no longer used and will be removed in future versions.
+   * Only structured planItems affect gameplay decisions.
+   */
+  rationale?: string;
+  /**
+   * @deprecated This field is no longer used and will be removed in future versions.
+   * Only structured planItems affect gameplay decisions.
+   */
+  threatAssessment?: string;
+  /**
+   * @deprecated This field is no longer used and will be removed in future versions.
+   * Only structured planItems affect gameplay decisions.
+   */
+  opportunityIdentified?: string;
   /**
    * Primary strategic plan (6-8 steps)
    */
@@ -69,11 +81,13 @@ export interface LLMStrategicAnalysis {
     steps: LLMPlanItem[];
   };
   /**
-   * Top risks to the primary plan
+   * @deprecated This field is no longer used and will be removed in future versions.
+   * Only structured planItems affect gameplay decisions.
    */
   risks?: string[];
   /**
-   * Why these specific steps/plan
+   * @deprecated This field is no longer used and will be removed in future versions.
+   * Only structured planItems affect gameplay decisions.
    */
   planRationale?: string;
   /**
@@ -581,7 +595,6 @@ VALIDATION CHECKLIST (verify before responding):
 Return ONLY this JSON (copy this structure with 8+ steps):
 {
   "focus": "economy|military|balanced",
-  "rationale": "Brief reason max 80 chars",
   "action_plan": [
     {"id":"s1","instruction":"Research tech level 2","execution":{"actionType":"research","actionData":{"targetLevel":2}}},
     {"id":"s2","instruction":"Recruit 15 troops for defense","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":15}}},
@@ -592,7 +605,6 @@ Return ONLY this JSON (copy this structure with 8+ steps):
     {"id":"s7","instruction":"Research tech level 4","execution":{"actionType":"research","actionData":{"targetLevel":4}}},
     {"id":"s8","instruction":"Final military buildup","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":10}}}
   ],
-  "risks":["Main risk"],
   "diplomacy":{},
   "confidence":0.8
 }`;
@@ -606,7 +618,7 @@ Return ONLY this JSON (copy this structure with 8+ steps):
     if (process.env.LLM_PLAN_DEBUG !== "1") {
       // Minimal logging for production
       const country = state.countries.find((c: any) => c.id === countryId);
-      console.log(`[LLM Plan] ${country?.name}: ${analysis.strategicFocus} - ${analysis.rationale.substring(0, 60)}`);
+      console.log(`[LLM Plan] ${country?.name}: ${analysis.strategicFocus} - ${(analysis.rationale || 'Strategic analysis completed').substring(0, 60)}`);
       return;
     }
 
@@ -641,9 +653,9 @@ Return ONLY this JSON (copy this structure with 8+ steps):
       currentNeighborRelations.forEach((line: any) => console.log(`  - ${line}`));
     }
     console.log(`Focus: ${analysis.strategicFocus.toUpperCase()}`);
-    console.log(`Rationale: ${analysis.rationale}`);
-    console.log(`Threats: ${analysis.threatAssessment}`);
-    console.log(`Opportunities: ${analysis.opportunityIdentified}`);
+    if (analysis.rationale) console.log(`Rationale: ${analysis.rationale}`);
+    if (analysis.threatAssessment) console.log(`Threats: ${analysis.threatAssessment}`);
+    if (analysis.opportunityIdentified) console.log(`Opportunities: ${analysis.opportunityIdentified}`);
     console.log(`Recommended Actions:`);
     analysis.recommendedActions.forEach((action, i) => {
       console.log(`  ${i + 1}. ${action}`);
@@ -889,13 +901,13 @@ ${await this.getMarketPricesBlock(state)}
 Plan ${this.LLM_CALL_FREQUENCY}t (2-3 act/t). Use stop_when for repeatable steps. MUST: 8-10 steps min.
 
 SCHEMA:
-{"focus":"economy|military|balanced","rationale":"<80ch","action_plan":[
+{"focus":"economy|military|balanced","action_plan":[
   {"id":"s1","instruction":"<action>","stop_when":{"tech_level_gte":2},"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
   {"id":"s2","instruction":"<action>","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":15}}},
   {"id":"s3","instruction":"<action>","execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}},
   {"id":"s4","instruction":"Arrange trade deal with nearby country for missing resources (execute via diplomacy chat)","execution":null},
   ...5-6 more steps
-],"risks":["<r1>"],"diplomacy":{${neighbors
+],"diplomacy":{${neighbors
   .split('\n')
   .filter(n => n.trim())
   .map(n => {
@@ -1002,8 +1014,8 @@ ${Object.entries(marketPrices.marketPrices).map(([r, p]) =>
         : "balanced";
       
       const rationale = (parsed.rationale || "Strategic analysis completed").substring(0, 200);
-      const threatAssessment = parsed.threats || "Normal threat level";
-      const opportunityIdentified = parsed.opportunities || "Multiple opportunities available";
+      const threatAssessment = parsed.threats || parsed.threatAssessment || "Normal threat level";
+      const opportunityIdentified = parsed.opportunities || parsed.opportunityIdentified || "Multiple opportunities available";
       const planItems = this.parsePlanItems(parsed);
       const recommendedActionsFromPlan =
         planItems && planItems.length > 0
@@ -1192,7 +1204,7 @@ ${countries.map(c => {
 
 JSON RULES:
 1. Return ONLY JSON with "countries" array
-2. Each country: countryId, focus, rationale, action_plan (8-10 items), diplomacy
+2. Each country: countryId, focus, action_plan (8-10 items), diplomacy
 3. Each action: id, instruction, execution (actionType + actionData)
 4. Use exact countryId from list above (full UUID)
 
@@ -1202,7 +1214,6 @@ EXAMPLE (COPY THIS EXACT STRUCTURE WITH YOUR COUNTRIES):
     {
       "countryId": "${countries[0]?.countryId || 'USE_EXACT_UUID_FROM_LIST_ABOVE'}",
       "focus": "balanced",
-      "rationale": "Build economy and military strength",
       "action_plan": [
         {"id":"tech1","instruction":"Upgrade tech to L2","execution":{"actionType":"research","actionData":{"targetLevel":2}}},
         {"id":"recruit1","instruction":"Recruit 15 troops","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":15}}},
@@ -1468,8 +1479,8 @@ ECONOMIC FOCUS: For weak/bankrupt nations only.`;
           : "balanced";
         
         const rationale = (parsed.rationale || "Strategic analysis completed").substring(0, 200);
-        const threatAssessment = parsed.threats || "Normal threat level";
-        const opportunityIdentified = parsed.opportunities || "Multiple opportunities available";
+        const threatAssessment = parsed.threats || parsed.threatAssessment || "Normal threat level";
+        const opportunityIdentified = parsed.opportunities || parsed.opportunityIdentified || "Multiple opportunities available";
         const planItems = this.parsePlanItems(parsed);
         
         // PHASE 2 FIX: Validate execution schema for each plan item

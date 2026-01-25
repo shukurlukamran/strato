@@ -2,14 +2,6 @@
 
 - Add the current population growth percentage and breakdown of where it comes from to the Population tooltip
 
-- In Deal chat, LLM responded with this which is unacceptable, it should keep  the conversation natural: "I've received your message: "But I want to buy more food from you. Let me know how much max food would you be wiling to give and what do you want in return?". Let me consider this carefully and get back to you."
-- "No deal detected in this conversation" error when clicking Extract Deal in Deal chat
-- AI countries should do deals between each-other and offer deals to Player (we should have a plan somewhere on this) (Only implement existing elements and 8 resources to deals for now). LLM Strategic Advices should include advices for this too but the actions should be executed without LLM. 
-- Countries should be able to buy/sell resources from/to black market at significantly worse rates than they would be able to get via trading with other countries. (When implementing this, remove allowing increase of infra and tech with penalty when resources are missing - game shouldn't allow these upgrades neither for Players, nor AI countries if resource requirements aren't met - now countries and players can buy needed resources from black market or trade with others so they have option)
-- History log should include any deals realized with details, including black market trades.
-- Bug: Deal Extractor in Deal chat struggles to understand that Player wants to sell something not buy
-- Change the base price of resources in the game to dynamically adjust based on general scarcity of that resource in the game (total amount of units all countries have). And have a button at the top bar that opens a window showing current Base price (market rate) of each resource.
-
 - Prevent cheating in the chat deals (you can get money for technology level now, but tech level isn't actually transferred, for example)
 - Prevent abuse in the LLM chat (It shouldn't be possible to use it for anything unrelated to game - we also need to have some hard limits to prevent spamming, but this limit shouldn't interrupt gameplay. And negotiations may even cost some small money in the game to slightly discourage people to overuse it unnecessarily - Come up with a rational fair plan)
 - Borders are sometimes messed up, especially when cities are captured. Sometimes there are some blank areas that doesn't belong to any country. We need to make these super defined with almost no place for error. 
@@ -32,6 +24,8 @@
 - If LLM Planner takes too long, we may split it into 2 sessions (for example, on turn 5, planner is activated for half of the countries, and on turn 10, for the other half)
 - Define a few winning conditions - and let LLM know them
 - AI countries should consider more things when deciding which country and city to attack: Military strength, City's resources (if they need those resources), City's population (the more, the better for expansion), Diplomatic relationships with the other countries (good relationships should have some benefits such as trade bonuses, etc.)
+- Chat conversations should be able to affect diplomatic relationships a bit. Build it in a way that can't be abused.
+- LLM in the chat should be diplomatic, and strategic. For example, when a significantly obviously powerful Player demands tribute and threatening to attack unless tribute paid, LLM should analyze and decide if it should pay tribute or not. To prevent abuses, such cases should always be a way to make it official, such as non-agression pact for X amount of turns in this case.
 -------
 
 Analyze root causes of these, understand what is happening, and then implement fixes. 

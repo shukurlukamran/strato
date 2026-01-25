@@ -216,7 +216,15 @@ export class TurnProcessor {
       for (const country of state.data.countries) {
         if (country.isPlayerControlled) continue; // Skip player countries
 
-        // Plan trades for this AI country
+        const stats = state.data.countryStatsByCountryId[country.id];
+        if (!stats) continue;
+
+        // Detect shortages
+        const shortages = await this.tradePlanner.detectShortages(country, state.data);
+
+        if (shortages.length === 0) continue; // No needs
+
+        // Try to trade first
         const proposals = await this.tradePlanner.planTrades(country.id, state.data, marketPrices.marketPrices);
 
         if (proposals.length > 0) {
@@ -242,9 +250,30 @@ export class TurnProcessor {
             });
 
             console.log(`[AI Trading] ${country.name} executed trade: ${executionResult.dealId}`);
-          } else {
-            console.warn(`[AI Trading] ${country.name} trade failed: ${executionResult.error}`);
+            continue; // Trade succeeded, move to next country
           }
+        }
+
+        // FALLBACK: No trade partners or trade failed - use black market
+        console.log(`[AI Trading] ${country.name} has no trade partners, trying black market...`);
+
+        const blackMarketPurchases = await this.tradePlanner.buyFromBlackMarket(
+          state.data.gameId,
+          country.id,
+          shortages,
+          stats,
+          marketPrices.marketPrices
+        );
+
+        if (blackMarketPurchases.length > 0) {
+          tradeEvents.push({
+            type: 'deal.black_market.ai',
+            message: `${country.name} bought resources from black market`,
+            data: {
+              countryId: country.id,
+              purchases: blackMarketPurchases
+            }
+          });
         }
       }
     } catch (error) {
