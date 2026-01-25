@@ -401,28 +401,17 @@ export class TradePlanner {
     );
 
     for (const shortage of sortedShortages) {
-      const blackMarketBuyPrice = marketPrices[shortage.resourceId] * 1.8;  // Black market markup
-      const amountNeeded = shortage.needed - shortage.available;
+      // Use properly rounded black market price (matching MarketPricing.ts)
+      const blackMarketBuyPrice = Math.round(marketPrices[shortage.resourceId] * 1.8);
+      const amountNeeded = Math.max(0, shortage.needed - shortage.available);
       const cost = amountNeeded * blackMarketBuyPrice;
 
       // Only buy if we can afford it and have enough budget buffer (keep 20% reserve)
-      if (cost <= remainingBudget * 0.8) {
-        // Update country resources and budget
+      if (cost > 0 && cost <= remainingBudget * 0.8) {
+        // Update country resources and budget in memory (will be persisted by turn route)
         const newResourceAmount = (stats.resources[shortage.resourceId] || 0) + amountNeeded;
-        const newBudget = remainingBudget - cost;
-
-        // Update database
-        await supabase
-          .from('country_stats')
-          .update({
-            resources: {
-              ...stats.resources,
-              [shortage.resourceId]: newResourceAmount
-            },
-            budget: newBudget
-          })
-          .eq('game_id', gameId)
-          .eq('country_id', countryId);
+        stats.resources[shortage.resourceId] = newResourceAmount;
+        stats.budget = remainingBudget - cost;
 
         purchases.push({
           resourceId: shortage.resourceId,
@@ -430,7 +419,7 @@ export class TradePlanner {
           cost
         });
 
-        remainingBudget = newBudget;
+        remainingBudget = stats.budget;
       }
     }
 

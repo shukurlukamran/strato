@@ -1,6 +1,8 @@
 (DO NOT TOUCH THIS FILE. THIS FILE IS FOR MY PERSONAL NOTES.)
 
 - Add the current population growth percentage and breakdown of where it comes from to the Population tooltip
+- Deal Extraction shouldn't go through automatically. A player should be able to confirm the deal by clicking Confirm button.
+- Deal extraction still thinks Player is the side that will pay when he is the receiver. Summary in the Deal extraction is correct but They commit, You commit values aren't.
 
 - Prevent cheating in the chat deals (you can get money for technology level now, but tech level isn't actually transferred, for example)
 - Prevent abuse in the LLM chat (It shouldn't be possible to use it for anything unrelated to game - we also need to have some hard limits to prevent spamming, but this limit shouldn't interrupt gameplay. And negotiations may even cost some small money in the game to slightly discourage people to overuse it unnecessarily - Come up with a rational fair plan)
@@ -36,4 +38,10 @@ Analyze root causes of these, understand what is happening, and create a concise
 
 Analyze the plan carefully, understand what is happening, and then implement fixes. Feel free to ask me if there's anything unclear or anything you wanna clarify further regarding the plan. Make sure everything we build is also aligned with Supabase database.
 
-We implemented the plan at @  Analyze and check to verify if these are now implemented correctly. If not, create a concise plan with no fillers or bullshit for the implementation for helping other AI models to build it. Make sure everything we build is also aligned with Supabase database.
+----
+
+We implemented the plan at @ Analyze and check to verify if these are now implemented correctly. If not, create a comprehensive plan for the implementation for helping other AI models to build it. Make sure everything we build is also aligned with LLM in both Deals chat and End turn decisions and anywhere else it may be used, Tooltips, and also with Supabase database.
+
+I want you to do a very thourough analysis including verifying calculations and algorithms work as intended. 
+
+Do not report back what is fixed or already implemented. Only provide what is missing, wrong, or should/can be changed/optimized.

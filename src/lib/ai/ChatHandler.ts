@@ -237,11 +237,8 @@ export class ChatHandler {
 
     const strategicPlanBlock = context.strategicPlan
       ? `
-CURRENT STRATEGIC PLAN (valid through turn ${context.strategicPlan.validUntilTurn ?? turn}):
+CURRENT STRATEGIC PLAN (valid through turn ${context.strategicPlan.validUntilTurn ?? context.turn}):
 - Focus: ${context.strategicPlan.strategicFocus}
-- Rationale: ${context.strategicPlan.rationale}
-- Threats: ${context.strategicPlan.threatAssessment}
-- Opportunities: ${context.strategicPlan.opportunityIdentified}
 - Recommended Actions: ${context.strategicPlan.recommendedActions.join("; ") || "None"}
 - Diplomatic Stance Guidance: ${JSON.stringify(context.strategicPlan.diplomaticStance)}`
       : `

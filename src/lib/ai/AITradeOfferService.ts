@@ -2,6 +2,10 @@ import { TradeProposal } from './TradePlanner';
 import type { GameStateSnapshot } from '@/lib/game-engine/GameState';
 import { ChatHandler } from './ChatHandler';
 
+// Track last AI offer sent per (gameId, aiCountryId, playerCountryId) to prevent spam
+// Key format: "${gameId}|${aiCountryId}|${playerCountryId}"
+const lastOfferTurnByKey = new Map<string, number>();
+
 export class AITradeOfferService {
   constructor() {}
 
@@ -13,13 +17,22 @@ export class AITradeOfferService {
   /**
    * Determine if AI should offer a trade to player this turn
    * Frequency: ~every 5 turns if AI has surplus and player has shortages
+   * Includes cooldown to prevent spam
    */
   shouldOfferTrade(
     aiCountryId: string,
     playerCountryId: string,
     turn: number,
+    gameId: string,
     gameState: GameStateSnapshot
   ): boolean {
+    // Check cooldown: don't offer to same player more than once per 5 turns
+    const key = `${gameId}|${aiCountryId}|${playerCountryId}`;
+    const lastOfferTurn = lastOfferTurnByKey.get(key);
+    if (lastOfferTurn !== undefined && turn - lastOfferTurn < 5) {
+      return false;
+    }
+
     // Only offer trades every ~5 turns to avoid spam
     const turnModulo = turn % 5;
     if (turnModulo !== 0 && turnModulo !== 2) {
@@ -107,7 +120,7 @@ export class AITradeOfferService {
 
       // Update chat last_message_at
       await supabase
-        .from("chats")
+        .from("diplomacy_chats")
         .update({
           last_message_at: now,
           updated_at: now
@@ -132,27 +145,40 @@ export class AITradeOfferService {
       const { getSupabaseServerClient } = await import('../supabase/server');
       const supabase = getSupabaseServerClient();
 
-      // Look for existing diplomacy chat between these countries
-      const { data: existingChat, error } = await supabase
-        .from('chats')
+      // Look for existing diplomacy chat between these countries (try both orderings)
+      const { data: chatA, error: errorA } = await supabase
+        .from('diplomacy_chats')
         .select('id')
         .eq('game_id', gameId)
-        .eq('chat_type', 'diplomacy')
-        .contains('participant_country_ids', [countryId1, countryId2])
-        .single();
+        .eq('country_a_id', countryId1)
+        .eq('country_b_id', countryId2)
+        .maybeSingle();
 
-      if (existingChat && !error) {
-        return existingChat.id;
+      if (chatA && !errorA) {
+        return chatA.id;
+      }
+
+      const { data: chatB, error: errorB } = await supabase
+        .from('diplomacy_chats')
+        .select('id')
+        .eq('game_id', gameId)
+        .eq('country_a_id', countryId2)
+        .eq('country_b_id', countryId1)
+        .maybeSingle();
+
+      if (chatB && !errorB) {
+        return chatB.id;
       }
 
       // Create new diplomacy chat if none exists
       const { data: newChat, error: createError } = await supabase
-        .from('chats')
+        .from('diplomacy_chats')
         .insert({
           game_id: gameId,
-          chat_type: 'diplomacy',
-          participant_country_ids: [countryId1, countryId2],
-          created_at: new Date().toISOString()
+          country_a_id: countryId1,
+          country_b_id: countryId2,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         })
         .select('id')
         .single();

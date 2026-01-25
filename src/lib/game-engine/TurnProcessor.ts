@@ -97,7 +97,7 @@ export class TurnProcessor {
     }
 
     // 5) Run events (randomness controlled later via seeded RNG)
-    const events = [...dealEvents, ...this.eventSystem.generateEvents(state)];
+    const events = [...dealEvents, ...tradeEvents, ...this.eventSystem.generateEvents(state)];
 
     return { executedActions, events, combatResults };
   }

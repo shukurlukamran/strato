@@ -653,9 +653,6 @@ Return ONLY this JSON (copy this structure with 8+ steps):
       currentNeighborRelations.forEach((line: any) => console.log(`  - ${line}`));
     }
     console.log(`Focus: ${analysis.strategicFocus.toUpperCase()}`);
-    if (analysis.rationale) console.log(`Rationale: ${analysis.rationale}`);
-    if (analysis.threatAssessment) console.log(`Threats: ${analysis.threatAssessment}`);
-    if (analysis.opportunityIdentified) console.log(`Opportunities: ${analysis.opportunityIdentified}`);
     console.log(`Recommended Actions:`);
     analysis.recommendedActions.forEach((action, i) => {
       console.log(`  ${i + 1}. ${action}`);
@@ -708,7 +705,6 @@ Return ONLY this JSON structure. NO markdown. NO code blocks. NO explanations. J
     {
       "countryId": "USE_EXACT_UUID_FROM_ABOVE",
       "focus": "economy|military|balanced",
-      "rationale": "Brief reason max 80 chars",
       "action_plan": [
         {"id":"step1","instruction":"Research tech level 2","execution":{"actionType":"research","actionData":{"targetLevel":2}}},
         {"id":"step2","instruction":"Recruit troops for defense","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":15}}},
@@ -922,7 +918,7 @@ CRITICAL: Military MUST have subType:"recruit"|"attack". Economic MUST have subT
 STRATEGIC GUIDANCE:
 - If resources are missing for planned actions, recommend trading with other countries or using black market as fallback
 - Use market prices to evaluate fair trade terms
-- Black market provides immediate access at premium prices (80% markup for buying, 45% of market for selling)
+- Black market provides immediate access at premium prices (80% markup for buying, 45% discount for selling)
 - Consider diplomatic relations when planning trades
 - IMPORTANT: Trade deals must be arranged via diplomacy chat (they are NOT directly executable actions) - include as advice steps with execution:null`;
   }
@@ -1260,7 +1256,6 @@ SCHEMA: Return JSON with "countries" array. Each country MUST have:
 - countryId: EXACT UUID from the list above (e.g., "406b9182-a2eb-40c7-9854-190a5ddc6eb5")
   ⚠️ NEVER use country names! ONLY use the full UUID!
 - focus: "economy"|"military"|"balanced"
-- rationale: Brief reason (max 100 chars)
 - action_plan: Array of EXACTLY 8-10 executable steps (REQUIRED: minimum 8, maximum 10)
   ⚠️ Plans with fewer than 8 steps will FAIL validation!
 - diplomacy: Object (can be empty {})
@@ -1777,7 +1772,7 @@ ECONOMIC FOCUS: For weak/bankrupt nations only.`;
       const planRes = await supabase
         .from("llm_strategic_plans")
         .select(
-          "turn_analyzed, valid_until_turn, strategic_focus, rationale, threat_assessment, opportunity_identified, recommended_actions, diplomatic_stance, confidence_score"
+          "turn_analyzed, valid_until_turn, strategic_focus, recommended_actions, diplomatic_stance, confidence_score"
         )
         .eq("game_id", gameId)
         .eq("country_id", countryId)
@@ -1793,9 +1788,9 @@ ECONOMIC FOCUS: For weak/bankrupt nations only.`;
 
       const analysis: LLMStrategicAnalysis = {
         strategicFocus: planRes.data.strategic_focus,
-        rationale: planRes.data.rationale,
-        threatAssessment: planRes.data.threat_assessment,
-        opportunityIdentified: planRes.data.opportunity_identified,
+        rationale: undefined,
+        threatAssessment: undefined,
+        opportunityIdentified: undefined,
         recommendedActions: [],
         planItems: undefined,
         diplomaticStance: (planRes.data.diplomatic_stance as Record<string, "friendly" | "neutral" | "hostile">) ?? {},
@@ -1894,9 +1889,6 @@ ECONOMIC FOCUS: For weak/bankrupt nations only.`;
             turn_analyzed: analysis.turnAnalyzed,
             valid_until_turn: validUntilTurn,
             strategic_focus: analysis.strategicFocus,
-            rationale: analysis.rationale,
-            threat_assessment: analysis.threatAssessment,
-            opportunity_identified: analysis.opportunityIdentified,
             recommended_actions: recommendedActionsToStore,
             diplomatic_stance: analysis.diplomaticStance,
             confidence_score: analysis.confidenceScore,

@@ -589,7 +589,7 @@ export async function POST(req: Request) {
 
   for (const aiCountry of state.data.countries.filter(c => !c.isPlayerControlled)) {
     for (const playerCountry of state.data.countries.filter(c => c.isPlayerControlled)) {
-      if (tradeOfferService.shouldOfferTrade(aiCountry.id, playerCountry.id, turn, state.data)) {
+      if (tradeOfferService.shouldOfferTrade(aiCountry.id, playerCountry.id, turn, gameId, state.data)) {
         // Find beneficial trade
         const proposals = await tradePlanner.planTrades(aiCountry.id, state.data, marketPrices.marketPrices);
         const playerProposals = proposals.filter(p => p.receiverId === playerCountry.id);
@@ -1048,31 +1048,33 @@ export async function POST(req: Request) {
 
   // Persist: mark executed actions, update stats, store snapshot, advance turn.
   // OPTIMIZED: Batch all updates together
-  if (result.executedActions.length) {
-    // Get unique country IDs that had actions OR were involved in combat
-    const actionCountryIds = new Set(result.executedActions.map(a => a.countryId));
-    const combatCountryIds = new Set<string>();
-    
-    // Add all countries involved in combat (both attackers and defenders)
-    if (result.combatResults) {
-      for (const combatResult of result.combatResults) {
-        const actionData = combatResult.attackAction.actionData as any;
-        combatCountryIds.add(actionData.attackerId || combatResult.attackAction.countryId);
-        if (actionData.defenderId) {
-          combatCountryIds.add(actionData.defenderId);
-        }
-      }
-      
-      // Diplomatic fallout affects all countries when combat occurs
-      if (result.combatResults.length > 0) {
-        for (const country of state.data.countries) {
-          combatCountryIds.add(country.id);
-        }
+  
+  // Get unique country IDs that had actions OR were involved in combat
+  // (also includes AI countries that did black market trades via executeAITrades)
+  const actionCountryIds = new Set(result.executedActions.map(a => a.countryId));
+  const combatCountryIds = new Set<string>();
+  
+  // Add all countries involved in combat (both attackers and defenders)
+  if (result.combatResults) {
+    for (const combatResult of result.combatResults) {
+      const actionData = combatResult.attackAction.actionData as any;
+      combatCountryIds.add(actionData.attackerId || combatResult.attackAction.countryId);
+      if (actionData.defenderId) {
+        combatCountryIds.add(actionData.defenderId);
       }
     }
     
-    const affectedCountryIds = [...new Set([...actionCountryIds, ...combatCountryIds])];
-    
+    // Diplomatic fallout affects all countries when combat occurs
+    if (result.combatResults.length > 0) {
+      for (const country of state.data.countries) {
+        combatCountryIds.add(country.id);
+      }
+    }
+  }
+  
+  const affectedCountryIds = [...new Set([...actionCountryIds, ...combatCountryIds])];
+  
+  if (affectedCountryIds.length > 0) {
     // Batch update actions and stats in parallel
     await Promise.all([
       // Update action statuses
@@ -1083,8 +1085,7 @@ export async function POST(req: Request) {
           { onConflict: "id" },
         ),
       
-      // Batch update all stats at once (using upsert for efficiency)
-      // This includes military losses from combat
+      // Batch update all affected stats (includes military losses from combat, black market purchases, etc)
       supabase
         .from("country_stats")
         .upsert(

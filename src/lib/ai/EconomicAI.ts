@@ -62,7 +62,8 @@ export class EconomicAI {
     // CRITICAL FIX: If LLM has strategic guidance but no executable economic steps,
     // use rule-based logic BUT respect the LLM's strategic focus.
     // This prevents contradictions like "LLM says economy, AI does research".
-    const hasLLMGuidance = intent.llmPlan && (intent.rationale.includes("LLM") || intent.rationale.includes("Fresh"));
+    // Check for LLM guidance using structured flag instead of string matching
+    const hasLLMGuidance = intent.llmPlan && intent.llmPlan.source === "fresh";
     
     // Calculate decision weights (influenced by strategic intent)
     const weights = RuleBasedAI.calculateDecisionWeights(
