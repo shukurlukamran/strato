@@ -2,6 +2,8 @@
 
 - Add the current population growth percentage and breakdown of where it comes from to the Population tooltip
 - Deal Extraction shouldn't go through automatically. A player should be able to confirm the deal by clicking Confirm button.
+- History log still shows deals with the player but player didn't receive any deal offers or confirmed
+- LLM plan includes "attack aurum" for Cyrenia but Cyrenia isn't neighbor to Aurum right now so can't attack. LLM needs to know about this.
 
 - Prevent cheating in the chat deals (you can get money for technology level now, but tech level isn't actually transferred, for example)
 - Prevent abuse in the LLM chat (It shouldn't be possible to use it for anything unrelated to game - we also need to have some hard limits to prevent spamming, but this limit shouldn't interrupt gameplay. And negotiations may even cost some small money in the game to slightly discourage people to overuse it unnecessarily - Come up with a rational fair plan)
