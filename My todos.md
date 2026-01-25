@@ -30,6 +30,8 @@
 - History log should include significant price changes in the base costs of resources between the current and previous turns. For example, "Iron price surged staggering 30%".
 - In the window showing current costs of resources, add a graph for each resource showing their price movement in the last 10 turns.
 - If LLM Planner takes too long, we may split it into 2 sessions (for example, on turn 5, planner is activated for half of the countries, and on turn 10, for the other half)
+- Define a few winning conditions - and let LLM know them
+- AI countries should consider more things when deciding which country and city to attack: Military strength, City's resources (if they need those resources), City's population (the more, the better for expansion), Diplomatic relationships with the other countries (good relationships should have some benefits such as trade bonuses, etc.)
 -------
 
 Analyze root causes of these, understand what is happening, and then implement fixes. 
