@@ -981,7 +981,7 @@ export async function POST(req: Request) {
     }
   }
 
-  // 3. Add executed deals from this turn (only show player-involved deals)
+  // 3. Add executed deals from this turn (show all deals including AI-to-AI)
   const dealEvents: Array<{ type: string; message: string; data?: Record<string, unknown> }> = [];
   try {
     const dealsRes = await supabase
@@ -999,30 +999,18 @@ export async function POST(req: Request) {
       .in("status", ["active", "accepted"]);
 
     if (dealsRes.data && dealsRes.data.length > 0) {
-      // Get country info to determine which deals involve the player
+      // Get country names for display
       const countryIds = [...new Set(dealsRes.data.flatMap(d => [d.proposing_country_id, d.receiving_country_id]))];
       const countriesRes = await supabase
         .from("countries")
-        .select("id, name, is_player_controlled")
+        .select("id, name")
         .in("id", countryIds);
 
-      const countryInfo = new Map(
-        countriesRes.data?.map(c => [c.id, { name: c.name, isPlayer: c.is_player_controlled }]) || []
-      );
+      const countryNames = new Map(countriesRes.data?.map(c => [c.id, c.name]) || []);
 
-      // Filter to only deals where at least one participant is player-controlled
-      // AI-to-AI trades are internal mechanics and shouldn't clutter the history log
-      const playerInvolvedDeals = dealsRes.data.filter(deal => {
-        const proposerInfo = countryInfo.get(deal.proposing_country_id);
-        const receiverInfo = countryInfo.get(deal.receiving_country_id);
-        return proposerInfo?.isPlayer || receiverInfo?.isPlayer;
-      });
-
-      for (const deal of playerInvolvedDeals) {
-        const proposerInfo = countryInfo.get(deal.proposing_country_id);
-        const receiverInfo = countryInfo.get(deal.receiving_country_id);
-        const proposerName = proposerInfo?.name || "Unknown";
-        const receiverName = receiverInfo?.name || "Unknown";
+      for (const deal of dealsRes.data) {
+        const proposerName = countryNames.get(deal.proposing_country_id) || "Unknown";
+        const receiverName = countryNames.get(deal.receiving_country_id) || "Unknown";
 
         const { DealMessageGenerator } = await import("@/lib/game-engine/DealMessageGenerator");
         const messageGenerator = new DealMessageGenerator();
@@ -1156,8 +1144,8 @@ export async function POST(req: Request) {
     
     // Log sample of updated stats
     if (updatedStatsRes.data.length > 0) {
-      console.log(`[Turn API] Sample updated stats for turn ${turn}:`, {
-        countryId: updatedStatsRes.data[0].country_id,
+      const sampleCountry = state.data.countries.find(c => c.id === updatedStatsRes.data[0].country_id);
+      console.log(`[Turn API] Sample updated stats for turn ${turn} - ${sampleCountry?.name || 'Unknown'} (${updatedStatsRes.data[0].country_id}):`, {
         budget: updatedStatsRes.data[0].budget,
         population: updatedStatsRes.data[0].population,
         resources: updatedStatsRes.data[0].resources
@@ -1216,8 +1204,8 @@ export async function POST(req: Request) {
         console.log(`✓ Created stats for turn ${turn + 1} for ${nextTurnStats.length} countries`);
         // Log a sample of the updated stats for debugging
         if (nextTurnStats.length > 0) {
-          console.log(`Sample stats for turn ${turn + 1}:`, {
-            countryId: nextTurnStats[0].country_id,
+          const sampleCountry = state.data.countries.find(c => c.id === nextTurnStats[0].country_id);
+          console.log(`Sample stats for turn ${turn + 1} - ${sampleCountry?.name || 'Unknown'} (${nextTurnStats[0].country_id}):`, {
             budget: nextTurnStats[0].budget,
             population: nextTurnStats[0].population,
             resources: nextTurnStats[0].resources

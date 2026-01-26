@@ -16,8 +16,7 @@ export class AITradeOfferService {
 
   /**
    * Determine if AI should offer a trade to player this turn
-   * Frequency: ~every 3-5 turns if AI has surplus and player has shortages
-   * Includes cooldown to prevent spam
+   * AI treats player countries the same as AI countries - if there's a beneficial trade, offer it
    */
   shouldOfferTrade(
     aiCountryId: string,
@@ -26,71 +25,22 @@ export class AITradeOfferService {
     gameId: string,
     gameState: GameStateSnapshot
   ): boolean {
-    // Check cooldown: don't offer to same player more than once per 3 turns
+    // Minimal cooldown to prevent spam within same turn (but allow frequent offers)
     const key = `${gameId}|${aiCountryId}|${playerCountryId}`;
     const lastOfferTurn = lastOfferTurnByKey.get(key);
-    if (lastOfferTurn !== undefined && turn - lastOfferTurn < 3) {
+    if (lastOfferTurn !== undefined && turn - lastOfferTurn < 2) {
       console.log(`[AI Trade Offer] Cooldown active for ${aiCountryId} -> ${playerCountryId} (last offer: turn ${lastOfferTurn}, current: ${turn})`);
       return false;
     }
 
-    // Only offer trades every few turns to avoid spam (but more frequently than before)
-    const turnModulo = turn % 3;
-    if (turnModulo !== 0 && turnModulo !== 1) {
-      console.log(`[AI Trade Offer] Turn ${turn} doesn't match offer schedule (modulo ${turnModulo})`);
-      return false;
-    }
+    // No turn modulo restrictions - AI can offer whenever there's a beneficial trade
+    // This matches how AI-to-AI trading works
 
-    // Check if AI country has surplus resources
-    const aiStats = gameState.countryStatsByCountryId[aiCountryId];
-    if (!aiStats) {
-      console.log(`[AI Trade Offer] No stats found for AI country ${aiCountryId}`);
-      return false;
-    }
-
-    // Check if player country has resource shortages
-    const playerStats = gameState.countryStatsByCountryId[playerCountryId];
-    if (!playerStats) {
-      console.log(`[AI Trade Offer] No stats found for player country ${playerCountryId}`);
-      return false;
-    }
-
-    // Simple surplus/shortage detection
-    const aiResources = aiStats.resources || {};
-    const playerResources = playerStats.resources || {};
-
-    // Check for potential trade opportunities
-    let aiHasSurplus = false;
-    let playerHasShortage = false;
-
-    // Define critical resource thresholds (these should match game rules)
-    const criticalResources = ['food', 'steel', 'coal', 'iron', 'timber'];
-
-    for (const resource of criticalResources) {
-      const aiAmount = aiResources[resource] || 0;
-      const playerAmount = playerResources[resource] || 0;
-
-      // AI has surplus if they have more than 40 units of a resource (lowered threshold)
-      if (aiAmount > 40) {
-        aiHasSurplus = true;
-      }
-
-      // Player has shortage if they have less than 30 units of a resource (raised threshold to be more generous)
-      if (playerAmount < 30) {
-        playerHasShortage = true;
-      }
-    }
-
-    const shouldOffer = aiHasSurplus && playerHasShortage;
+    console.log(`[AI Trade Offer] Checking if ${aiCountryId} should offer trade to ${playerCountryId} on turn ${turn}`);
     
-    if (!shouldOffer) {
-      console.log(`[AI Trade Offer] No trade opportunity: aiHasSurplus=${aiHasSurplus}, playerHasShortage=${playerHasShortage}`);
-    } else {
-      console.log(`[AI Trade Offer] Trade opportunity found for ${aiCountryId} -> ${playerCountryId}`);
-    }
-
-    // Only offer trade if both conditions are met
-    return shouldOffer;
+    // Let TradePlanner determine if there's a beneficial trade
+    // This function just gates the frequency, not the quality
+    return true;
   }
 
   /**
@@ -183,7 +133,17 @@ export class AITradeOfferService {
       const key = `${gameId}|${aiCountryId}|${playerCountryId}`;
       lastOfferTurnByKey.set(key, currentTurn);
 
-      console.log(`[AI Trade Offer] ${aiCountryId} sent trade offer to ${playerCountryId} (Deal ID: ${deal.id})`);
+      // Fetch country names for logging
+      const countriesRes = await supabase
+        .from('countries')
+        .select('id, name')
+        .in('id', [aiCountryId, playerCountryId]);
+      
+      const countryNames = new Map(countriesRes.data?.map(c => [c.id, c.name]) || []);
+      const aiName = countryNames.get(aiCountryId) || 'Unknown';
+      const playerName = countryNames.get(playerCountryId) || 'Unknown';
+
+      console.log(`[AI Trade Offer] ${aiName} (${aiCountryId}) sent trade offer to ${playerName} (${playerCountryId}) - Deal ID: ${deal.id}`);
     } catch (error) {
       console.error('[AI Trade Offer] Failed to send trade offer:', error);
     }

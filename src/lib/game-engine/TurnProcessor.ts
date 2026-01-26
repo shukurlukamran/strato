@@ -248,17 +248,18 @@ export class TurnProcessor {
             );
 
             if (executionResult.success) {
-              // Trade succeeded - no history event needed (AI-to-AI trades are internal)
-              console.log(`[AI Trading] ${country.name} executed trade: ${executionResult.dealId}`);
+              // Trade succeeded
+              const partnerCountry = state.data.countries.find(c => c.id === bestProposal.receiverId);
+              console.log(`[AI Trading] ${country.name} (${country.id}) executed trade with ${partnerCountry?.name || 'Unknown'} (${bestProposal.receiverId}): ${executionResult.dealId}`);
               continue; // Trade succeeded, move to next country
             }
           } else {
-            console.log(`[AI Trading] ${country.name} trade proposals involve player-only partners; skipping execution`);
+            console.log(`[AI Trading] ${country.name} (${country.id}) trade proposals involve player-only partners; skipping execution`);
           }
         }
 
         // FALLBACK: No trade partners or trade failed - use black market
-        console.log(`[AI Trading] ${country.name} has no trade partners, trying black market...`);
+        console.log(`[AI Trading] ${country.name} (${country.id}) has no trade partners, trying black market...`);
 
         const blackMarketPurchases = await this.tradePlanner.buyFromBlackMarket(
           state.data.gameId,
@@ -269,6 +270,7 @@ export class TurnProcessor {
         );
 
         if (blackMarketPurchases.length > 0) {
+          console.log(`[AI Trading] ${country.name} (${country.id}) purchased from black market:`, blackMarketPurchases);
           tradeEvents.push({
             type: 'deal.black_market.ai',
             message: `${country.name} bought resources from black market`,

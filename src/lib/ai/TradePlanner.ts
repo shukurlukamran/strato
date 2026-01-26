@@ -383,7 +383,10 @@ export class TradePlanner {
         return { success: false, error: 'Failed to create deal record' };
       }
 
-      console.log(`[TradePlanner] Trade executed successfully: ${deal.id}`);
+      // Get country names for logging
+      const proposerCountry = gameState.countries.find(c => c.id === proposal.proposerId);
+      const receiverCountry = gameState.countries.find(c => c.id === proposal.receiverId);
+      console.log(`[TradePlanner] Trade executed successfully: ${proposerCountry?.name || 'Unknown'} (${proposal.proposerId}) ↔ ${receiverCountry?.name || 'Unknown'} (${proposal.receiverId}), deal: ${deal.id}`);
       return { success: true, dealId: deal.id };
 
     } catch (error) {

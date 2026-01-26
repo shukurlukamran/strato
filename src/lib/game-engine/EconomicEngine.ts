@@ -81,7 +81,7 @@ export class EconomicEngine {
     }
     
     // 6. Save to database
-    await this.saveEconomicUpdates(supabase, country.id, stats.turn, {
+    await this.saveEconomicUpdates(supabase, country.id, country.name, stats.turn, {
       budgetChange: budgetBreakdown.netBudget,
       resources: finalResources,
       populationChange,
@@ -205,6 +205,7 @@ export class EconomicEngine {
   private static async saveEconomicUpdates(
     supabase: SupabaseClient<any>,
     countryId: string,
+    countryName: string,
     turn: number,
     updates: {
       budgetChange: number;
@@ -226,7 +227,7 @@ export class EconomicEngine {
     // Preserve infrastructure_level if it exists
     const infraLevel = updates.stats.infrastructureLevel ?? 0;
     
-    console.log(`[EconomicEngine] Updating stats for country ${countryId}, turn ${turn}:`, {
+    console.log(`[EconomicEngine] Updating stats for ${countryName} (${countryId}), turn ${turn}:`, {
       oldBudget: updates.stats.budget,
       newBudget,
       budgetChange: updates.budgetChange,
@@ -253,7 +254,7 @@ export class EconomicEngine {
       throw error;
     }
     
-    console.log(`[EconomicEngine] ✓ Stats updated successfully for country ${countryId}, turn ${turn}`);
+    console.log(`[EconomicEngine] ✓ Stats updated successfully for ${countryName} (${countryId}), turn ${turn}`);
   }
   
   private static parseResources(resources: Record<string, number>): ResourceAmount[] {
