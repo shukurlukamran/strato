@@ -148,7 +148,8 @@ export async function POST(req: Request) {
 
         return NextResponse.json({ 
           response: aiResponse.messageText,
-          chatId: chatId || undefined
+          chatId: chatId || undefined,
+          policyMessage: aiResponse.policyMessage ?? null,
         });
       } catch (error) {
         console.error("Error using ChatHandler:", error);

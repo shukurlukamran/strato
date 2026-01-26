@@ -1,16 +1,13 @@
 (DO NOT TOUCH THIS FILE. THIS FILE IS FOR MY PERSONAL NOTES.)
 
-Countries offer irrational trade deals to Player. They offer the same amount of another way cheaper resource for more expensive resource. For example, 10 food for 10 steel. But food is much cheaper at that time in the game than steel. They always offer the same amount as they're asking for. They don't count in current Market prices.
-
-Also they should be able to offer to give/receive money too. Deals doesn't have to be only resource barter. It can be buying/selling resources from each other.
-
-If it 's the same for AI-AI trades too, fix it, as well.
-
 - Remove Trade Revenue component from the game completely as it's useless. Instead, any trade advantage/disadvantage in the game should increase/decrease the resources/money you receive from trades/deals (to be calculated right before they're added to your balance). Update tooltips accordingly too. Make sure everything you build is aligned with Supabase database. 
+- "Borealis bought resources from black market" in the history log should show which resource and how much of it
+- History log says: "Dravon defended Dravon against Aurum! • Attack: 89 (effective strength with +80% tech) • Defense: 57 (effective strength with +100% tech + 20% terrain) • Combat Ratio: 1.30:1 (defender prevailed despite odds) • Losses: Aurum -32, Dravon -9" //// How is this calculation being done in the code? - explain in simple terms.
 
 ---
 - Log in system and saving games to profiles
 - Prevent abuse in the LLM chat (It shouldn't be possible to use it for anything unrelated to game - we also need to have some hard limits to prevent spamming, but this limit shouldn't interrupt gameplay. And negotiations may even cost some small money in the game to slightly discourage people to overuse it unnecessarily - Come up with a rational fair plan)
+- Each country's LLM should have a random character (affecting decisions, talking style, etc.)
 - Diplomacy system (simple for now) (non-agression pact, trade should increase relationship, ask for help, alliance)
 - Define a few winning conditions - and let LLM know them
 
@@ -18,7 +15,6 @@ If it 's the same for AI-AI trades too, fix it, as well.
 **LLM CHAT**
 
 - LLM in the chat should be diplomatic, and strategic. For example, when a significantly obviously powerful Player demands tribute and threatening to attack unless tribute paid, LLM should analyze and decide if it should pay tribute or not. To prevent abuses, such cases should always be a way to make it official, such as non-agression pact for X amount of turns in this case.
-- Each country's LLM should have a random character (affecting decisions, talking style, etc.)
 - Chat conversations should be able to affect diplomatic relationships a bit. Build it in a way that can't be abused.
 
 ---

@@ -135,6 +135,7 @@ export async function POST(req: Request) {
         createdAt: m.created_at,
       })),
       suggestedDeal: ai.suggestedDeal ?? null,
+      policyMessage: ai.policyMessage ?? null,
     });
   } catch {
     const now = new Date().toISOString();
@@ -169,6 +170,7 @@ export async function POST(req: Request) {
       })),
       suggestedDeal: ai.suggestedDeal ?? null,
       note: "Supabase not configured; using in-memory chat store.",
+      policyMessage: ai.policyMessage ?? null,
     });
   }
 }

@@ -6,6 +6,11 @@ import { getDiplomaticScore } from "@/lib/game-engine/DiplomaticRelations";
 import { MarketPricing } from "@/lib/game-engine/MarketPricing";
 import type { Country, CountryStats } from "@/types/country";
 import type { ChatMessage } from "@/types/chat";
+import { ChatPolicyService } from "./ChatPolicyService";
+import { ChatMemoryService } from "./ChatMemoryService";
+import { PromptBuilder } from "./PromptBuilder";
+import { LeaderProfileService, type LeaderProfile, type LeaderTraits } from "./LeaderProfileService";
+import { randomUUID } from "node:crypto";
 
 export const ChatTurnSchema = z.object({
   gameId: z.string().uuid().optional(),
@@ -24,6 +29,7 @@ export interface ChatResponse {
     dealType: string;
     dealTerms: Record<string, unknown>;
   };
+  policyMessage?: string;
 }
 
 interface GameContext {
@@ -44,6 +50,9 @@ interface GameContext {
 export class ChatHandler {
   private genAI: GoogleGenerativeAI | null = null;
   private model: ReturnType<GoogleGenerativeAI["getGenerativeModel"]> | null = null;
+  private policyService = new ChatPolicyService();
+  private memoryService = new ChatMemoryService();
+  private leaderProfileService = new LeaderProfileService();
 
   constructor() {
     // Use environment variable for API key (never hardcode in production)
@@ -101,7 +110,7 @@ export class ChatHandler {
       const statsRes = await supabase
         .from("country_stats")
         .select(
-          "id, country_id, turn, population, budget, technology_level, military_strength, military_equipment, resources, diplomatic_relations, created_at",
+          "id, country_id, turn, population, budget, technology_level, military_strength, military_equipment, resources, diplomatic_relations, resource_profile, created_at",
         )
         .eq("turn", gameRes.data.current_turn)
         .in("country_id", [turn.senderCountryId, turn.receiverCountryId]);
@@ -125,7 +134,7 @@ export class ChatHandler {
           .select("id, chat_id, sender_country_id, message_text, is_ai_generated, created_at")
           .eq("chat_id", turn.chatId)
           .order("created_at", { ascending: true })
-          .limit(20);
+          .limit(80);
         if (!messagesRes.error && messagesRes.data) {
           chatHistory = messagesRes.data.map((m) => ({
             id: m.id,
@@ -205,6 +214,7 @@ export class ChatHandler {
           militaryEquipment: senderStats.military_equipment ?? {},
           resources: senderStats.resources ?? {},
           diplomaticRelations: senderStats.diplomatic_relations ?? {},
+          resourceProfile: senderStats.resource_profile ?? undefined,
           createdAt: senderStats.created_at,
         },
         receiverStats: {
@@ -218,6 +228,7 @@ export class ChatHandler {
           militaryEquipment: receiverStats.military_equipment ?? {},
           resources: receiverStats.resources ?? {},
           diplomaticRelations: receiverStats.diplomatic_relations ?? {},
+          resourceProfile: receiverStats.resource_profile ?? undefined,
           createdAt: receiverStats.created_at,
         },
         chatHistory,
@@ -228,64 +239,7 @@ export class ChatHandler {
     }
   }
 
-  private async buildSystemPrompt(context: GameContext): Promise<string> {
-    const { senderCountry, receiverCountry, senderStats, receiverStats, turn } = context;
-    const diplomaticScore = getDiplomaticScore(
-      receiverStats.diplomaticRelations,
-      senderCountry.id
-    );
-
-    const strategicPlanBlock = context.strategicPlan
-      ? `
-CURRENT STRATEGIC PLAN (valid through turn ${context.strategicPlan.validUntilTurn ?? context.turn}):
-- Focus: ${context.strategicPlan.strategicFocus}
-- Recommended Actions: ${context.strategicPlan.recommendedActions.join("; ") || "None"}
-- Diplomatic Stance Guidance: ${JSON.stringify(context.strategicPlan.diplomaticStance)}`
-      : `
-CURRENT STRATEGIC PLAN:
-- No active LLM plan found. Use pragmatic, risk-aware judgment.`;
-
-    return `You are the diplomatic representative of ${receiverCountry.name}, an AI-controlled country in a turn-based strategy game.
-
-GAME CONTEXT:
-- Current Turn: ${turn}
-- You represent: ${receiverCountry.name}
-- You are negotiating with: ${senderCountry.name}
-
-YOUR COUNTRY (${receiverCountry.name}) STATS:
-- Population: ${receiverStats.population.toLocaleString()}
-- Budget: ${receiverStats.budget.toLocaleString()} credits
-- Technology Level: ${receiverStats.technologyLevel}
-- Military Strength: ${receiverStats.militaryStrength}
-- Resources: ${JSON.stringify(receiverStats.resources)}
-
-THEIR COUNTRY (${senderCountry.name}) STATS:
-- Population: ${senderStats.population.toLocaleString()}
-- Budget: ${senderStats.budget.toLocaleString()} credits
-- Technology Level: ${senderStats.technologyLevel}
-- Military Strength: ${senderStats.militaryStrength}
-- Resources: ${JSON.stringify(senderStats.resources)}
-
-DIPLOMATIC RELATIONS:
-- Your relations with them: ${diplomaticScore}/100
-
-${await this.getMarketPricesBlock(context)}
-
-${strategicPlanBlock}
-
-INSTRUCTIONS:
-1. Respond as a strategic, realistic diplomatic representative who acts in ${receiverCountry.name}'s best interests
-2. Consider your country's resources, military strength, and economic situation when negotiating
-3. Be diplomatic but firm - you're not easily manipulated
-4. If a deal is proposed, evaluate it based on mutual benefit and your country's needs
-5. Keep responses concise (2-4 sentences typically, up to 2 paragraphs max)
-6. Match the tone of the conversation - formal for serious negotiations, more casual for friendly chats
-7. Reference specific stats or resources when relevant to show you're paying attention
-8. If they propose something unreasonable, politely decline or counter-propose
-9. Align your response with the current strategic plan focus and recommended actions when present
-
-Respond naturally and strategically.`;
-  }
+  
 
   private async getMarketPricesBlock(context: GameContext): Promise<string> {
     try {
@@ -303,21 +257,58 @@ Use these prices as reference for fair trade negotiations.`;
 CURRENT MARKET RATES:
 - Market prices currently unavailable. Use reasonable estimates for negotiations.`;
     }
+
+  private buildFallbackProfile(gameId: string, countryId: string, countryName: string): LeaderProfile {
+    const fallbackTraits: LeaderTraits = {
+      register: "formal",
+      verbosity: "balanced",
+      directness: "diplomatic",
+      temperament: "calm",
+      humor: "dry",
+      patience: "steady",
+      risk_appetite: "measured",
+      aggression_doctrine: "defensive",
+      cooperation_style: "transactional",
+      honor: "keeps_word",
+      fairness: "market_fair",
+      paranoia: "wary",
+      pride: "proud",
+      empathy: "medium",
+      greed: "medium",
+      ideology: "realist",
+      planning_style: "planner",
+      speech_tics: ["Let's keep this focused.", "Clarity is strength."],
+    };
+
+    return {
+      id: randomUUID(),
+      gameId,
+      countryId,
+      leaderName: `${countryName} Representative`,
+      title: "Envoy",
+      publicValues: "Committed to steady diplomacy and fair deals.",
+      traits: fallbackTraits,
+      decisionWeights: {
+        aggression: 0.45,
+        cooperativeness: 0.6,
+        riskTolerance: 0.45,
+        honesty: 0.6,
+        patience: 0.55,
+        fairness: 0.5,
+        empathy: 0.5,
+        greed: 0.45,
+      },
+      voiceProfile: {
+        register: "formal",
+        verbosity: "balanced",
+        directness: "diplomatic",
+        tics: fallbackTraits.speech_tics.slice(0, 2),
+      },
+      seed: `${gameId}:${countryId}:fallback`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
   }
-
-  private buildHistoryMessages(context: GameContext): Array<{ role: "user" | "model"; parts: Array<{ text: string }> }> {
-    const messages: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }> = [];
-
-    // Add chat history
-    for (const msg of context.chatHistory) {
-      if (msg.senderCountryId === context.senderCountry.id) {
-        messages.push({ role: "user", parts: [{ text: msg.messageText }] });
-      } else {
-        messages.push({ role: "model", parts: [{ text: msg.messageText }] });
-      }
-    }
-
-    return messages;
   }
 
   /**
@@ -393,7 +384,6 @@ CURRENT MARKET RATES:
   }
 
   async respond(turn: ChatTurn): Promise<ChatResponse> {
-    // Try rule-based response first (avoids LLM call for simple messages)
     const ruleBasedResponse = this.getRuleBasedResponse(turn.messageText);
     if (ruleBasedResponse) {
       console.log(`[ChatHandler] Using rule-based response (saved API call)`);
@@ -401,8 +391,7 @@ CURRENT MARKET RATES:
         messageText: ruleBasedResponse,
       };
     }
-    
-    // If Gemini is not configured, use fallback
+
     if (!this.model) {
       console.error("ChatHandler: Gemini model not initialized. Check GOOGLE_GEMINI_API_KEY.");
       return {
@@ -410,82 +399,159 @@ CURRENT MARKET RATES:
       };
     }
 
-    // Fetch game context
     const context = await this.fetchGameContext(turn);
-    if (!context) {
+    if (!context || !turn.gameId || !turn.chatId || !turn.senderCountryId) {
       console.error("ChatHandler: Failed to fetch game context.", {
         gameId: turn.gameId,
         senderCountryId: turn.senderCountryId,
         receiverCountryId: turn.receiverCountryId,
         chatId: turn.chatId,
       });
-      
-      // Try to use Gemini even without full context - provide a basic prompt
+
       try {
         const basicPrompt = `You are a diplomatic representative in a strategy game. A player has sent you this message: "${turn.messageText}". Respond diplomatically and strategically, as if you represent an AI-controlled country. Keep your response concise (2-3 sentences).`;
-        
         const result = await this.model!.generateContent(basicPrompt);
-        const response = result.response;
-        const responseText = response.text().trim() || "I'm considering your proposal.";
-        
+        const responseText = result.response.text().trim() || "I'm considering your proposal.";
         return {
           messageText: responseText,
         };
       } catch (fallbackError) {
         console.error("Even fallback Gemini call failed:", fallbackError);
-        // Final fallback
         return {
           messageText: `I understand your message: "${turn.messageText}". However, I need more context to provide a proper response.`,
         };
       }
     }
 
-    const systemPrompt = await this.buildSystemPrompt(context);
-    const historyMessages = this.buildHistoryMessages(context);
+    const policyDecision = await this.policyService.evaluate({
+      gameId: turn.gameId,
+      chatId: turn.chatId,
+      playerCountryId: turn.senderCountryId,
+      turn: context.turn,
+      messageText: turn.messageText,
+    });
+
+    if (!policyDecision.allow) {
+      return {
+        messageText: policyDecision.blockReason ?? "I'm not able to respond right now.",
+      };
+    }
+
+    const memorySnapshot = await this.memoryService.captureMemory({
+      chatId: turn.chatId,
+      chatHistory: context.chatHistory,
+      newMessageText: turn.messageText,
+      senderCountryId: context.senderCountry.id,
+    });
+
+    const leaderProfile =
+      (await this.leaderProfileService.getOrCreateProfile({
+        gameId: context.gameId,
+        countryId: context.receiverCountry.id,
+        resourceProfile: context.receiverStats.resourceProfile ?? null,
+        countryName: context.receiverCountry.name,
+      })) ?? this.buildFallbackProfile(context.gameId, context.receiverCountry.id, context.receiverCountry.name);
+
+    const promptResult = PromptBuilder.build({
+      leaderProfile,
+      memory: memorySnapshot,
+      gameId: context.gameId,
+      turn: context.turn,
+      receiverCountryName: context.receiverCountry.name,
+      receiverCountryId: context.receiverCountry.id,
+      receiverStats: {
+        population: context.receiverStats.population,
+        budget: context.receiverStats.budget,
+        technologyLevel: context.receiverStats.technologyLevel,
+        infrastructureLevel: context.receiverStats.infrastructureLevel,
+        militaryStrength: context.receiverStats.militaryStrength,
+        resources: context.receiverStats.resources,
+      },
+      senderCountryName: context.senderCountry.name,
+      senderCountryId: context.senderCountry.id,
+      senderStats: {
+        population: context.senderStats.population,
+        budget: context.senderStats.budget,
+        technologyLevel: context.senderStats.technologyLevel,
+        infrastructureLevel: context.senderStats.infrastructureLevel,
+        militaryStrength: context.senderStats.militaryStrength,
+        resources: context.senderStats.resources,
+      },
+      strategicPlan: context.strategicPlan
+        ? {
+            strategicFocus: context.strategicPlan.strategicFocus,
+            validUntilTurn: context.strategicPlan.validUntilTurn,
+            recommendedActions: context.strategicPlan.recommendedActions,
+            diplomaticStance: context.strategicPlan.diplomaticStance,
+          }
+        : null,
+      marketBlock: await this.getMarketPricesBlock(context),
+      chatHistory: context.chatHistory,
+      maxHistory: 80,
+    });
+
+    const historyPackets = [
+      { role: "system", parts: [{ text: promptResult.systemPrompt }] },
+      {
+        role: "model",
+        parts: [
+          {
+            text: `Understood. I'm ready to negotiate as the representative of ${context.receiverCountry.name}.`,
+          },
+        ],
+      },
+      ...(promptResult.historyMessages ?? []),
+    ];
 
     try {
-      // Start a chat session with the system prompt and history
-      const chat = this.model.startChat({
-        history: [
-          {
-            role: "user",
-            parts: [{ text: systemPrompt }],
-          },
-          {
-            role: "model",
-            parts: [{ text: "Understood. I'm ready to negotiate as the representative of " + context.receiverCountry.name + "." }],
-          },
-          // Add conversation history
-          ...historyMessages,
-        ],
-      });
-
-      // Send the current message
+      const chat = this.model.startChat({ history: historyPackets });
       const result = await chat.sendMessage(turn.messageText);
-      const response = result.response;
-      const responseText = response.text().trim() || "I'm considering your proposal.";
-
-      // Try to extract deal information from the response (simple heuristic for now)
-      // In the future, we could use function calling or structured output
+      const responseText = result.response.text().trim() || "I'm considering your proposal.";
       const suggestedDeal = this.extractDealSuggestion(responseText, context);
+
+      await this.policyService.logUsage({
+        gameId: context.gameId,
+        playerCountryId: turn.senderCountryId,
+        chatId: turn.chatId,
+        operation: "chat_reply",
+        turn: context.turn,
+        inputChars: turn.messageText.length,
+        outputChars: responseText.length,
+        budgetCostCharged: policyDecision.budgetCost ?? 0,
+      });
 
       return {
         messageText: responseText,
         suggestedDeal,
+        policyMessage: policyDecision.warning ?? policyDecision.budgetNotice,
       };
     } catch (error) {
       console.error("Google Gemini API error:", error);
       if (error instanceof Error) {
         console.error("Error message:", error.message);
         console.error("Error stack:", error.stack);
-        
-        // If model not found error, try alternative models
+
         if (error.message.includes("not found") || error.message.includes("404")) {
           console.warn("Model not found, trying alternative models...");
-          return await this.tryAlternativeModels(context, turn.messageText, systemPrompt, historyMessages);
+          const fallback = await this.tryAlternativeModels(context, turn.messageText, promptResult.systemPrompt, promptResult.historyMessages);
+          if (fallback) {
+            await this.policyService.logUsage({
+              gameId: context.gameId,
+              playerCountryId: turn.senderCountryId,
+              chatId: turn.chatId,
+              operation: "chat_reply",
+              turn: context.turn,
+              inputChars: turn.messageText.length,
+              outputChars: fallback.messageText.length,
+              budgetCostCharged: policyDecision.budgetCost ?? 0,
+            });
+            return {
+              ...fallback,
+              policyMessage: policyDecision.warning ?? policyDecision.budgetNotice,
+            };
+          }
         }
-        
-        // Check for specific error types
+
         if (error.message.includes("API_KEY")) {
           console.error("API key issue detected. Check GOOGLE_GEMINI_API_KEY environment variable.");
         }
@@ -493,16 +559,18 @@ CURRENT MARKET RATES:
           console.error("API quota or rate limit exceeded.");
         }
       }
-      // Natural fallback response on error
+
       const naturalFallbacks = [
         "I'm considering your proposal carefully. Let's continue our discussion when we have more information.",
         "That's an interesting proposition. Let me review our current situation.",
         "I understand your interest. Let's discuss this further.",
         "We value our diplomatic relations. I'll need to consult with our advisors.",
-        "Your proposal deserves careful consideration. I'll get back to you soon."
+        "Your proposal deserves careful consideration. I'll get back to you soon.",
       ];
+
       return {
         messageText: naturalFallbacks[Math.floor(Math.random() * naturalFallbacks.length)],
+        policyMessage: policyDecision.warning ?? policyDecision.budgetNotice,
       };
     }
   }
