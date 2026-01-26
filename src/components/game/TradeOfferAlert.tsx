@@ -10,23 +10,25 @@ interface TradeOfferAlertProps {
 export function TradeOfferAlert({ deals, onClick }: TradeOfferAlertProps) {
   if (deals.length === 0) return null;
 
+  const deal = deals[0];
+
   return (
-    <div className="fixed bottom-4 right-4 z-50 max-w-sm space-y-2">
-      {deals.map((deal) => (
-        <div
-          key={deal.id}
-          className="rounded-lg border border-blue-500/40 bg-blue-900/90 px-4 py-3 shadow-xl backdrop-blur cursor-pointer hover:bg-blue-900/95 transition-colors"
-          onClick={() => onClick(deal)}
-        >
-          <div className="flex items-center gap-2 text-blue-200">
-            <span className="text-lg">🤝</span>
-            <span className="text-sm font-semibold">Trade Offer Pending</span>
-          </div>
-          <div className="mt-1 text-xs text-blue-100">
-            Click to review and respond to this trade offer
-          </div>
-        </div>
-      ))}
-    </div>
+    <button
+      type="button"
+      onClick={() => onClick(deal)}
+      className="inline-flex items-center gap-2 rounded-full border-2 border-emerald-400/80 bg-emerald-900/40 px-3 py-1.5 text-xs font-semibold text-emerald-100 transition-all hover:bg-emerald-900/60 hover:border-emerald-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-400"
+      title="Review and respond to the pending trade offer"
+    >
+      <span className="relative flex h-2 w-2">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>
+        <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500"></span>
+      </span>
+      <span className="animate-pulse">Trade Offer</span>
+      {deals.length > 1 && (
+        <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+          {deals.length}
+        </span>
+      )}
+    </button>
   );
 }
