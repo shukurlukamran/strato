@@ -269,7 +269,7 @@ function weightedSelect<T>(
 
 function buildLeaderTraits(seed: string, resourceProfileName?: string): LeaderTraits {
   const rng = createSeededRNG(seed);
-  const traits: Partial<LeaderTraits> = {};
+  const traits = {} as Omit<LeaderTraits, "speech_tics">;
   const normalizedProfileName = resourceProfileName || "default";
   const biases = RESOURCE_PROFILE_BIASES[normalizedProfileName];
 
