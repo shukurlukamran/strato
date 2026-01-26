@@ -258,6 +258,7 @@ Use these prices as reference for fair trade negotiations.`;
 CURRENT MARKET RATES:
 - Market prices currently unavailable. Use reasonable estimates for negotiations.`;
     }
+  }
 
   private buildFallbackProfile(gameId: string, countryId: string, countryName: string): LeaderProfile {
     const fallbackTraits: LeaderTraits = {
