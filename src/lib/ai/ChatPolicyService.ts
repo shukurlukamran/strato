@@ -136,9 +136,14 @@ export class ChatPolicyService {
       row = created;
     }
 
+    const data = row.data;
+    if (!data) {
+      throw new Error("Chat memory policy row missing after creation");
+    }
+
     return {
-      id: row.data.id,
-      ...(row.data.policy_state ?? {}),
+      id: data.id,
+      ...(data.policy_state ?? {}),
     } as PolicyState & { id: string };
   }
 
