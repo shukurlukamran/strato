@@ -423,6 +423,8 @@ CURRENT MARKET RATES:
       return null;
     }
 
+    const { countryA, countryB } = context;
+
 
     if (context.chatMessages.length === 0) {
       console.log("DealExtractor: No messages in chat");
