@@ -1,8 +1,10 @@
 import type { GameStateSnapshot } from "@/lib/game-engine/GameState";
 import type { City } from "@/types/city";
+import type { CountryStats } from "@/types/country";
 import { RuleBasedAI } from "./RuleBasedAI";
 import { DefaultPersonality, type AIPersonality } from "./Personality";
 import { LLMStrategicPlanner, type LLMPlanItem } from "./LLMStrategicPlanner";
+import { LeaderProfileService } from "./LeaderProfileService";
 
 export interface StrategyIntent {
   focus: "economy" | "military" | "diplomacy" | "research" | "balanced";
@@ -40,6 +42,7 @@ export interface StrategyIntent {
 export class StrategicPlanner {
   private personality: AIPersonality;
   private llmPlanner: LLMStrategicPlanner | null = null;
+  private leaderProfileService = new LeaderProfileService();
 
   constructor(personality: AIPersonality = DefaultPersonality, enableLLM: boolean = true) {
     this.personality = personality;
@@ -61,6 +64,8 @@ export class StrategicPlanner {
     if (!stats) {
       return { focus: "balanced", rationale: "Country not found, using default strategy." };
     }
+    
+    await this.applyLeaderPersonality(state, countryId, stats);
 
     // STEP 1: Always get rule-based analysis (fast, free, reliable)
     const analysis = RuleBasedAI.analyzeEconomicSituation(state, countryId, stats);
@@ -135,6 +140,38 @@ export class StrategicPlanner {
     
     // FALLBACK: Use rule-based intent (LLM not available)
     return ruleBasedIntent;
+  }
+
+  private async applyLeaderPersonality(
+    state: GameStateSnapshot,
+    countryId: string,
+    stats: CountryStats
+  ): Promise<void> {
+    const country = state.countries.find((c) => c.id === countryId);
+    const defaultPersonality = this.personality;
+
+    try {
+      const profile = await this.leaderProfileService.getOrCreateProfile({
+        gameId: state.gameId,
+        countryId,
+        resourceProfile: stats.resourceProfile ?? null,
+        countryName: country?.name,
+      });
+
+      if (profile?.decisionWeights) {
+        this.personality = {
+          aggression: profile.decisionWeights.aggression,
+          cooperativeness: profile.decisionWeights.cooperativeness,
+          riskTolerance: profile.decisionWeights.riskTolerance,
+          honesty: profile.decisionWeights.honesty,
+        };
+      } else {
+        this.personality = defaultPersonality;
+      }
+    } catch (error) {
+      console.warn("[StrategicPlanner] Failed to load leader profile:", error);
+      this.personality = defaultPersonality;
+    }
   }
   
   /**

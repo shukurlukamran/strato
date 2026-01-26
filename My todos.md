@@ -2,7 +2,15 @@
 
 - Remove Trade Revenue component from the game completely as it's useless. Instead, any trade advantage/disadvantage in the game should increase/decrease the resources/money you receive from trades/deals (to be calculated right before they're added to your balance). Update tooltips accordingly too. Make sure everything you build is aligned with Supabase database. 
 - "Borealis bought resources from black market" in the history log should show which resource and how much of it
-- History log says: "Dravon defended Dravon against Aurum! • Attack: 89 (effective strength with +80% tech) • Defense: 57 (effective strength with +100% tech + 20% terrain) • Combat Ratio: 1.30:1 (defender prevailed despite odds) • Losses: Aurum -32, Dravon -9" //// How is this calculation being done in the code? - explain in simple terms.
+- How is the combat resolution calculation being done in the code? - explain in simple terms. I suspect something is wrong. Adding a few real examples from game history log:
+
+🛡️🛡️🛡️ Borealis defended South against Cyrenia! • Attack: 39 (effective strength with +80% tech) • Defense: 42 (effective strength with +100% tech + 20% terrain) • Combat Ratio: 0.77:1 (defender prevailed despite odds) • Losses: Cyrenia -14, Borealis -5
+
+🛡️🛡️🛡️ Dravon defended Dravon against Aurum! • Attack: 89 (effective strength with +80% tech) • Defense: 57 (effective strength with +100% tech + 20% terrain) • Combat Ratio: 1.30:1 (defender prevailed despite odds) • Losses: Aurum -32, Dravon -9
+
+🛡️🛡️🛡️ Eldoria defended Lakeport against Falken! • Attack: 66 (effective strength with +100% tech) • Defense: 56 (effective strength with +80% tech + 20% terrain) • Combat Ratio: 0.98:1 (defender prevailed despite odds) • Losses: Falken -18, Eldoria -9
+
+⚔️⚔️⚔️ Eldoria captured Bay City from Dravon! • Attack: 29 (effective strength with +80% tech) • Defense: 23 (effective strength with +100% tech + 20% terrain) • Combat Ratio: 1.05:1 • Losses: Eldoria -4, Dravon -7
 
 ---
 - Log in system and saving games to profiles

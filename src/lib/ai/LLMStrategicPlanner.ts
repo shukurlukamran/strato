@@ -16,6 +16,7 @@ import { ActionPricing } from "@/lib/game-engine/ActionPricing";
 import { ECONOMIC_BALANCE } from "@/lib/game-engine/EconomicBalance";
 import type { City } from "@/types/city";
 import { calculateCityValue } from "@/types/city";
+import { LeaderProfileService } from "./LeaderProfileService";
 
 /**
  * IMPORTANT: We do NOT constrain what the LLM can *advise* (instruction is always free text).
@@ -141,6 +142,7 @@ export class LLMStrategicPlanner {
   
   // Strategic plan persistence - LLM analysis guides next N turns
   private activeStrategicPlans: Map<string, LLMStrategicAnalysis> = new Map();
+  private leaderProfileService = new LeaderProfileService();
 
   private isTradeAdviceText(text: string): boolean {
     // Identify any instruction that explicitly describes a trade/exchange so it can be filtered out.
@@ -236,7 +238,7 @@ export class LLMStrategicPlanner {
       console.log(`[LLM Planner] 🚀 BATCH analyzing ${countries.length} countries in SINGLE API call (Turn ${state.turn})`);
       
       // Build batch prompt with all countries
-      const batchPrompt = this.buildBatchStrategicPrompt(state, countries, cities);
+      const batchPrompt = await this.buildBatchStrategicPrompt(state, countries, cities);
       
       // Single API call for all countries (Groq format - OpenAI-compatible)
       const response = await fetch(this.apiUrl, {
@@ -932,9 +934,11 @@ Return ONLY the JSON object. No markdown, no extra text.`;
     // Get compact resource string and affordability block
     const resourcesStr = this.compactResourceString(stats.resources || {});
     const affordabilityStr = this.getAffordabilityBlock(stats);
+    const personaBlock = await this.describeLeaderPersona(state.gameId, countryId, stats, country.name);
 
     return `${CACHED_GAME_RULES}
 
+${personaBlock ? `${personaBlock}\n\n` : ""}
 ${country.name} T${state.turn}: Pop ${(stats.population/1000).toFixed(0)}k|$${stats.budget.toFixed(0)}|Tech L${stats.technologyLevel}|Infra L${stats.infrastructureLevel || 0}|Mil ${stats.militaryStrength}(eff ${economicAnalysis.effectiveMilitaryStrength})|${stats.resourceProfile?.name || "Bal"}
 Res: ${resourcesStr}|Afford: ${affordabilityStr}|Inc $${economicAnalysis.netIncome}/t|${economicAnalysis.isUnderDefended ? `⚠DEF-${Math.round(economicAnalysis.militaryDeficit)}` : 'OK'}
 
@@ -981,6 +985,41 @@ ${Object.entries(marketPrices.marketPrices).map(([r, p]) =>
     } catch (error) {
       console.error('[LLM Planner] Failed to fetch market prices:', error);
       return 'MARKET PRICES: Currently unavailable';
+    }
+  }
+
+  private async describeLeaderPersona(
+    gameId: string,
+    countryId: string,
+    stats: CountryStats,
+    countryName?: string
+  ): Promise<string> {
+    try {
+      const profile = await this.leaderProfileService.getOrCreateProfile({
+        gameId,
+        countryId,
+        resourceProfile: stats.resourceProfile ?? null,
+        countryName,
+      });
+
+      if (!profile) {
+        return "";
+      }
+
+      const traitEntries = Object.entries(profile.traits).filter(([key]) => key !== "speech_tics");
+      const traitSummary = traitEntries.length
+        ? traitEntries.map(([key, value]) => `${key.replace(/_/g, " ")}:${value}`).join("; ")
+        : "Traits: default balanced.";
+      const tics = profile.traits.speech_tics ?? [];
+      const ticsText = tics.length > 0 ? `Speech tics: ${tics.join("; ")}.` : "";
+      const voice = profile.voiceProfile;
+      const voiceText = `Voice: ${voice.register}/${voice.verbosity}/${voice.directness}.`;
+      const valuesText = profile.publicValues ? `Values: ${profile.publicValues}.` : "";
+
+      return `LEADER PERSONA (${countryName ?? profile.leaderName}): ${profile.leaderName} (${profile.title ?? "leader"}). ${traitSummary}. ${ticsText} ${voiceText} ${valuesText}`.trim();
+    } catch (error) {
+      console.warn("[LLM Planner] Could not load leader persona:", error);
+      return "";
     }
   }
 
@@ -1245,12 +1284,13 @@ ${Object.entries(marketPrices.marketPrices).map(([r, p]) =>
   /**
    * Build batch prompt for analyzing multiple countries at once
    */
-  private buildBatchStrategicPrompt(
+  private async buildBatchStrategicPrompt(
     state: GameStateSnapshot,
     countries: Array<{ countryId: string; stats: CountryStats }>,
     cities: City[]
-  ): string {
-    const countryPrompts = countries.map(({ countryId, stats }) => {
+  ): Promise<string> {
+    const countryPrompts = await Promise.all(
+      countries.map(async ({ countryId, stats }) => {
       const country = state.countries.find(c => c.id === countryId);
       if (!country) return "";
 
@@ -1260,15 +1300,16 @@ ${Object.entries(marketPrices.marketPrices).map(([r, p]) =>
 
       const resourcesStr = this.compactResourceString(stats.resources || {});
       const affordabilityStr = this.getAffordabilityBlock(stats);
+      const personaBlock = await this.describeLeaderPersona(state.gameId, countryId, stats, country.name);
 
       return `
-### ${country.name}
+${personaBlock ? `${personaBlock}\n` : ""}### ${country.name}
 ID:"${countryId}"|Pop ${(stats.population/1000).toFixed(0)}k|$${stats.budget.toFixed(0)}|Tech L${stats.technologyLevel}|Infra L${stats.infrastructureLevel || 0}|Mil ${stats.militaryStrength}(eff ${economicAnalysis.effectiveMilitaryStrength})|${stats.resourceProfile?.name || "Bal"}
 Res:${resourcesStr}|Afford:${affordabilityStr}|Inc $${economicAnalysis.netIncome}/t|${economicAnalysis.isUnderDefended ? `⚠DEF-${Math.round(economicAnalysis.militaryDeficit)}` : 'OK'}
 Neighbors:${neighbors.split('\n').slice(0,3).join(';')}|Attacks:${attackCandidates}`;
-    }).join('\n');
-
-    const countryIdsList = countries.map(c => c.countryId).join(', ');
+      })
+    );
+    const filteredPrompts = countryPrompts.filter(Boolean);
 
     return `${CACHED_GAME_RULES}
 
@@ -1277,7 +1318,7 @@ Mechanics version: ${LLMStrategicPlanner.getMechanicsVersion()}
 Plan ${this.LLM_CALL_FREQUENCY} turns (2-3 actions/turn). Consider BOTH economic AND military strategies.
 
 COUNTRIES TO ANALYZE:
-${countryPrompts}
+${filteredPrompts.join("\n")}
 
 ⚠️ CRITICAL CONSTRAINT: countryId MUST be EXACT UUID from this list:
 ${countries.map(c => {

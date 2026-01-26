@@ -30,6 +30,7 @@ export interface ChatResponse {
     dealTerms: Record<string, unknown>;
   };
   policyMessage?: string;
+  leaderProfile?: LeaderProfile;
 }
 
 interface GameContext {
@@ -389,13 +390,17 @@ CURRENT MARKET RATES:
       console.log(`[ChatHandler] Using rule-based response (saved API call)`);
       return {
         messageText: ruleBasedResponse,
+        leaderProfile: undefined,
       };
     }
+
+    let leaderProfile: LeaderProfile | null = null;
 
     if (!this.model) {
       console.error("ChatHandler: Gemini model not initialized. Check GOOGLE_GEMINI_API_KEY.");
       return {
         messageText: `Acknowledged. What exactly are you proposing, and for how many turns? (You said: "${turn.messageText}")`,
+        leaderProfile: undefined,
       };
     }
 
@@ -414,6 +419,7 @@ CURRENT MARKET RATES:
         const responseText = result.response.text().trim() || "I'm considering your proposal.";
         return {
           messageText: responseText,
+          leaderProfile: undefined,
         };
       } catch (fallbackError) {
         console.error("Even fallback Gemini call failed:", fallbackError);
@@ -434,6 +440,7 @@ CURRENT MARKET RATES:
     if (!policyDecision.allow) {
       return {
         messageText: policyDecision.blockReason ?? "I'm not able to respond right now.",
+        leaderProfile: leaderProfile ?? undefined,
       };
     }
 
@@ -444,7 +451,7 @@ CURRENT MARKET RATES:
       senderCountryId: context.senderCountry.id,
     });
 
-    const leaderProfile =
+    leaderProfile =
       (await this.leaderProfileService.getOrCreateProfile({
         gameId: context.gameId,
         countryId: context.receiverCountry.id,
@@ -524,6 +531,7 @@ CURRENT MARKET RATES:
         messageText: responseText,
         suggestedDeal,
         policyMessage: policyDecision.warning ?? policyDecision.budgetNotice,
+        leaderProfile: leaderProfile ?? undefined,
       };
     } catch (error) {
       console.error("Google Gemini API error:", error);
@@ -548,6 +556,7 @@ CURRENT MARKET RATES:
             return {
               ...fallback,
               policyMessage: policyDecision.warning ?? policyDecision.budgetNotice,
+          leaderProfile: leaderProfile ?? undefined,
             };
           }
         }
@@ -571,6 +580,7 @@ CURRENT MARKET RATES:
       return {
         messageText: naturalFallbacks[Math.floor(Math.random() * naturalFallbacks.length)],
         policyMessage: policyDecision.warning ?? policyDecision.budgetNotice,
+        leaderProfile: leaderProfile ?? undefined,
       };
     }
   }
@@ -659,6 +669,7 @@ CURRENT MARKET RATES:
     ];
     return {
       messageText: naturalFallbacks[Math.floor(Math.random() * naturalFallbacks.length)],
+      leaderProfile: undefined,
     };
   }
 
