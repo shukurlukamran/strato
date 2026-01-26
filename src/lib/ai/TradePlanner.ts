@@ -242,6 +242,8 @@ export class TradePlanner {
     if (!countryStats || !partnerStats) return proposals;
 
     const fairnessProfile = this.getFairnessProfile(partner);
+    const proposerBudgetCap = this.getBudgetSpendCap(countryStats);
+    const isBudgetStressed = proposerBudgetCap <= 0;
 
     for (const shortage of shortages) {
       const deficit = Math.max(0, shortage.needed - shortage.available);
@@ -270,6 +272,23 @@ export class TradePlanner {
 
         if (barterProposal) {
           proposals.push(barterProposal);
+        }
+
+        if (isBudgetStressed) {
+          const sellProposal = this.buildSellProposal(
+            country,
+            partner,
+            countryStats,
+            partnerStats,
+            surplus,
+            shortage,
+            fairnessProfile,
+            marketPrices
+          );
+
+          if (sellProposal) {
+            proposals.push(sellProposal);
+          }
         }
       }
 
@@ -348,6 +367,7 @@ export class TradePlanner {
       country,
       partner,
       countryStats,
+      partnerStats,
       proposerCommitments,
       receiverCommitments,
       fairnessProfile,
@@ -404,6 +424,70 @@ export class TradePlanner {
       country,
       partner,
       countryStats,
+      partnerStats,
+      proposerCommitments,
+      receiverCommitments,
+      fairnessProfile,
+      marketPrices,
+      shortage
+    );
+  }
+
+  private buildSellProposal(
+    country: Country,
+    partner: Country,
+    countryStats: CountryStats,
+    partnerStats: CountryStats,
+    surplus: { resourceId: string; amount: number },
+    shortage: { resourceId: string; needed: number; available: number },
+    fairnessProfile: FairnessProfile,
+    marketPrices: Record<string, number>
+  ): TradeProposal | null {
+    const availableGive = Math.max(
+      0,
+      Math.min(
+        surplus.amount,
+        (countryStats.resources?.[surplus.resourceId] || 0) - TRADE_SETTINGS.proposerResourceReserve
+      )
+    );
+    if (availableGive <= 0) return null;
+
+    const partnerNeed = this.partnerNeedsResource(partnerStats, surplus.resourceId);
+    if (partnerNeed <= 0) return null;
+
+    const unitPrice = TradeValuation.getUnitPrice(surplus.resourceId, marketPrices);
+    if (unitPrice <= 0) return null;
+
+    const partnerBudgetCap = this.getBudgetSpendCap(partnerStats);
+    if (partnerBudgetCap <= 0) return null;
+
+    const spreadFactor = Math.max(0.01, 1 + fairnessProfile.spread);
+    const costPerUnit = unitPrice * spreadFactor;
+    const maxByBudget = Math.floor(partnerBudgetCap / costPerUnit);
+    if (maxByBudget <= 0) return null;
+
+    const sellAmount = Math.min(availableGive, partnerNeed, maxByBudget);
+    if (sellAmount <= 0) return null;
+
+    const totalCost = Math.ceil(sellAmount * costPerUnit);
+    if (!this.canAffordBudget(partnerStats, totalCost)) return null;
+
+    const proposerCommitments: TradeCommitment[] = [{
+      type: 'resource_transfer',
+      resource: surplus.resourceId,
+      amount: sellAmount
+    }];
+
+    const receiverCommitments: TradeCommitment[] = [{
+      type: 'budget_transfer',
+      amount: totalCost
+    }];
+
+    return this.buildProposal(
+      country,
+      partner,
+      countryStats,
+      partnerStats,
       proposerCommitments,
       receiverCommitments,
       fairnessProfile,
@@ -416,41 +500,63 @@ export class TradePlanner {
     country: Country,
     partner: Country,
     countryStats: CountryStats,
+    partnerStats: CountryStats,
     proposerCommitments: TradeCommitment[],
     receiverCommitments: TradeCommitment[],
     fairnessProfile: FairnessProfile,
     marketPrices: Record<string, number>,
     shortage: { resourceId: string; needed: number; available: number }
   ): TradeProposal | null {
-    let evaluation = TradeValuation.evaluateProposal(proposerCommitments, receiverCommitments, marketPrices);
+    let proposerCommitmentsCopy = [...proposerCommitments];
+    let receiverCommitmentsCopy = [...receiverCommitments];
+    let evaluation = TradeValuation.evaluateProposal(
+      proposerCommitmentsCopy,
+      receiverCommitmentsCopy,
+      marketPrices
+    );
 
-    if (evaluation.normalizedNet < fairnessProfile.range.min) {
-      return null;
-    }
+    const adjustment = TradeValuation.calculateBudgetAdjustment(
+      evaluation.normalizedNet,
+      fairnessProfile.range,
+      evaluation.notionalValue
+    );
 
-    if (evaluation.normalizedNet > fairnessProfile.range.max) {
-      const adjustment = TradeValuation.calculateBudgetAdjustment(
-        evaluation.normalizedNet,
-        fairnessProfile.range,
-        evaluation.notionalValue
-      );
-      if (adjustment >= TRADE_SETTINGS.minBudgetAdjustment) {
-        const adjustmentAmount = Math.ceil(adjustment);
+    if (adjustment.amount >= TRADE_SETTINGS.minBudgetAdjustment && adjustment.direction) {
+      const adjustmentAmount = Math.ceil(adjustment.amount);
+
+      if (adjustment.direction === 'proposer') {
         const spendCap = this.getBudgetSpendCap(countryStats);
         if (!this.canAffordBudget(countryStats, adjustmentAmount) || adjustmentAmount > spendCap) {
           return null;
         }
 
-        proposerCommitments = proposerCommitments.concat({
+        proposerCommitmentsCopy = proposerCommitmentsCopy.concat({
           type: 'budget_transfer',
           amount: adjustmentAmount
         });
+      } else {
+        const spendCap = this.getBudgetSpendCap(partnerStats);
+        if (!this.canAffordBudget(partnerStats, adjustmentAmount) || adjustmentAmount > spendCap) {
+          return null;
+        }
 
-        evaluation = TradeValuation.evaluateProposal(proposerCommitments, receiverCommitments, marketPrices);
+        receiverCommitmentsCopy = receiverCommitmentsCopy.concat({
+          type: 'budget_transfer',
+          amount: adjustmentAmount
+        });
       }
+
+      evaluation = TradeValuation.evaluateProposal(
+        proposerCommitmentsCopy,
+        receiverCommitmentsCopy,
+        marketPrices
+      );
     }
 
-    if (evaluation.normalizedNet < fairnessProfile.range.min || evaluation.normalizedNet > fairnessProfile.range.max) {
+    if (
+      evaluation.normalizedNet < fairnessProfile.range.min ||
+      evaluation.normalizedNet > fairnessProfile.range.max
+    ) {
       return null;
     }
 
@@ -466,8 +572,8 @@ export class TradePlanner {
       proposerId: country.id,
       receiverId: partner.id,
       terms: {
-        proposerCommitments,
-        receiverCommitments
+        proposerCommitments: proposerCommitmentsCopy,
+        receiverCommitments: receiverCommitmentsCopy
       },
       netBenefit: evaluation.netBenefit,
       confidence,
@@ -500,6 +606,11 @@ export class TradePlanner {
   private getBudgetSpendCap(stats: CountryStats): number {
     const available = Math.max(0, stats.budget - TRADE_SETTINGS.budgetReserve);
     return available * TRADE_SETTINGS.maxBudgetSpendRatio;
+  }
+
+  private partnerNeedsResource(partnerStats: CountryStats, resourceId: string): number {
+    const partnerAmount = partnerStats.resources?.[resourceId] || 0;
+    return Math.max(0, TRADE_SETTINGS.partnerResourceReserve - partnerAmount);
   }
 
   private canAffordBudget(stats: CountryStats, amount: number): boolean {

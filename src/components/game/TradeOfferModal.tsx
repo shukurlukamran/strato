@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import type { Deal } from "@/types/deals";
+import { useEffect, useMemo, useState } from "react";
+import { TradeValuation, TradeCommitment } from "@/lib/ai/TradeValuation";
+import type { Deal, DealCommitment } from "@/types/deals";
 import type { Country } from "@/types/country";
 
 interface TradeOfferModalProps {
@@ -23,6 +24,81 @@ export function TradeOfferModal({
 }: TradeOfferModalProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [marketPrices, setMarketPrices] = useState<Record<string, number> | null>(null);
+  const [marketLoading, setMarketLoading] = useState(true);
+  const [marketError, setMarketError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    const controller = new AbortController();
+    setMarketError(null);
+    setMarketLoading(true);
+
+    fetch(`/api/market/prices?gameId=${gameId}`, { signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data?.error || "Failed to load market prices");
+        }
+        return res.json();
+      })
+      .then((data) => {
+        if (isMounted && data?.marketPrices) {
+          setMarketPrices(data.marketPrices);
+        }
+      })
+      .catch((fetchError) => {
+        if (!isMounted) return;
+        setMarketError(
+          fetchError instanceof Error ? fetchError.message : "Unable to load market data"
+        );
+      })
+      .finally(() => {
+        if (isMounted) {
+          setMarketLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, [gameId]);
+
+  const normalizeCommitments = (commitments: DealCommitment[]): TradeCommitment[] => {
+    return commitments
+      .map((commitment) => ({
+        type: commitment.type as TradeCommitment['type'],
+        resource: commitment.resource,
+        amount: commitment.amount || 0,
+      }))
+      .filter((commitment) => commitment.amount > 0);
+  };
+
+  const marketEvaluation = useMemo(() => {
+    if (!marketPrices || deal.dealType !== 'trade') return null;
+    const proposerCommitments = normalizeCommitments(deal.dealTerms.proposerCommitments);
+    const receiverCommitments = normalizeCommitments(deal.dealTerms.receiverCommitments);
+    if (proposerCommitments.length === 0 && receiverCommitments.length === 0) {
+      return null;
+    }
+
+    const evaluation = TradeValuation.evaluateProposal(
+      proposerCommitments,
+      receiverCommitments,
+      marketPrices
+    );
+
+    return {
+      proposerValueGiven: evaluation.proposerValueGiven,
+      proposerValueReceived: evaluation.proposerValueReceived,
+      fairnessPercent: evaluation.normalizedNet * 100,
+      normalizedNet: evaluation.normalizedNet,
+    };
+  }, [deal, marketPrices]);
+
+  const formatValue = (value: number) =>
+    `$${Math.round(value).toLocaleString("en-US")}`;
 
   // Format commitments for display
   const formatCommitments = (commitments: any[]) => {
@@ -162,6 +238,43 @@ export function TradeOfferModal({
               <div>• This is a one-time trade (not recurring)</div>
               <div>• Rejecting this offer will notify {proposerCountry.name}</div>
             </div>
+          </div>
+          <div className="rounded border border-emerald-500/40 bg-emerald-900/20 p-4 text-white">
+            <div className="text-xs font-semibold text-white mb-2">Market comparison</div>
+            {marketLoading ? (
+              <div className="text-xs text-white/60">Loading market prices...</div>
+            ) : marketError ? (
+              <div className="text-xs text-red-300">{marketError}</div>
+            ) : marketEvaluation ? (
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs text-white/70">
+                  <span>{proposerCountry.name} gives</span>
+                  <span className="font-semibold text-white">
+                    {formatValue(marketEvaluation.proposerValueGiven)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs text-white/70">
+                  <span>{receiverCountry.name} gives</span>
+                  <span className="font-semibold text-white">
+                    {formatValue(marketEvaluation.proposerValueReceived)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs font-semibold text-white">
+                  <span>Fairness</span>
+                  <span>
+                    {marketEvaluation.fairnessPercent >= 0 ? "+" : ""}
+                    {marketEvaluation.fairnessPercent.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="text-[10px] text-white/60">
+                  {marketEvaluation.normalizedNet >= 0
+                    ? `${proposerCountry.name} advantage`
+                    : `${receiverCountry.name} advantage`}
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-white/60">Market data unavailable</div>
+            )}
           </div>
         </div>
 

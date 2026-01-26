@@ -45,6 +45,7 @@ If it 's the same for AI-AI trades too, fix it, as well.
 - If a country including Players is getting attacked by more than once (can be different attacker countries or the same country attacking a few different cities), any allocated military strength should deducted from the next allocation. For example, X country has 150 military strength and received 3 different attacks in this turn. If it allocates 50 strength to the 1st attack, it will have 100 strength left to allocate to the other 2 attacks.
 - Add Natural events
 - Food is too abundant and starvation almost never happens especially after a few tech upgrades.
+- If X country upgrades something infra or tech 3 times (more than once) in one turn, history log shows "X built infrastructure Level 4 (their final current level)" 3 times. Instead, it should combine and show it like "X built infrastructure Level 2, 3, 4"
 
 Also, currently Defense window for the 2nd received attack only appears after submitting allocation to the 1st attack. However, Player should receive them all at the same time so he knows how many attacks he received this turn and decide allocation accordingly.
 -------

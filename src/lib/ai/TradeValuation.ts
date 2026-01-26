@@ -24,6 +24,11 @@ export interface FairnessRange {
   max: number;
 }
 
+export interface BudgetAdjustment {
+  amount: number;
+  direction: 'proposer' | 'receiver' | null;
+}
+
 export class TradeValuation {
   /**
    * Lookup the best known unit price (market price or fallback to ResourceRegistry)
@@ -126,9 +131,26 @@ export class TradeValuation {
     normalizedNet: number,
     fairnessRange: FairnessRange,
     notionalValue: number
-  ): number {
-    if (normalizedNet <= fairnessRange.max) return 0;
-    const excessRatio = normalizedNet - fairnessRange.max;
-    return Math.max(0, excessRatio * notionalValue);
+  ): BudgetAdjustment {
+    if (normalizedNet > fairnessRange.max) {
+      const excessRatio = normalizedNet - fairnessRange.max;
+      return {
+        amount: Math.max(0, excessRatio * notionalValue),
+        direction: 'proposer',
+      };
+    }
+
+    if (normalizedNet < fairnessRange.min) {
+      const deficitRatio = fairnessRange.min - normalizedNet;
+      return {
+        amount: Math.max(0, deficitRatio * notionalValue),
+        direction: 'receiver',
+      };
+    }
+
+    return {
+      amount: 0,
+      direction: null,
+    };
   }
 }

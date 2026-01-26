@@ -1,4 +1,5 @@
 import { TradePlanner } from '@/lib/ai/TradePlanner';
+import type { TradeProposal } from '@/lib/ai/TradePlanner';
 import { TradeValuation } from '@/lib/ai/TradeValuation';
 import type { Country, CountryStats } from '@/types/country';
 import type { GameStateSnapshot } from '@/lib/game-engine/GameState';
@@ -97,7 +98,7 @@ describe('TradePlanner value-driven trading', () => {
       [{ resourceId: 'food', amount: 60 }],
       marketPrices,
       gameState
-    );
+    ) as TradeProposal[];
 
     expect(proposals.length).toBeGreaterThan(0);
     const terms = proposals[0].terms;
@@ -122,7 +123,7 @@ describe('TradePlanner value-driven trading', () => {
       [{ resourceId: 'food', amount: 60 }],
       marketPrices,
       gameState
-    );
+    ) as TradeProposal[];
 
     expect(proposals.length).toBeGreaterThan(0);
     const evaluation = TradeValuation.evaluateProposal(
@@ -147,7 +148,7 @@ describe('TradePlanner value-driven trading', () => {
       [{ resourceId: 'food', amount: 60 }],
       marketPrices,
       gameState
-    );
+    ) as TradeProposal[];
 
     const playerProposal = proposals.find(p => p.receiverId === playerPartner.id);
     expect(playerProposal).toBeDefined();
@@ -175,11 +176,36 @@ describe('TradePlanner value-driven trading', () => {
       [{ resourceId: 'food', amount: 200 }],
       marketPrices,
       gameState
-    );
+    ) as TradeProposal[];
 
     expect(proposals.length).toBeGreaterThan(0);
     const proposerCommitments = proposals[0].terms.proposerCommitments;
     const hasBudgetTransfer = proposerCommitments.some(c => c.type === 'budget_transfer');
     expect(hasBudgetTransfer).toBe(true);
+  });
+
+  it('offers sell proposals when budget is stressed', () => {
+    const aiStats = createStats(aiCountry.id, { food: 200, steel: 5 }, 20);
+    const partnerStats = createStats(aiPartner.id, { food: 5, steel: 80 }, 800);
+    const gameState = buildGameState(aiCountry, aiPartner, aiStats, partnerStats);
+    const plannerAny = planner as any;
+
+    const proposals = plannerAny.generateTradeProposals(
+      aiCountry,
+      aiPartner,
+      [{ resourceId: 'steel', needed: 40, available: 10 }],
+      [{ resourceId: 'food', amount: 60 }],
+      marketPrices,
+      gameState
+    ) as TradeProposal[];
+
+    const sellProposal = proposals.find((proposal) =>
+      proposal.terms.proposerCommitments.some(
+        (c) => c.type === 'resource_transfer' && c.resource === 'food'
+      ) &&
+      proposal.terms.receiverCommitments.some((c) => c.type === 'budget_transfer')
+    );
+
+    expect(sellProposal).toBeDefined();
   });
 });
