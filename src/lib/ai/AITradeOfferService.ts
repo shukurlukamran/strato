@@ -25,18 +25,25 @@ export class AITradeOfferService {
     gameId: string,
     gameState: GameStateSnapshot
   ): boolean {
+    const aiCountryLabel = this.formatCountryLabel(aiCountryId, gameState);
+    const playerCountryLabel = this.formatCountryLabel(playerCountryId, gameState);
+
     // Minimal cooldown to prevent spam within same turn (but allow frequent offers)
     const key = `${gameId}|${aiCountryId}|${playerCountryId}`;
     const lastOfferTurn = lastOfferTurnByKey.get(key);
     if (lastOfferTurn !== undefined && turn - lastOfferTurn < 2) {
-      console.log(`[AI Trade Offer] Cooldown active for ${aiCountryId} -> ${playerCountryId} (last offer: turn ${lastOfferTurn}, current: ${turn})`);
+      console.log(
+        `[AI Trade Offer] Cooldown active for ${aiCountryLabel} -> ${playerCountryLabel} (last offer: turn ${lastOfferTurn}, current: ${turn})`,
+      );
       return false;
     }
 
     // No turn modulo restrictions - AI can offer whenever there's a beneficial trade
     // This matches how AI-to-AI trading works
 
-    console.log(`[AI Trade Offer] Checking if ${aiCountryId} should offer trade to ${playerCountryId} on turn ${turn}`);
+    console.log(
+      `[AI Trade Offer] Checking if ${aiCountryLabel} should offer trade to ${playerCountryLabel} on turn ${turn}`,
+    );
     
     // Let TradePlanner determine if there's a beneficial trade
     // This function just gates the frequency, not the quality
@@ -256,6 +263,12 @@ export class AITradeOfferService {
     }
 
     return descriptions.join(' and ') || 'resources';
+  }
+
+  private formatCountryLabel(countryId: string, gameState: GameStateSnapshot): string {
+    const country = gameState.countries.find(c => c.id === countryId);
+    const displayName = country?.name ?? 'Unknown';
+    return `${displayName} (${countryId})`;
   }
 
   /**
