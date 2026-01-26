@@ -136,7 +136,7 @@ Respond now as ${receiverCountryName}, in character and with strategic purpose.`
     const history = chatHistory
       .slice(-Math.max(0, input.maxHistory ?? 80))
       .map((msg) => ({
-        role: msg.senderCountryId === receiverCountryId ? "model" : "user",
+        role: (msg.senderCountryId === receiverCountryId ? "model" : "user") as "user" | "model",
         parts: [{ text: msg.messageText }],
       }));
 

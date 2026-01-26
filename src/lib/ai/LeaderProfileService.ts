@@ -269,7 +269,7 @@ function weightedSelect<T>(
 
 function buildLeaderTraits(seed: string, resourceProfileName?: string): LeaderTraits {
   const rng = createSeededRNG(seed);
-  const traits = {} as Omit<LeaderTraits, "speech_tics">;
+  const traits: Record<string, any> = {};
   const normalizedProfileName = resourceProfileName || "default";
   const biases = RESOURCE_PROFILE_BIASES[normalizedProfileName];
 
@@ -277,7 +277,7 @@ function buildLeaderTraits(seed: string, resourceProfileName?: string): LeaderTr
   for (const traitName of traitNames) {
     const options = TRAIT_OPTIONS[traitName];
     const traitBias = biases?.[traitName] ?? {};
-    traits[traitName] = weightedSelect(options, rng, traitBias) as LeaderTraits[typeof traitName];
+    traits[traitName] = weightedSelect(options, rng, traitBias);
   }
 
   const ticsCount = Math.min(3, Math.max(2, Math.floor(rng() * 4)));
@@ -289,9 +289,9 @@ function buildLeaderTraits(seed: string, resourceProfileName?: string): LeaderTr
   }
 
   return {
-    ...(traits as Omit<LeaderTraits, "speech_tics">),
+    ...traits,
     speech_tics: tics,
-  };
+  } as LeaderTraits;
 }
 
 function deriveDecisionWeights(traits: LeaderTraits): LeaderDecisionWeights {
