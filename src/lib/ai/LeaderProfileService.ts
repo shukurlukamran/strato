@@ -273,7 +273,8 @@ function buildLeaderTraits(seed: string, resourceProfileName?: string): LeaderTr
   const normalizedProfileName = resourceProfileName || "default";
   const biases = RESOURCE_PROFILE_BIASES[normalizedProfileName];
 
-  for (const traitName of Object.keys(TRAIT_OPTIONS) as Array<keyof typeof TRAIT_OPTIONS>) {
+  const traitNames = Object.keys(TRAIT_OPTIONS) as Array<keyof typeof TRAIT_OPTIONS>;
+  for (const traitName of traitNames) {
     const options = TRAIT_OPTIONS[traitName];
     const traitBias = biases?.[traitName] ?? {};
     traits[traitName] = weightedSelect(options, rng, traitBias) as LeaderTraits[typeof traitName];
