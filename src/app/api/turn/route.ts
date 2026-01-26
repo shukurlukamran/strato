@@ -221,7 +221,7 @@ export async function POST(req: Request) {
         // Make all individual calls in parallel for best performance
         const startTime = Date.now();
         const analysisPromises = countriesForAnalysis.map(({ countryId, stats }) =>
-          llmPlanner.analyzeSituation(state.data, countryId, stats)
+          llmPlanner.analyzeSituation(state.data, countryId, stats, cities)
             .then(analysis => ({ countryId, analysis }))
             .catch(error => {
               console.error(`[Turn API] Analysis failed for ${countryId.substring(0, 8)}:`, error);

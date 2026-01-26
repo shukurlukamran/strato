@@ -1,4 +1,5 @@
 import type { GameStateSnapshot } from "@/lib/game-engine/GameState";
+import type { City } from "@/types/city";
 import { RuleBasedAI } from "./RuleBasedAI";
 import { DefaultPersonality, type AIPersonality } from "./Personality";
 import { LLMStrategicPlanner, type LLMPlanItem } from "./LLMStrategicPlanner";
@@ -54,7 +55,7 @@ export class StrategicPlanner {
    * Phase 2.2: Hybrid approach (rule-based + LLM)
    * @param batchAnalysis - Optional batch LLM analysis (provided by turn API to avoid redundant calls)
    */
-  async plan(state: GameStateSnapshot, countryId: string, batchAnalysis?: any): Promise<StrategyIntent> {
+  async plan(state: GameStateSnapshot, countryId: string, batchAnalysis?: any, cities: City[] = []): Promise<StrategyIntent> {
     const stats = state.countryStatsByCountryId[countryId];
     
     if (!stats) {
@@ -75,7 +76,7 @@ export class StrategicPlanner {
         if (process.env.LLM_PLAN_DEBUG === "1") {
           console.log(`[Strategic Planner] No batch analysis for ${countryId}, making individual call`);
         }
-        freshLLMAnalysis = await this.llmPlanner.analyzeSituation(state, countryId, stats);
+        freshLLMAnalysis = await this.llmPlanner.analyzeSituation(state, countryId, stats, cities);
         
         if (freshLLMAnalysis && process.env.LLM_PLAN_DEBUG === "1") {
           const country = state.countries.find(c => c.id === countryId);

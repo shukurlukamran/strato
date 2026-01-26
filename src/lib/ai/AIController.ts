@@ -52,7 +52,7 @@ export class AIController {
   ): Promise<GameAction[]> {
     // Step 1: Strategic planning - what should we focus on?
     // Pass batch analysis to avoid redundant LLM calls
-    const intent = await this.planner.plan(state, countryId, batchAnalysis);
+    const intent = await this.planner.plan(state, countryId, batchAnalysis, cities);
     
     // Minimal logging (only if debug enabled OR planning failed)
     if (this.debugLLMPlan) {

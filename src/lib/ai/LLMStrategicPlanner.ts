@@ -129,6 +129,8 @@ Missing→BLOCKED (trade/black market to acquire)
 STRATEGY: Economic=tech+infra, Military=recruit+attack weak, Balanced=alternate
 `;
 
+const CITY_NEIGHBOR_ATTACK_RANGE = 15;
+
 export class LLMStrategicPlanner {
   private apiKey: string | null = null;
   private apiUrl: string = "https://api.groq.com/openai/v1/chat/completions";
@@ -414,7 +416,8 @@ export class LLMStrategicPlanner {
   async analyzeSituation(
     state: GameStateSnapshot,
     countryId: string,
-    stats: CountryStats
+    stats: CountryStats,
+    cities: City[] = []
   ): Promise<LLMStrategicAnalysis | null> {
     // Check if LLM is available
     if (!this.apiKey) {
@@ -440,7 +443,7 @@ export class LLMStrategicPlanner {
       console.log(`[LLM Planner] 🤖 Calling Groq for strategic analysis (Turn ${state.turn})`);
       
       // Build context-rich prompt
-      const prompt = await this.buildStrategicPrompt(state, countryId, stats);
+      const prompt = await this.buildStrategicPrompt(state, countryId, stats, cities);
       
       // Attempt 1: Normal analysis with higher token cap
       let response = await fetch(this.apiUrl, {
@@ -910,7 +913,8 @@ Return ONLY the JSON object. No markdown, no extra text.`;
   private async buildStrategicPrompt(
     state: GameStateSnapshot,
     countryId: string,
-    stats: CountryStats
+    stats: CountryStats,
+    cities: City[]
   ): Promise<string> {
     const country = state.countries.find(c => c.id === countryId);
     if (!country) return "";
@@ -919,7 +923,7 @@ Return ONLY the JSON object. No markdown, no extra text.`;
     const economicAnalysis = RuleBasedAI.analyzeEconomicSituation(state, countryId, stats);
     
     // Get neighbor information
-    const neighbors = this.getNeighborsSummary(state, countryId, stats);
+    const neighbors = this.getNeighborsSummary(state, countryId, stats, cities);
     
     // Get compact resource string and affordability block
     const resourcesStr = this.compactResourceString(stats.resources || {});
@@ -981,46 +985,90 @@ ${Object.entries(marketPrices.marketPrices).map(([r, p]) =>
   /**
    * Get summary of neighboring countries (show threats AND opportunities)
    */
-  private getNeighborsSummary(state: GameStateSnapshot, countryId: string, stats: CountryStats): string {
+  private getNeighborsSummary(
+    state: GameStateSnapshot,
+    countryId: string,
+    stats: CountryStats,
+    cities: City[],
+    attackRange: number = CITY_NEIGHBOR_ATTACK_RANGE
+  ): string {
     const country = state.countries.find(c => c.id === countryId);
     if (!country) return "None";
 
-    const neighborDistance = 200;
-    const neighbors: string[] = [];
+    if (!cities || cities.length === 0) {
+      return "No city data available to determine neighbors";
+    }
+
+    const neighborMap = this.buildCityNeighborMap(cities, attackRange);
+    const neighborIds = neighborMap.get(countryId);
+    if (!neighborIds || neighborIds.size === 0) {
+      return "No attackable neighbors detected";
+    }
+
     const ourEffectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(stats);
+    const threats: string[] = [];
+    const opportunities: string[] = [];
+    const regular: string[] = [];
 
-    for (const otherCountry of state.countries) {
-      if (otherCountry.id === countryId) continue;
+    for (const neighborId of neighborIds) {
+      const otherCountry = state.countries.find(c => c.id === neighborId);
+      const otherStats = state.countryStatsByCountryId[neighborId];
+      if (!otherCountry || !otherStats) continue;
 
-      const distance = Math.sqrt(
-        Math.pow(country.positionX - otherCountry.positionX, 2) +
-        Math.pow(country.positionY - otherCountry.positionY, 2)
-      );
+      const otherEffectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(otherStats);
+      const ourToThem = getDiplomaticScore(stats.diplomaticRelations, neighborId);
+      const isThreat = otherEffectiveStrength > ourEffectiveStrength * 1.2 || ourToThem < 30;
+      const isOpportunity = ourEffectiveStrength > 0 && otherEffectiveStrength < ourEffectiveStrength * 0.7;
+      let label = '';
+      if (isThreat) label = ' ⚠️THREAT';
+      else if (isOpportunity) label = ' 🎯WEAK (conquest opportunity)';
 
-      if (distance < neighborDistance) {
-        const otherStats = state.countryStatsByCountryId[otherCountry.id];
-        if (otherStats) {
-          const ourToThem = getDiplomaticScore(stats.diplomaticRelations, otherCountry.id);
-          const otherEffectiveStrength = MilitaryCalculator.calculateEffectiveMilitaryStrength(otherStats);
-          const isThreat = otherEffectiveStrength > ourEffectiveStrength * 1.2 || ourToThem < 30;
-          const isOpportunity = otherEffectiveStrength < ourEffectiveStrength * 0.7; // We're much stronger
+      const ratio =
+        ourEffectiveStrength > 0
+          ? otherEffectiveStrength / ourEffectiveStrength
+          : otherEffectiveStrength > 0
+            ? Number.POSITIVE_INFINITY
+            : 0;
 
-          // Show threats (always), opportunities (always), and first 2 regular neighbors
-          if (isThreat || isOpportunity || neighbors.length < 2) {
-            let label = '';
-            if (isThreat) label = ' ⚠️THREAT';
-            else if (isOpportunity) label = ' 🎯WEAK (conquest opportunity)';
+      const entry = `- ${otherCountry.name} (${otherCountry.id}): Rel ${ourToThem}, Eff ${otherEffectiveStrength} (Raw ${otherStats.militaryStrength}), Ratio ${ratio.toFixed(2)}x${label}`;
 
-            const strengthRatio = otherEffectiveStrength / ourEffectiveStrength;
-            neighbors.push(
-              `- ${otherCountry.name} (${otherCountry.id}): Rel ${ourToThem}, Eff ${otherEffectiveStrength} (Raw ${otherStats.militaryStrength}), Ratio ${(strengthRatio).toFixed(2)}x${label}`
-            );
-          }
+      if (isThreat) {
+        threats.push(entry);
+      } else if (isOpportunity) {
+        opportunities.push(entry);
+      } else if (regular.length < 2) {
+        regular.push(entry);
+      }
+    }
+
+    const combined = [...threats, ...opportunities, ...regular];
+    return combined.length > 0 ? combined.join('\n') : "No attackable neighbors detected";
+  }
+
+  private buildCityNeighborMap(cities: City[], range: number): Map<string, Set<string>> {
+    const neighborMap = new Map<string, Set<string>>();
+
+    const addNeighbor = (fromId: string, toId: string) => {
+      if (!neighborMap.has(fromId)) {
+        neighborMap.set(fromId, new Set());
+      }
+      neighborMap.get(fromId)!.add(toId);
+    };
+
+    for (let i = 0; i < cities.length; i++) {
+      const cityA = cities[i];
+      for (let j = i + 1; j < cities.length; j++) {
+        const cityB = cities[j];
+        if (cityA.countryId === cityB.countryId) continue;
+        const distance = Math.hypot(cityA.positionX - cityB.positionX, cityA.positionY - cityB.positionY);
+        if (distance <= range) {
+          addNeighbor(cityA.countryId, cityB.countryId);
+          addNeighbor(cityB.countryId, cityA.countryId);
         }
       }
     }
 
-    return neighbors.length > 0 ? neighbors.join('\n') : "No notable neighbors";
+    return neighborMap;
   }
   
   /**
@@ -1205,7 +1253,7 @@ ${Object.entries(marketPrices.marketPrices).map(([r, p]) =>
       if (!country) return "";
 
       const economicAnalysis = RuleBasedAI.analyzeEconomicSituation(state, countryId, stats);
-      const neighbors = this.getNeighborsSummary(state, countryId, stats);
+      const neighbors = this.getNeighborsSummary(state, countryId, stats, cities);
       const attackCandidates = this.getAttackCandidates(state, countryId, stats, cities);
 
       const resourcesStr = this.compactResourceString(stats.resources || {});

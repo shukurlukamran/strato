@@ -1,9 +1,8 @@
 (DO NOT TOUCH THIS FILE. THIS FILE IS FOR MY PERSONAL NOTES.)
 
 Stil persistsI
-- History log still shows deals with the player but player didn't receive any deal offers or confirmed
 - LLM plan includes "attack aurum" for Cyrenia but Cyrenia isn't neighbor to Aurum right now so can't attack. LLM needs to know about this.
-- No deal being done
+- History log shows that deals with Player are automatically confirmed - we built deal window like defense window - whay doesn't it appear when Player receives a deal offer?
 
 ---
 - Log in system and saving games to profiles
@@ -21,6 +20,7 @@ Stil persistsI
 ---
 - Prevent cheating in the chat deals (you can get money for technology level now, but tech level isn't actually transferred, for example)
 - Borders are sometimes messed up, especially when cities are captured. Sometimes there are some blank areas that doesn't belong to any country. We need to make these super defined with almost no place for error. 
+- Defense window slider should allow zero military strength allocation too
 
 - City transfer mechanism in Deal Chat (analyze and see what can be exchanged or agreed with the current state of the game but doesn't exist in the deal chat's implementation capabilities)
 - Pulsing red border or persistent indicator for isUnderAttack for cities
