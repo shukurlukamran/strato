@@ -93,6 +93,24 @@ export default function GamePage() {
   // Track dismissed trade offers
   const [dismissedTradeOffers, setDismissedTradeOffers] = useState<Set<string>>(new Set());
 
+  async function loadDeals() {
+    if (!gameId) return;
+
+    try {
+      const res = await fetch(`/api/deals?gameId=${encodeURIComponent(gameId)}`);
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || "Failed to load deals");
+      }
+      const data = (await res.json()) as { deals?: Deal[] };
+      const fetchedDeals = Array.isArray(data.deals) ? data.deals : [];
+      setDeals(fetchedDeals);
+    } catch (error) {
+      console.error("GamePage: Failed to load deals", error);
+      setDeals([]);
+    }
+  }
+
   useEffect(() => setGameId(gameId), [gameId, setGameId]);
 
   async function loadGameData(showLoadingScreen = true) {
@@ -263,6 +281,7 @@ export default function GamePage() {
       console.log('[DEBUG] page: Chat mapping loaded', { chatMap, playerCountryId: data.game.player_country_id, chats: data.chats });
       // #endregion
       setChatByCounterpartCountryId(chatMap);
+      await loadDeals();
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : "Failed to load game.";
       setGameExists(false);

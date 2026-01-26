@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import type { Deal } from "@/types/deals";
+import type { Deal, DealStatus } from "@/types/deals";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 const DealCommitmentSchema = z.object({
@@ -24,6 +24,21 @@ const CreateDealSchema = z.object({
   dealTerms: DealTermsSchema,
   turnCreated: z.number().int().min(1),
   turnExpires: z.number().int().min(1).nullable().optional(),
+});
+
+const dealStatusValues: DealStatus[] = [
+  "draft",
+  "proposed",
+  "accepted",
+  "rejected",
+  "active",
+  "completed",
+  "violated",
+];
+
+const GetDealsSchema = z.object({
+  gameId: z.string().min(1),
+  status: z.enum(dealStatusValues).optional(),
 });
 
 const memoryDealsByGameId = new Map<string, Deal[]>();
@@ -126,6 +141,84 @@ export async function POST(req: Request) {
     // For other errors, return error response
     console.error("Deal creation error:", error);
     const errorMessage = error instanceof Error ? error.message : "Failed to create deal";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
+  }
+}
+
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const parsed = GetDealsSchema.safeParse({
+    gameId: url.searchParams.get("gameId"),
+    status: url.searchParams.get("status") || undefined,
+  });
+
+  if (!parsed.success) {
+    const errors = parsed.error.flatten();
+    const errorMessage =
+      errors.formErrors?.length > 0
+        ? errors.formErrors.join(", ")
+        : Object.values(errors.fieldErrors)
+            .flat()
+            .join(", ") || "Validation failed";
+    return NextResponse.json({ error: errorMessage, details: errors }, { status: 400 });
+  }
+
+  const { gameId, status } = parsed.data;
+
+  try {
+    const supabase = getSupabaseServerClient();
+
+    let query = supabase
+      .from("deals")
+      .select(
+        "id, game_id, proposing_country_id, receiving_country_id, deal_type, deal_terms, status, proposed_at, accepted_at, expires_at, turn_created, turn_expires, created_at, updated_at",
+      )
+      .eq("game_id", gameId);
+
+    if (status) {
+      query = query.eq("status", status);
+    }
+
+    query = query.order("created_at", { ascending: false });
+    const result = await query;
+
+    if (result.error) {
+      throw result.error;
+    }
+
+    return NextResponse.json({
+      deals: (result.data ?? []).map((d) => ({
+        id: d.id,
+        gameId: d.game_id,
+        proposingCountryId: d.proposing_country_id,
+        receivingCountryId: d.receiving_country_id,
+        dealType: d.deal_type,
+        dealTerms: d.deal_terms,
+        status: d.status,
+        proposedAt: d.proposed_at,
+        acceptedAt: d.accepted_at,
+        expiresAt: d.expires_at,
+        turnCreated: d.turn_created,
+        turnExpires: d.turn_expires,
+        createdAt: d.created_at,
+        updatedAt: d.updated_at,
+      } satisfies Deal)),
+    });
+  } catch (error) {
+    console.error("Deal fetch error:", error);
+
+    // Fallback to in-memory store if Supabase is unavailable
+    const fallbackDeals = memoryDealsByGameId.get(gameId) ?? [];
+    const filtered = status ? fallbackDeals.filter((d) => d.status === status) : fallbackDeals;
+
+    if (fallbackDeals.length > 0) {
+      return NextResponse.json({
+        deals: filtered,
+        note: "Supabase not configured; using in-memory deals store.",
+      });
+    }
+
+    const errorMessage = error instanceof Error ? error.message : "Failed to fetch deals";
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
