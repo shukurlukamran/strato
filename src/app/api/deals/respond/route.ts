@@ -28,8 +28,8 @@ export async function POST(req: Request) {
 
   const { dealId, action, respondingCountryId } = parsed.data;
 
+  const supabase = getSupabaseServerClient();
   try {
-    const supabase = getSupabaseServerClient();
     
     // Fetch the deal
     const { data: deal, error: fetchError } = await supabase
@@ -68,6 +68,16 @@ export async function POST(req: Request) {
         throw new Error(`Failed to reject deal: ${updateError.message}`);
       }
 
+      const { data: rejectedDeal } = await supabase
+        .from("deals")
+        .select("id, status, updated_at, responding_country_id")
+        .eq("id", dealId)
+        .single();
+
+      if (rejectedDeal) {
+        console.log(`[Deal] ${dealId} rejected by ${respondingCountryId} at ${rejectedDeal.updated_at}`);
+      }
+
       return NextResponse.json({ 
         success: true, 
         message: "Deal rejected",
@@ -87,6 +97,16 @@ export async function POST(req: Request) {
 
     if (updateError) {
       throw new Error(`Failed to accept deal: ${updateError.message}`);
+    }
+
+    const { data: acceptedDeal } = await supabase
+      .from("deals")
+      .select("id, status, accepted_at, updated_at, responding_country_id")
+      .eq("id", dealId)
+      .single();
+
+    if (acceptedDeal) {
+      console.log(`[Deal] ${dealId} accepted by ${respondingCountryId} at ${acceptedDeal.accepted_at}`);
     }
 
     // Execute the deal immediately (transfer resources/budget/etc.)
@@ -143,6 +163,16 @@ export async function POST(req: Request) {
           updated_at: new Date().toISOString(),
         })
         .eq("id", dealId);
+
+      const { data: activeDeal } = await supabase
+        .from("deals")
+        .select("id, status, updated_at, responding_country_id")
+        .eq("id", dealId)
+        .single();
+
+      if (activeDeal) {
+        console.log(`[Deal] ${dealId} active (accepted_by=${respondingCountryId}) at ${activeDeal.updated_at}`);
+      }
 
       return NextResponse.json({
         success: true,

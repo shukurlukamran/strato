@@ -1080,6 +1080,7 @@ export default function GamePage() {
             setTradeOfferDeal(null);
             setTradeOfferProposer(null);
             setTradeOfferReceiver(null);
+            void loadDeals();
           }}
           onResponded={() => {
             setTradeOfferDeal(null);

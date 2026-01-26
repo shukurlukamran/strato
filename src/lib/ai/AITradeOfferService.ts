@@ -122,6 +122,10 @@ export class AITradeOfferService {
         return;
       }
 
+      console.log(
+        `[AI Trade Offer] Created proposed deal ${deal.id} game=${gameId} proposer=${aiCountryId} receiver=${playerCountryId} status=${deal.status}`,
+      );
+
       // Find or create diplomacy chat between AI and player
       const chatId = await this.findOrCreateDiplomacyChat(gameId, aiCountryId, playerCountryId);
 
