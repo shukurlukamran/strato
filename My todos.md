@@ -1,7 +1,12 @@
 (DO NOT TOUCH THIS FILE. THIS FILE IS FOR MY PERSONAL NOTES.)
 
-Stil persists:
-- History log shows that deals with Player are automatically confirmed - we built deal window like defense window - why doesn't it appear when Player receives a deal offer?
+Countries offer irrational trade deals to Player. They offer the same amount of another way cheaper resource for more expensive resource. For example, 10 food for 10 steel. But food is much cheaper at that time in the game than steel. They always offer the same amount as they're asking for. They don't count in current Market prices.
+
+Also they should be able to offer to give/receive money too. Deals doesn't have to be only resource barter. It can be buying/selling resources from each other.
+
+If it 's the same for AI-AI trades too, fix it, as well.
+
+- Remove Trade Revenue component from the game completely as it's useless. Instead, any trade advantage/disadvantage in the game should increase/decrease the resources/money you receive from trades/deals (to be calculated right before they're added to your balance). Update tooltips accordingly too. Make sure everything you build is aligned with Supabase database. 
 
 ---
 - Log in system and saving games to profiles
@@ -48,7 +53,7 @@ Analyze root causes of these, understand what is happening, and then implement f
 
 Make sure everything we build is aligned with LLM in both Deals chat and End turn decisions and anywhere else it may be used, tooltips, and also with Supabase database.
 
-Analyze root causes of these, understand what is happening, and create a concise plan with no fillers or bullshit for the implementation for helping other AI models to build it. Make sure everything we build is also aligned with Supabase database.
+Analyze root causes of these, understand what is happening, and create a comprehensive plan for the implementation for helping other AI models to build it. Make sure everything we build is also aligned with Supabase database.
 
 Analyze the plan carefully, understand what is happening, and then implement fixes. Feel free to ask me if there's anything unclear or anything you wanna clarify further regarding the plan. Make sure everything we build is also aligned with Supabase database.
 
