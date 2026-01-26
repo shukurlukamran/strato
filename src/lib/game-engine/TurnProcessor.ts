@@ -228,18 +228,31 @@ export class TurnProcessor {
         const proposals = await this.tradePlanner.planTrades(country.id, state.data, marketPrices.marketPrices);
 
         if (proposals.length > 0) {
-          // Execute the best trade proposal
-          const bestProposal = proposals[0];
-          const executionResult = await this.tradePlanner.executeTrade(
-            state.data.gameId,
-            state.data.turn,
-            bestProposal
+          const playerCountryIds = new Set(
+            state.data.countries.filter((c) => c.isPlayerControlled).map((c) => c.id),
           );
 
-          if (executionResult.success) {
-            // Trade succeeded - no history event needed (AI-to-AI trades are internal)
-            console.log(`[AI Trading] ${country.name} executed trade: ${executionResult.dealId}`);
-            continue; // Trade succeeded, move to next country
+          const filteredProposals = proposals.filter(
+            (proposal) =>
+              !playerCountryIds.has(proposal.proposerId) && !playerCountryIds.has(proposal.receiverId),
+          );
+
+          if (filteredProposals.length > 0) {
+            // Execute the best trade proposal
+            const bestProposal = filteredProposals[0];
+            const executionResult = await this.tradePlanner.executeTrade(
+              state.data.gameId,
+              state.data.turn,
+              bestProposal,
+            );
+
+            if (executionResult.success) {
+              // Trade succeeded - no history event needed (AI-to-AI trades are internal)
+              console.log(`[AI Trading] ${country.name} executed trade: ${executionResult.dealId}`);
+              continue; // Trade succeeded, move to next country
+            }
+          } else {
+            console.log(`[AI Trading] ${country.name} trade proposals involve player-only partners; skipping execution`);
           }
         }
 

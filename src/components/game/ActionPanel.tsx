@@ -175,6 +175,7 @@ export function ActionPanel({
         type: 'success',
         text: `${blackMarketSide === 'buy' ? 'Bought' : 'Sold'} ${blackMarketAmount}x ${blackMarketResource} ${blackMarketSide === 'buy' ? 'from' : 'to'} black market`,
       });
+      setTimeout(() => setMessage(null), 4000);
 
     } catch (error) {
       setMessage({ type: 'error', text: 'Transaction failed' });
