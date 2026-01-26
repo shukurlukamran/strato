@@ -437,6 +437,8 @@ export default function GamePage() {
            !dismissedTradeOffers.has(d.id)
     );
 
+    console.log(`[Trade Offers] Checking for pending offers: ${pendingTradeOffers.length} found (total deals: ${deals.length})`);
+
     // Only open modal if there are pending offers AND modal is not already open
     if (pendingTradeOffers.length > 0 && !tradeOfferDeal) {
       const firstOffer = pendingTradeOffers[0];
@@ -444,6 +446,7 @@ export default function GamePage() {
       const receiver = countries.find(c => c.id === firstOffer.receivingCountryId);
 
       if (proposer && receiver) {
+        console.log(`[Trade Offers] Opening modal for offer from ${proposer.name} to ${receiver.name}`);
         setTradeOfferDeal(firstOffer);
         setTradeOfferProposer(proposer);
         setTradeOfferReceiver(receiver);

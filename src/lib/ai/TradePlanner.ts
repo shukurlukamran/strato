@@ -6,7 +6,6 @@
 
 import { getSupabaseServerClient } from '@/lib/supabase/server';
 import { ResourceCost } from '@/lib/game-engine/ResourceCost';
-import { executeDealTerms } from '@/lib/deals/DealExecutorHelper';
 import type { GameStateSnapshot } from '@/lib/game-engine/GameState';
 
 export interface TradeProposal {
@@ -269,16 +268,89 @@ export class TradePlanner {
 
   /**
    * Execute a trade (create deal, transfer resources)
+   * 
+   * IMPORTANT: This modifies the GameState in-memory. The GameState will be persisted
+   * at the end of turn processing. This ensures atomic transactions and prevents
+   * race conditions with database updates during turn processing.
    */
   async executeTrade(
     gameId: string,
     turn: number,
-    proposal: TradeProposal
+    proposal: TradeProposal,
+    gameState: GameStateSnapshot
   ): Promise<TradeExecutionResult> {
     try {
       const supabase = getSupabaseServerClient();
 
-      // Create deal record using correct schema
+      // Get current stats from GameState (not database)
+      const proposerStats = gameState.countryStatsByCountryId[proposal.proposerId];
+      const receiverStats = gameState.countryStatsByCountryId[proposal.receiverId];
+
+      if (!proposerStats || !receiverStats) {
+        console.error('[TradePlanner] Missing country stats in GameState');
+        return { success: false, error: 'Missing country stats' };
+      }
+
+      // Validate and calculate deltas for proposer's commitments
+      const proposerDeltas = this.calculateAndValidateDeltas(
+        proposal.terms.proposerCommitments,
+        proposerStats,
+        'proposer'
+      );
+
+      if (!proposerDeltas.success) {
+        console.error('[TradePlanner] Proposer validation failed:', proposerDeltas.errors);
+        return { success: false, error: proposerDeltas.errors.join(', ') };
+      }
+
+      // Validate and calculate deltas for receiver's commitments
+      const receiverDeltas = this.calculateAndValidateDeltas(
+        proposal.terms.receiverCommitments,
+        receiverStats,
+        'receiver'
+      );
+
+      if (!receiverDeltas.success) {
+        console.error('[TradePlanner] Receiver validation failed:', receiverDeltas.errors);
+        return { success: false, error: receiverDeltas.errors.join(', ') };
+      }
+
+      // Apply deltas to GameState (in-memory)
+      // Proposer gives resources, receives resources from receiver
+      const updatedProposerStats = { ...proposerStats };
+      const updatedReceiverStats = { ...receiverStats };
+
+      // Apply proposer's commitments (subtract from proposer)
+      for (const commitment of proposal.terms.proposerCommitments) {
+        if (commitment.type === 'resource_transfer' && commitment.resource) {
+          updatedProposerStats.resources[commitment.resource] = 
+            (updatedProposerStats.resources[commitment.resource] || 0) - commitment.amount;
+          updatedReceiverStats.resources[commitment.resource] = 
+            (updatedReceiverStats.resources[commitment.resource] || 0) + commitment.amount;
+        } else if (commitment.type === 'budget_transfer') {
+          updatedProposerStats.budget -= commitment.amount;
+          updatedReceiverStats.budget += commitment.amount;
+        }
+      }
+
+      // Apply receiver's commitments (subtract from receiver)
+      for (const commitment of proposal.terms.receiverCommitments) {
+        if (commitment.type === 'resource_transfer' && commitment.resource) {
+          updatedReceiverStats.resources[commitment.resource] = 
+            (updatedReceiverStats.resources[commitment.resource] || 0) - commitment.amount;
+          updatedProposerStats.resources[commitment.resource] = 
+            (updatedProposerStats.resources[commitment.resource] || 0) + commitment.amount;
+        } else if (commitment.type === 'budget_transfer') {
+          updatedReceiverStats.budget -= commitment.amount;
+          updatedProposerStats.budget += commitment.amount;
+        }
+      }
+
+      // Update GameState with new stats (will be persisted at end of turn)
+      gameState.countryStatsByCountryId[proposal.proposerId] = updatedProposerStats;
+      gameState.countryStatsByCountryId[proposal.receiverId] = updatedReceiverStats;
+
+      // Create deal record in database
       const dealData = {
         game_id: gameId,
         proposing_country_id: proposal.proposerId,
@@ -288,7 +360,7 @@ export class TradePlanner {
           proposerCommitments: proposal.terms.proposerCommitments,
           receiverCommitments: proposal.terms.receiverCommitments
         },
-        status: 'accepted', // AI trades are automatically accepted
+        status: 'active', // Mark as active since it's immediately executed
         proposed_at: new Date().toISOString(),
         accepted_at: new Date().toISOString(),
         turn_created: turn,
@@ -305,39 +377,54 @@ export class TradePlanner {
 
       if (dealError) {
         console.error('[TradePlanner] Failed to create deal:', dealError);
+        // Revert GameState changes
+        gameState.countryStatsByCountryId[proposal.proposerId] = proposerStats;
+        gameState.countryStatsByCountryId[proposal.receiverId] = receiverStats;
         return { success: false, error: 'Failed to create deal record' };
       }
 
-      // Execute the resource transfers using the standard deal execution function
-      const executionResult = await executeDealTerms(
-        gameId,
-        turn,
-        proposal.proposerId,
-        proposal.receiverId,
-        {
-          proposerCommitments: proposal.terms.proposerCommitments,
-          receiverCommitments: proposal.terms.receiverCommitments
-        },
-        'trade'
-      );
-
-      if (!executionResult.success) {
-        console.error('[TradePlanner] Failed to execute transfers:', executionResult.errors);
-        return { success: false, error: executionResult.errors.join(', ') };
-      }
-
-      // Update deal status to active
-      await supabase
-        .from('deals')
-        .update({ status: 'active' })
-        .eq('id', deal.id);
-
+      console.log(`[TradePlanner] Trade executed successfully: ${deal.id}`);
       return { success: true, dealId: deal.id };
 
     } catch (error) {
       console.error('[TradePlanner] Error executing trade:', error);
       return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
     }
+  }
+
+  /**
+   * Validate commitments and calculate deltas
+   * Returns success status and any validation errors
+   */
+  private calculateAndValidateDeltas(
+    commitments: Array<{ type: string; resource?: string; amount: number }>,
+    stats: any,
+    role: string
+  ): { success: boolean; errors: string[] } {
+    const errors: string[] = [];
+
+    for (const commitment of commitments) {
+      if (commitment.type === 'resource_transfer') {
+        if (!commitment.resource) {
+          errors.push(`${role}: Missing resource in commitment`);
+          continue;
+        }
+        const available = stats.resources[commitment.resource] || 0;
+        if (available < commitment.amount) {
+          errors.push(
+            `${role}: Insufficient ${commitment.resource} (has ${available}, needs ${commitment.amount})`
+          );
+        }
+      } else if (commitment.type === 'budget_transfer') {
+        if (stats.budget < commitment.amount) {
+          errors.push(
+            `${role}: Insufficient budget (has ${stats.budget}, needs ${commitment.amount})`
+          );
+        }
+      }
+    }
+
+    return { success: errors.length === 0, errors };
   }
 
   /**

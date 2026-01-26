@@ -2,8 +2,6 @@
 
 Stil persists:
 - History log shows that deals with Player are automatically confirmed - we built deal window like defense window - why doesn't it appear when Player receives a deal offer?
-- LLM Trade actions - removed? YES
-- Attack non-neighbor - removed? YES
 
 ---
 - Log in system and saving games to profiles

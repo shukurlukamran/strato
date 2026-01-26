@@ -244,6 +244,7 @@ export class TurnProcessor {
               state.data.gameId,
               state.data.turn,
               bestProposal,
+              state.data  // Pass GameState snapshot so trades modify it in-memory
             );
 
             if (executionResult.success) {

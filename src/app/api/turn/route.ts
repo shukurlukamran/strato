@@ -590,12 +590,17 @@ export async function POST(req: Request) {
   for (const aiCountry of state.data.countries.filter(c => !c.isPlayerControlled)) {
     for (const playerCountry of state.data.countries.filter(c => c.isPlayerControlled)) {
       if (tradeOfferService.shouldOfferTrade(aiCountry.id, playerCountry.id, turn, gameId, state.data)) {
+        console.log(`[Turn API] ${aiCountry.name} checking trade proposals for ${playerCountry.name}`);
+        
         // Find beneficial trade
         const proposals = await tradePlanner.planTrades(aiCountry.id, state.data, marketPrices.marketPrices);
         const playerProposals = proposals.filter(p => p.receiverId === playerCountry.id);
 
         if (playerProposals.length > 0) {
+          console.log(`[Turn API] ${aiCountry.name} sending trade offer to ${playerCountry.name}`);
           await tradeOfferService.sendTradeOffer(gameId, aiCountry.id, playerCountry.id, playerProposals[0], turn);
+        } else {
+          console.log(`[Turn API] ${aiCountry.name} has no suitable proposals for ${playerCountry.name}`);
         }
       }
     }
@@ -976,7 +981,7 @@ export async function POST(req: Request) {
     }
   }
 
-  // 3. Add executed deals from this turn
+  // 3. Add executed deals from this turn (only show player-involved deals)
   const dealEvents: Array<{ type: string; message: string; data?: Record<string, unknown> }> = [];
   try {
     const dealsRes = await supabase
@@ -994,18 +999,30 @@ export async function POST(req: Request) {
       .in("status", ["active", "accepted"]);
 
     if (dealsRes.data && dealsRes.data.length > 0) {
-      // Get country names for display
+      // Get country info to determine which deals involve the player
       const countryIds = [...new Set(dealsRes.data.flatMap(d => [d.proposing_country_id, d.receiving_country_id]))];
       const countriesRes = await supabase
         .from("countries")
-        .select("id, name")
+        .select("id, name, is_player_controlled")
         .in("id", countryIds);
 
-      const countryNames = new Map(countriesRes.data?.map(c => [c.id, c.name]) || []);
+      const countryInfo = new Map(
+        countriesRes.data?.map(c => [c.id, { name: c.name, isPlayer: c.is_player_controlled }]) || []
+      );
 
-      for (const deal of dealsRes.data) {
-        const proposerName = countryNames.get(deal.proposing_country_id) || "Unknown";
-        const receiverName = countryNames.get(deal.receiving_country_id) || "Unknown";
+      // Filter to only deals where at least one participant is player-controlled
+      // AI-to-AI trades are internal mechanics and shouldn't clutter the history log
+      const playerInvolvedDeals = dealsRes.data.filter(deal => {
+        const proposerInfo = countryInfo.get(deal.proposing_country_id);
+        const receiverInfo = countryInfo.get(deal.receiving_country_id);
+        return proposerInfo?.isPlayer || receiverInfo?.isPlayer;
+      });
+
+      for (const deal of playerInvolvedDeals) {
+        const proposerInfo = countryInfo.get(deal.proposing_country_id);
+        const receiverInfo = countryInfo.get(deal.receiving_country_id);
+        const proposerName = proposerInfo?.name || "Unknown";
+        const receiverName = receiverInfo?.name || "Unknown";
 
         const { DealMessageGenerator } = await import("@/lib/game-engine/DealMessageGenerator");
         const messageGenerator = new DealMessageGenerator();

@@ -16,7 +16,7 @@ export class AITradeOfferService {
 
   /**
    * Determine if AI should offer a trade to player this turn
-   * Frequency: ~every 5 turns if AI has surplus and player has shortages
+   * Frequency: ~every 3-5 turns if AI has surplus and player has shortages
    * Includes cooldown to prevent spam
    */
   shouldOfferTrade(
@@ -26,26 +26,34 @@ export class AITradeOfferService {
     gameId: string,
     gameState: GameStateSnapshot
   ): boolean {
-    // Check cooldown: don't offer to same player more than once per 5 turns
+    // Check cooldown: don't offer to same player more than once per 3 turns
     const key = `${gameId}|${aiCountryId}|${playerCountryId}`;
     const lastOfferTurn = lastOfferTurnByKey.get(key);
-    if (lastOfferTurn !== undefined && turn - lastOfferTurn < 5) {
+    if (lastOfferTurn !== undefined && turn - lastOfferTurn < 3) {
+      console.log(`[AI Trade Offer] Cooldown active for ${aiCountryId} -> ${playerCountryId} (last offer: turn ${lastOfferTurn}, current: ${turn})`);
       return false;
     }
 
-    // Only offer trades every ~5 turns to avoid spam
-    const turnModulo = turn % 5;
-    if (turnModulo !== 0 && turnModulo !== 2) {
+    // Only offer trades every few turns to avoid spam (but more frequently than before)
+    const turnModulo = turn % 3;
+    if (turnModulo !== 0 && turnModulo !== 1) {
+      console.log(`[AI Trade Offer] Turn ${turn} doesn't match offer schedule (modulo ${turnModulo})`);
       return false;
     }
 
     // Check if AI country has surplus resources
     const aiStats = gameState.countryStatsByCountryId[aiCountryId];
-    if (!aiStats) return false;
+    if (!aiStats) {
+      console.log(`[AI Trade Offer] No stats found for AI country ${aiCountryId}`);
+      return false;
+    }
 
     // Check if player country has resource shortages
     const playerStats = gameState.countryStatsByCountryId[playerCountryId];
-    if (!playerStats) return false;
+    if (!playerStats) {
+      console.log(`[AI Trade Offer] No stats found for player country ${playerCountryId}`);
+      return false;
+    }
 
     // Simple surplus/shortage detection
     const aiResources = aiStats.resources || {};
@@ -62,19 +70,27 @@ export class AITradeOfferService {
       const aiAmount = aiResources[resource] || 0;
       const playerAmount = playerResources[resource] || 0;
 
-      // AI has surplus if they have more than 50 units of a resource
-      if (aiAmount > 50) {
+      // AI has surplus if they have more than 40 units of a resource (lowered threshold)
+      if (aiAmount > 40) {
         aiHasSurplus = true;
       }
 
-      // Player has shortage if they have less than 20 units of a resource
-      if (playerAmount < 20) {
+      // Player has shortage if they have less than 30 units of a resource (raised threshold to be more generous)
+      if (playerAmount < 30) {
         playerHasShortage = true;
       }
     }
 
+    const shouldOffer = aiHasSurplus && playerHasShortage;
+    
+    if (!shouldOffer) {
+      console.log(`[AI Trade Offer] No trade opportunity: aiHasSurplus=${aiHasSurplus}, playerHasShortage=${playerHasShortage}`);
+    } else {
+      console.log(`[AI Trade Offer] Trade opportunity found for ${aiCountryId} -> ${playerCountryId}`);
+    }
+
     // Only offer trade if both conditions are met
-    return aiHasSurplus && playerHasShortage;
+    return shouldOffer;
   }
 
   /**
@@ -162,6 +178,10 @@ export class AITradeOfferService {
           updated_at: now
         })
         .eq("id", chatId);
+
+      // Update cooldown tracker
+      const key = `${gameId}|${aiCountryId}|${playerCountryId}`;
+      lastOfferTurnByKey.set(key, currentTurn);
 
       console.log(`[AI Trade Offer] ${aiCountryId} sent trade offer to ${playerCountryId} (Deal ID: ${deal.id})`);
     } catch (error) {
