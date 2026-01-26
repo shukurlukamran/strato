@@ -311,7 +311,6 @@ CURRENT MARKET RATES:
       updatedAt: new Date().toISOString(),
     };
   }
-  }
 
   /**
    * Rule-based response system for common messages (avoids LLM calls)
