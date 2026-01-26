@@ -1,7 +1,6 @@
 (DO NOT TOUCH THIS FILE. THIS FILE IS FOR MY PERSONAL NOTES.)
 
 Stil persistsI
-- LLM plan includes "attack aurum" for Cyrenia but Cyrenia isn't neighbor to Aurum right now so can't attack. LLM needs to know about this.
 - History log shows that deals with Player are automatically confirmed - we built deal window like defense window - whay doesn't it appear when Player receives a deal offer?
 
 ---
@@ -38,6 +37,9 @@ Stil persistsI
 - In the window showing current costs of resources, add a graph for each resource showing their price movement in the last 10 turns.
 - If LLM Planner takes too long, we may split it into 2 sessions (for example, on turn 5, planner is activated for half of the countries, and on turn 10, for the other half)
 - AI countries should consider more things when deciding which country and city to attack: Military strength, City's resources (if they need those resources), City's population (the more, the better for expansion), Diplomatic relationships with the other countries (good relationships should have some benefits such as trade bonuses, etc.)
+- If a country including Players is getting attacked by more than once (can be different attacker countries or the same country attacking a few different cities), any allocated military strength should deducted from the next allocation. For example, X country has 150 military strength and received 3 different attacks in this turn. If it allocates 50 strength to the 1st attack, it will have 100 strength left to allocate to the other 2 attacks.
+
+Also, currently Defense window for the 2nd received attack only appears after submitting allocation to the 1st attack. However, Player should receive them all at the same time so he knows how many attacks he received this turn and decide allocation accordingly.
 -------
 
 Analyze root causes of these, understand what is happening, and then implement fixes. 

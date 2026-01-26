@@ -142,19 +142,19 @@ export class LLMStrategicPlanner {
   private activeStrategicPlans: Map<string, LLMStrategicAnalysis> = new Map();
 
   private isTradeAdviceText(text: string): boolean {
-    // We consider these "unexecutable trade recommendations" for now: they require diplomacy chat / deal systems.
-    // Keep this intentionally broad to avoid polluting planItems with advice-only trade steps.
-    return /\b(trade|deal|exchange|barter|swap)\b/i.test(text);
+    // Identify any instruction that explicitly describes a trade/exchange so it can be filtered out.
+    // Trading is handled separately by TradePlanner, so we drop these steps entirely.
+    return /\b(trade|deal|exchange|barter|swap|buy|sell|purchase)\b/i.test(text);
   }
 
   private stripUnexecutableTradeSteps(items: LLMPlanItem[]): LLMPlanItem[] {
     return items.filter((item) => {
       if (item.kind !== "step") return true;
       const instruction = typeof item.instruction === "string" ? item.instruction : "";
-      const hasExecution = !!item.execution;
-      if (hasExecution) return true;
-      // Remove advice-only trade steps
-      return !this.isTradeAdviceText(instruction);
+      if (this.isTradeAdviceText(instruction)) {
+        return false;
+      }
+      return true;
     });
   }
   
@@ -723,6 +723,8 @@ Example WRONG: "countryId": "${state.countries.find(c => c.id === countries[0]?.
 
 CRITICAL: Only include attack steps if "Attacks:" is NOT "None". If it is "None (...)", DO NOT include any attack steps.
 
+⚠️ IMPORTANT: Do NOT include trade/exchange/buy/sell steps; trading is handled automatically by TradePlanner. Mention resource shortages only as context for other systems.
+
 Return ONLY this JSON structure. NO markdown. NO code blocks. NO explanations. JUST THE JSON:
 
 {
@@ -754,6 +756,7 @@ VALIDATION CHECKLIST:
 ✓ Research steps have targetLevel
 ✓ NO country names in countryId field
 ✓ ALL braces and brackets properly closed
+✓ NO trade/exchange/buy/sell steps (TradePlanner handles trading)
 
 Return ONLY the JSON object. No markdown, no extra text.`;
   }
@@ -945,7 +948,7 @@ SCHEMA:
   {"id":"s1","instruction":"<action>","stop_when":{"tech_level_gte":2},"execution":{"actionType":"research","actionData":{"targetLevel":2}}},
   {"id":"s2","instruction":"<action>","execution":{"actionType":"military","actionData":{"subType":"recruit","amount":15}}},
   {"id":"s3","instruction":"<action>","execution":{"actionType":"economic","actionData":{"subType":"infrastructure","targetLevel":2}}},
-  {"id":"s4","instruction":"Arrange trade deal with nearby country for missing resources (execute via diplomacy chat)","execution":null},
+  {"id":"s4","instruction":"<action>","execution":null},
   ...5-6 more steps
 ],"diplomacy":{${neighbors
   .split('\n')
@@ -957,14 +960,12 @@ SCHEMA:
   .filter(Boolean)
   .join(',')}},"confidence":0.9}
 
-CRITICAL: Military MUST have subType:"recruit"|"attack". Economic MUST have subType:"infrastructure". Research MUST have targetLevel. Advice-level steps (like trading) should have execution:null.
+CRITICAL: Military MUST have subType:"recruit"|"attack". Economic MUST have subType:"infrastructure". Research MUST have targetLevel. Do NOT include trade/buy/sell steps in action_plan; those are handled automatically by TradePlanner.
 
 STRATEGIC GUIDANCE:
-- If resources are missing for planned actions, recommend trading with other countries or using black market as fallback
-- Use market prices to evaluate fair trade terms
-- Black market provides immediate access at premium prices (80% markup for buying, 45% discount for selling)
-- Consider diplomatic relations when planning trades
-- IMPORTANT: Trade deals must be arranged via diplomacy chat (they are NOT directly executable actions) - include as advice steps with execution:null`;
+- If resources are missing for planned actions, mention the shortage so other systems (TradePlanner or black market) can resolve it, but DO NOT schedule trade/buy/sell actions yourself.
+- Market prices and black market information are for awareness only — do not add explicit buy or sell steps.
+- Stay focused on executable research, infrastructure, and military actions; trading is handled elsewhere and should not appear in the plan.`;
   }
 
   private async getMarketPricesBlock(state: GameStateSnapshot): Promise<string> {
@@ -1339,6 +1340,7 @@ VALIDATION CHECKLIST BEFORE RESPONDING:
 ✓ No country names in countryId field (only UUIDs)
 ✓ No escaped characters, only valid JSON
 ✓ All closing braces and brackets match
+✓ No trade/exchange/buy/sell steps (TradePlanner covers trading)
 
 SCHEMA: Return JSON with "countries" array. Each country MUST have:
 - countryId: EXACT UUID from the list above (e.g., "406b9182-a2eb-40c7-9854-190a5ddc6eb5")
@@ -1352,7 +1354,8 @@ STEP SCHEMA: {"id": "unique_id", "instruction": "What to do", "priority": 1-5, "
 
 STEP REPEATABILITY:
 - Use "stop_when" for steps that should repeat until goal met (tech upgrades, recruiting to threshold)
-- Omit "stop_when" for one-time actions (attacks, specific trades)
+- Omit "stop_when" for one-time actions (attacks)
+⚠️ Trade/exchange/buy/sell steps are not allowed here; trading is handled by TradePlanner.
 - Example repeatable: {"id":"tech_l4","stop_when":{"tech_level_gte":4},"execution":{...}}
 - Example one-time: {"id":"attack_city","execution":{"actionType":"military",...}}
 
