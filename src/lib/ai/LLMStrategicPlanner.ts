@@ -124,6 +124,7 @@ ACTIONS:
 4. ATTACK: 100+10×strength
 
 RESOURCES: Food,Timber,Iron,Oil,Gold,Copper,Steel,Coal
+CURRENCY: Budgets are paid in dollars ($). Gold is a resource like the others and is not the spending currency—do NOT equate it with budget dollars.
 Missing→BLOCKED (trade/black market to acquire)
 
 STRATEGY: Economic=tech+infra, Military=recruit+attack weak, Balanced=alternate
