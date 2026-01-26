@@ -989,22 +989,6 @@ export default function GamePage() {
 
       </div>
 
-      {/* Bottom Status Bar */}
-      <div className="absolute bottom-0 left-0 right-0 z-20 border-t border-white/10 bg-slate-900/80 backdrop-blur-sm px-4 py-2">
-        <div className="flex items-center justify-between text-xs text-white/70">
-          <div>Game ID: {gameId.slice(0, 8)}...</div>
-          <div className="flex items-center gap-4">
-            {selectedCountry && (
-              <>
-                <span>Selected: {selectedCountry.name}</span>
-                <span className="h-2 w-px bg-white/20" />
-              </>
-            )}
-            <span>Turn {turn}</span>
-          </div>
-        </div>
-      </div>
-
       {/* Attack Modal (Phase 3) */}
       {attackTargetCity && attackerCountry && attackerStats && defenderCountry && defenderStats && (
         <AttackModal
