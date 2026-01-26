@@ -261,16 +261,19 @@ AVAILABLE RESOURCES (8 types):
 DIRECTIONALITY - WHO GIVES WHAT:
 - CountryA = ${countryA.name} (${countryA.isPlayerControlled ? "Player" : "AI"})
 - CountryB = ${countryB.name} (${countryB.isPlayerControlled ? "Player" : "AI"})
-- proposerCommitments = what CountryA gives to CountryB
-- receiverCommitments = what CountryB gives to CountryA
+- proposerIsCountryA indicates whether the proposer is CountryA (true) or CountryB (false)
+- proposerCommitments should describe everything the proposing country offers to the other side
+- receiverCommitments should describe what the receiving country gives back to the proposer
 
-If CountryA says "I want to SELL you 100 food for 200 credits":
+If CountryA proposes "I want to SELL you 100 food for 200 credits":
+  - proposerIsCountryA: true
   - proposerCommitments: [{"type": "resource_transfer", "resource": "food", "amount": 100}]
   - receiverCommitments: [{"type": "budget_transfer", "amount": 200}]
 
-If CountryA says "I want to BUY 100 food from you for 200 credits":
-  - proposerCommitments: [{"type": "budget_transfer", "amount": 200}]
-  - receiverCommitments: [{"type": "resource_transfer", "resource": "food", "amount": 100}]
+If CountryB proposes "I can give you 100 food for 200 credits":
+  - proposerIsCountryA: false
+  - proposerCommitments: [{"type": "resource_transfer", "resource": "food", "amount": 100}]
+  - receiverCommitments: [{"type": "budget_transfer", "amount": 200}]
 
 
 COMMITMENT TYPES:
@@ -591,30 +594,16 @@ CURRENT MARKET RATES:
         console.log("=== DEAL EXTRACTED SUCCESSFULLY ===\n");
       }
 
-
-      // Determine who the actual proposer is
-      const proposerIsCountryA = parsed.proposerIsCountryA ?? true; // Default to CountryA if not specified
+      const proposerIsCountryA = parsed.proposerIsCountryA ?? true;
       const proposerCountryId = proposerIsCountryA ? countryAId : countryBId;
+      const finalDealTerms = dealTerms;
 
-      // If CountryB is the proposer, we need to swap the commitments
-      let finalDealTerms = dealTerms;
-      if (!proposerIsCountryA) {
-        // Log directionality swap for validation
-        if (process.env.DEAL_DEBUG === "1") {
-          console.log(`[DealExtractor] Deal directionality swapped: Proposer is CountryB (${countryBId})`);
-          console.log(`[DealExtractor] Swapped commitments:`, {
-            proposerA_gives: dealTerms.proposerCommitments,
-            proposerB_gives: dealTerms.receiverCommitments
-          });
-        }
-        
-        finalDealTerms = {
-          proposerCommitments: dealTerms.receiverCommitments, // What B gives becomes proposer commitments
-          receiverCommitments: dealTerms.proposerCommitments,  // What A gives becomes receiver commitments
-          conditions: dealTerms.conditions,
-        };
-      } else if (process.env.DEAL_DEBUG === "1") {
-        console.log(`[DealExtractor] Deal directionality normal: Proposer is CountryA (${countryAId})`);
+      if (process.env.DEAL_DEBUG === "1") {
+        console.log(
+          `[DealExtractor] Proposer mapped to ${proposerIsCountryA ? countryA.name : countryB.name} (${proposerCountryId})`
+        );
+        console.log("[DealExtractor] Proposer commitments:", finalDealTerms.proposerCommitments);
+        console.log("[DealExtractor] Receiver commitments:", finalDealTerms.receiverCommitments);
       }
 
       return {

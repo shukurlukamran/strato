@@ -63,6 +63,9 @@ export async function executeDealTerms(
     const proposerDeltas = calculateDeltasForCommitments(dealTerms.proposerCommitments, proposerStats, receiverStats, errors);
     const receiverDeltas = calculateDeltasForCommitments(dealTerms.receiverCommitments, receiverStats, proposerStats, errors);
 
+    const proposerIncomingResourceDeltas = accumulateIncomingResourceDeltas(dealTerms.receiverCommitments);
+    const receiverIncomingResourceDeltas = accumulateIncomingResourceDeltas(dealTerms.proposerCommitments);
+
     // If any validation errors occurred, fail the entire deal
     if (errors.length > 0) {
       return { success: false, errors };
@@ -73,8 +76,18 @@ export async function executeDealTerms(
     const receiverToProposerBudget = -receiverDeltas.budgetDelta; // Positive amount receiver sends to proposer
 
     // Apply all changes atomically
-    await applyDeltasToDatabase(proposerStats, proposerDeltas.resourceDeltas, proposerDeltas.budgetDelta + receiverToProposerBudget, supabase);
-    await applyDeltasToDatabase(receiverStats, receiverDeltas.resourceDeltas, receiverDeltas.budgetDelta + proposerToReceiverBudget, supabase);
+    await applyDeltasToDatabase(
+      proposerStats,
+      mergeResourceDeltas(proposerDeltas.resourceDeltas, proposerIncomingResourceDeltas),
+      proposerDeltas.budgetDelta + receiverToProposerBudget,
+      supabase,
+    );
+    await applyDeltasToDatabase(
+      receiverStats,
+      mergeResourceDeltas(receiverDeltas.resourceDeltas, receiverIncomingResourceDeltas),
+      receiverDeltas.budgetDelta + proposerToReceiverBudget,
+      supabase,
+    );
 
     // Apply baseline diplomatic boost for the deal type (if provided)
     if (dealType) {
@@ -429,4 +442,26 @@ function getDealDiplomaticDelta(dealType: string): number {
     default:
       return 4;
   }
+}
+
+function accumulateIncomingResourceDeltas(commitments: DealCommitment[]): Record<string, number> {
+  const deltas: Record<string, number> = {};
+  for (const commitment of commitments) {
+    if (commitment.type !== "resource_transfer" || !commitment.resource || !commitment.amount) {
+      continue;
+    }
+    deltas[commitment.resource] = (deltas[commitment.resource] || 0) + commitment.amount;
+  }
+  return deltas;
+}
+
+function mergeResourceDeltas(
+  outgoing: Record<string, number>,
+  incoming: Record<string, number>,
+): Record<string, number> {
+  const merged: Record<string, number> = { ...outgoing };
+  for (const [resource, delta] of Object.entries(incoming)) {
+    merged[resource] = (merged[resource] || 0) + delta;
+  }
+  return merged;
 }
