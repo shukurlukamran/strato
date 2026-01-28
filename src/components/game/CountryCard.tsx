@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import type { Country, CountryStats } from "@/types/country";
 import type { DealExtractionResult } from "@/lib/deals/DealExtractor";
 import { ResourceProfileBadge } from "./ResourceProfileBadge";
-import { LeaderProfileService, type LeaderProfile } from "@/lib/ai/LeaderProfileService";
+import type { LeaderProfile } from "@/lib/ai/LeaderProfileService";
 import { Tooltip } from "./Tooltip";
 
 interface ChatMessage {
@@ -132,14 +132,30 @@ export function CountryCard({
 
     const fetchLeaderProfile = async () => {
       try {
-        const service = new LeaderProfileService();
-        const profile = await service.getOrCreateProfile({
-          gameId,
-          countryId: country.id,
-          resourceProfile: stats?.resourceProfile,
-          countryName: country.name,
-        });
-        setLeaderProfile(profile);
+        const resourceProfileName = stats?.resourceProfile?.name || '';
+        const url = new URL('/api/leader', window.location.origin);
+        url.searchParams.set('gameId', gameId);
+        url.searchParams.set('countryId', country.id);
+        if (resourceProfileName) {
+          url.searchParams.set('resourceProfile', resourceProfileName);
+        }
+        url.searchParams.set('countryName', country.name);
+
+        console.log('Fetching leader profile for:', { countryId: country.id, gameId, resourceProfileName, countryName: country.name });
+        
+        const response = await fetch(url.toString());
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Failed to fetch leader profile: ${response.statusText} - ${errorText}`);
+        }
+        
+        const data = await response.json();
+        if (data.profile) {
+          console.log('Leader profile fetched successfully:', { name: data.profile.leaderName, title: data.profile.title });
+          setLeaderProfile(data.profile);
+        } else {
+          console.warn('No profile in response:', data);
+        }
       } catch (error) {
         console.error("Failed to fetch leader profile:", error);
         setLeaderProfile(null);
