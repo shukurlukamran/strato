@@ -399,7 +399,7 @@ CURRENT MARKET RATES:
     if (!this.model) {
       console.error("ChatHandler: Gemini model not initialized. Check GOOGLE_GEMINI_API_KEY.");
       return {
-        messageText: `Acknowledged. What exactly are you proposing, and for how many turns? (You said: "${turn.messageText}")`,
+        messageText: `I appreciate your message. Could you clarify what you're proposing?`,
         leaderProfile: undefined,
       };
     }
@@ -414,9 +414,15 @@ CURRENT MARKET RATES:
       });
 
       try {
-        const basicPrompt = `You are a diplomatic representative in a strategy game. A player has sent you this message: "${turn.messageText}". Respond diplomatically and strategically, as if you represent an AI-controlled country. Keep your response concise (2-3 sentences).`;
+        // Use a more context-aware basic prompt
+        const messageFirstWords = turn.messageText.split(' ').slice(0, 5).join(' ');
+        const basicPrompt = `You are a diplomatic leader negotiating in a strategy game. Respond to this message naturally and diplomatically:
+
+"${turn.messageText}"
+
+Respond in 2-3 sentences. Be responsive to their actual proposal or question.`;
         const result = await this.model!.generateContent(basicPrompt);
-        const responseText = result.response.text().trim() || "I'm considering your proposal.";
+        const responseText = result.response.text().trim() || "I'm prepared to discuss this further.";
         return {
           messageText: responseText,
           leaderProfile: undefined,
@@ -424,7 +430,7 @@ CURRENT MARKET RATES:
       } catch (fallbackError) {
         console.error("Even fallback Gemini call failed:", fallbackError);
         return {
-          messageText: `I understand your message: "${turn.messageText}". However, I need more context to provide a proper response.`,
+          messageText: `I understand. Let me consider your message: "${turn.messageText.substring(0, 50)}..." What specifically would you like to propose?`,
         };
       }
     }

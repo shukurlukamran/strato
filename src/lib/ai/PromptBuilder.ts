@@ -118,7 +118,21 @@ Respond now as ${receiverCountryName}, in character and with strategic purpose.`
       .map(([key, value]) => `${key}: ${String(value).replace("_", " ")}`)
       .join("; ");
     const tics = profile.traits.speech_tics.length > 0 ? `Speech tics: ${profile.traits.speech_tics.join("; ")}` : "";
-    return `Leader persona: ${traits}${tics ? ` | ${tics}` : ""}. Public commitment: ${profile.publicValues ?? "Unspecified."}`;
+    
+    // Add decision weights guidance to influence responses
+    const weights = profile.decisionWeights;
+    const decisionGuidance = [
+      weights.aggression > 0.6 ? "You lean toward aggressive posturing" : "You prefer caution and defense",
+      weights.cooperativeness > 0.6 ? "You value alliances and mutual benefit" : "You operate independently",
+      weights.riskTolerance > 0.6 ? "You're willing to take calculated risks" : "You play it safe",
+      weights.honesty > 0.6 ? "You honor your commitments strictly" : "You're pragmatic about agreements",
+      weights.patience > 0.6 ? "You think long-term and can wait for advantages" : "You prefer quick results",
+      weights.fairness > 0.6 ? "You prefer equitable deals" : "You drive hard bargains",
+    ].join("; ");
+    
+    return `Leader persona: ${traits}${tics ? ` | ${tics}` : ""}. Public commitment: ${profile.publicValues ?? "Unspecified."}
+
+Decision tendencies: ${decisionGuidance}`;
   }
 
   private static formatResources(resources: Record<string, number>): string {

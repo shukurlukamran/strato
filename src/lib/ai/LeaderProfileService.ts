@@ -325,13 +325,19 @@ function buildTitle(resourceProfileName?: string): string {
 }
 
 function buildPublicValues(traits: LeaderTraits, countryName?: string): string {
+  const formatTrait = (t: string) => t.replace(/_/g, " ");
   const lines = [
-    `Values ${traits.fairness.replace("_", " ")} fairness`,
-    `Honors ${traits.honor.replace("_", " ")}`,
-    `Leans ${traits.cooperation_style.replace("_", " ")} cooperation`,
+    `Values ${formatTrait(traits.fairness)} fairness`,
+    `Honors ${formatTrait(traits.honor)}`,
+    `Leans ${formatTrait(traits.cooperation_style)} cooperation`,
   ];
   if (countryName) {
-    lines.push(`Serves ${countryName} with ${traits.temperament} resolve`);
+    const aggression = traits.aggression_doctrine === 'expansionist' 
+      ? 'ambitious' 
+      : traits.aggression_doctrine === 'defensive'
+      ? 'protective'
+      : 'peaceful';
+    lines.push(`Serves ${countryName} with ${aggression} ${traits.temperament} leadership`);
   }
   return lines.join(", ");
 }

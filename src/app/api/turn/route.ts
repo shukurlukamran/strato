@@ -255,7 +255,9 @@ export async function POST(req: Request) {
   
   // Process each AI country with batch analysis results (if available)
   const aiActionPromises = aiCountries.map(async (country) => {
-    const aiController = AIController.withRandomPersonality(country.id);
+    // Try to load leader profile for personality-based decisions
+    // Falls back to random personality if not found
+    const aiController = await AIController.withLeaderProfile(gameId, country.id);
     
     try {
       // Pass batch analysis to avoid redundant LLM API calls

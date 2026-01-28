@@ -173,6 +173,35 @@ export class AIController {
   }
 
   /**
+   * Create an AIController from a country's leader profile
+   * Falls back to random personality if no profile found
+   */
+  static async withLeaderProfile(gameId: string, countryId: string): Promise<AIController> {
+    try {
+      const { LeaderProfileService } = await import("@/lib/ai/LeaderProfileService");
+      const service = new LeaderProfileService();
+      const profile = await service.getOrCreateProfile({ gameId, countryId });
+      
+      if (profile) {
+        const personality: AIPersonality = {
+          aggression: profile.decisionWeights.aggression,
+          cooperativeness: profile.decisionWeights.cooperativeness,
+          riskTolerance: profile.decisionWeights.riskTolerance,
+          honesty: profile.decisionWeights.honesty,
+        };
+        
+        console.log(`[AIController] Loaded personality for ${countryId.substring(0, 8)} from leader profile`);
+        return new AIController(personality);
+      }
+    } catch (error) {
+      console.warn(`[AIController] Failed to load leader profile for ${countryId}:`, error);
+    }
+    
+    // Fallback to random personality
+    return this.withRandomPersonality(countryId);
+  }
+
+  /**
    * Create AI controller with random personality
    */
   static withRandomPersonality(seed?: string): AIController {
