@@ -17,6 +17,7 @@ import {
   mergeBans,
 } from "@/lib/ai/LLMPlanInterpreter";
 import type { LLMPlanItem } from "@/lib/ai/LLMStrategicPlanner";
+import { LLMUsageLogger } from "@/lib/ai/LLMUsageLogger";
 
 /**
  * Military AI Decision Maker
@@ -25,6 +26,7 @@ import type { LLMPlanItem } from "@/lib/ai/LLMStrategicPlanner";
 export class MilitaryAI {
   private personality: AIPersonality;
   private readonly debugLLMPlan: boolean;
+  private readonly usageLogger = new LLMUsageLogger();
 
   constructor(personality: AIPersonality = DefaultPersonality) {
     this.personality = personality;
@@ -549,6 +551,15 @@ export class MilitaryAI {
     try {
       const prompt = this.buildAttackPrompt(state, countryId, playerCities, stats);
       const response = await this.callLLM(prompt);
+
+      await this.usageLogger.log({
+        gameId: state.gameId,
+        playerCountryId: countryId,
+        operation: "military_decision",
+        turn: state.turn,
+        inputChars: prompt.length,
+        outputChars: response.length,
+      });
       const decision = this.parseAttackDecision(response, playerCities, stats);
       
       if (!decision) return null;

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import type { ChatMessage } from "@/types/chat";
 import type { DealExtractionResult } from "@/lib/deals/DealExtractor";
+import { Tooltip } from "@/components/game/Tooltip";
 
 export function DiplomacyChat({
   gameId,
@@ -28,6 +29,7 @@ export function DiplomacyChat({
   const [extractionError, setExtractionError] = useState<string | null>(null);
   const [confirmingDeal, setConfirmingDeal] = useState(false);
   const [dealExecuted, setDealExecuted] = useState(false);
+  const [policyNotice, setPolicyNotice] = useState<string | null>(null);
 
   const sorted = useMemo(
     () => [...messages].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
@@ -38,6 +40,7 @@ export function DiplomacyChat({
     const trimmed = text.trim();
     if (!trimmed) return;
     setBusy(true);
+    setPolicyNotice(null);
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -51,8 +54,12 @@ export function DiplomacyChat({
         }),
       });
       if (!res.ok) throw new Error(await res.text());
-      const data = (await res.json()) as { messages: ChatMessage[] };
+      const data = (await res.json()) as {
+        messages: ChatMessage[];
+        policyMessage?: string | null;
+      };
       onNewMessages(data.messages);
+      setPolicyNotice(data.policyMessage ?? null);
       setText("");
       // Clear extracted deal when new message is sent
       setExtractedDeal(null);
@@ -183,6 +190,15 @@ export function DiplomacyChat({
           Send
         </button>
       </div>
+
+      {policyNotice && (
+        <div className="mt-2 flex items-center gap-1 text-xs text-amber-600">
+          <Tooltip content="Diplomacy replies use an in-world budget; extra replies cost credits.">
+            <span className="cursor-help font-semibold">ℹ️</span>
+          </Tooltip>
+          <span className="whitespace-pre-wrap font-medium">{policyNotice}</span>
+        </div>
+      )}
 
       {/* Extract Deal Button - Always Visible */}
       <div 

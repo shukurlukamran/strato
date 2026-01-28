@@ -2,6 +2,7 @@
 
 - Remove Trade Revenue component from the game completely as it's useless. Instead, any trade advantage/disadvantage in the game should increase/decrease the resources/money you receive from trades/deals (to be calculated right before they're added to your balance). Update tooltips accordingly too. Make sure everything you build is aligned with Supabase database. 
 - "Borealis bought resources from black market" in the history log should show which resource and how much of it
+- In Attack window, incorrect error message of "Allocated strength (112) exceeds effective military strength (108)" when actual military strength was 118.
 - How is the combat resolution calculation being done in the code? - explain in simple terms. I suspect something is wrong. Adding a few real examples from game history log:
 
 🛡️🛡️🛡️ Borealis defended South against Cyrenia! • Attack: 39 (effective strength with +80% tech) • Defense: 42 (effective strength with +100% tech + 20% terrain) • Combat Ratio: 0.77:1 (defender prevailed despite odds) • Losses: Cyrenia -14, Borealis -5
@@ -14,13 +15,13 @@
 
 ---
 - Log in system and saving games to profiles
-- Prevent abuse in the LLM chat (It shouldn't be possible to use it for anything unrelated to game - we also need to have some hard limits to prevent spamming, but this limit shouldn't interrupt gameplay. And negotiations may even cost some small money in the game to slightly discourage people to overuse it unnecessarily - Come up with a rational fair plan)
-- Each country's LLM should have a random character (affecting decisions, talking style, etc.)
+- **Prevent abuse in the LLM chat (It shouldn't be possible to use it for anything unrelated to game - we also need to have some hard limits to prevent spamming, but this limit shouldn't interrupt gameplay. And negotiations may even cost some small money in the game to slightly discourage people to overuse it unnecessarily - Come up with a rational fair plan)**
+- **Each country's LLM should have a random character (affecting decisions, talking style, etc.)**
 - Diplomacy system (simple for now) (non-agression pact, trade should increase relationship, ask for help, alliance)
 - Define a few winning conditions - and let LLM know them
 
 ---
-**LLM CHAT**
+LLM CHAT
 
 - LLM in the chat should be diplomatic, and strategic. For example, when a significantly obviously powerful Player demands tribute and threatening to attack unless tribute paid, LLM should analyze and decide if it should pay tribute or not. To prevent abuses, such cases should always be a way to make it official, such as non-agression pact for X amount of turns in this case.
 - Chat conversations should be able to affect diplomatic relationships a bit. Build it in a way that can't be abused.

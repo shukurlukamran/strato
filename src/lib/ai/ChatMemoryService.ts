@@ -1,6 +1,7 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import type { ChatMessage } from "@/types/chat";
 import { randomUUID } from "node:crypto";
+import { LLMUsageLogger } from "./LLMUsageLogger";
 
 interface RelationshipState {
   trust: number;
@@ -18,6 +19,7 @@ export interface MemorySnapshot {
   summary: string | null;
   openThreads: OpenThread[];
   relationshipState: RelationshipState;
+  didSummarize?: boolean;
 }
 
 interface MemoryRow {
@@ -43,13 +45,15 @@ const RESOLUTION_KEYWORDS = ["accepted", "agreed", "deal!", "deal.", "confirmed"
 const SUMMARY_TRIGGER_COUNT = Number(process.env.LLM_CHAT_SUMMARY_THRESHOLD ?? 12);
 
 export class ChatMemoryService {
+  private usageLogger = new LLMUsageLogger();
   async captureMemory(params: {
     chatId: string;
     chatHistory: ChatMessage[];
     newMessageText: string;
     senderCountryId: string;
+    usageContext?: { gameId: string; playerCountryId: string; turn: number };
   }): Promise<MemorySnapshot> {
-    const { chatId, chatHistory, newMessageText, senderCountryId } = params;
+    const { chatId, chatHistory, newMessageText, senderCountryId, usageContext } = params;
     const supabase = getSupabaseServerClient();
 
     let row = await supabase
@@ -77,7 +81,7 @@ export class ChatMemoryService {
     const memory: MemoryRow = {
       id: row.data.id,
       summary: row.data.summary,
-      open_threads: row.data.open_threads ?? [],
+      open_threads: Array.isArray(row.data.open_threads) ? row.data.open_threads : [],
       relationship_state: row.data.relationship_state ?? { trust: 50, grievance: 0, respect: 50 },
       last_summarized_message_at: row.data.last_summarized_message_at,
       last_message_id: row.data.last_message_id,
@@ -98,14 +102,25 @@ export class ChatMemoryService {
         open_threads: updatedThreads,
         relationship_state: updatedRelationships,
         last_summarized_message_at: shouldSummarize ? new Date().toISOString() : memory.last_summarized_message_at,
-        last_message_id: randomUUID(),
       })
       .eq("chat_id", chatId);
+
+    if (shouldSummarize && usageContext) {
+      await this.usageLogger.log({
+        gameId: usageContext.gameId,
+        playerCountryId: usageContext.playerCountryId,
+        operation: "summary_update",
+        turn: usageContext.turn,
+        inputChars: newMessageText.length,
+        outputChars: summary?.length ?? 0,
+      });
+    }
 
     return {
       summary,
       openThreads: updatedThreads,
       relationshipState: updatedRelationships,
+      didSummarize: shouldSummarize,
     };
   }
 
@@ -190,5 +205,13 @@ export class ChatMemoryService {
 
   private clamp(value: number): number {
     return Math.max(0, Math.min(100, value));
+  }
+
+  async setLastMessageId(chatId: string, messageId: string): Promise<void> {
+    const supabase = getSupabaseServerClient();
+    await supabase
+      .from("chat_memory_summaries")
+      .update({ last_message_id: messageId, updated_at: new Date().toISOString() })
+      .eq("chat_id", chatId);
   }
 }

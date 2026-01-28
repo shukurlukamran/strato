@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ChatHandler } from "@/lib/ai/ChatHandler";
+import { ChatMemoryService } from "@/lib/ai/ChatMemoryService";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export async function POST(req: Request) {
@@ -119,6 +120,9 @@ export async function POST(req: Request) {
           
           if (aiInsert.error) {
             console.error("Failed to save AI message:", aiInsert.error);
+          } else if (aiInsert.data?.id) {
+            const memoryService = new ChatMemoryService();
+            await memoryService.setLastMessageId(chatId, aiInsert.data.id);
           }
 
           // Update chat's last_message_at timestamp

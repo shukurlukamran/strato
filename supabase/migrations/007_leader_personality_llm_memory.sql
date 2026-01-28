@@ -30,11 +30,11 @@ create table if not exists chat_memory_summaries (
   id uuid primary key default gen_random_uuid(),
   chat_id uuid not null references diplomacy_chats(id) on delete cascade,
   summary text null,
-  open_threads jsonb not null default '{}'::jsonb,
+  open_threads jsonb not null default '[]'::jsonb,
   relationship_state jsonb not null default '{"trust":50,"grievance":0,"respect":50}'::jsonb,
   policy_state jsonb not null default '{}'::jsonb,
   last_summarized_message_at timestamptz null,
-  last_message_id uuid null,
+  last_message_id uuid null references chat_messages(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique(chat_id)

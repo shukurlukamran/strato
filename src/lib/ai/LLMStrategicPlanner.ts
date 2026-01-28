@@ -17,6 +17,7 @@ import { ECONOMIC_BALANCE } from "@/lib/game-engine/EconomicBalance";
 import type { City } from "@/types/city";
 import { calculateCityValue } from "@/types/city";
 import { LeaderProfileService } from "./LeaderProfileService";
+import { LLMUsageLogger } from "./LLMUsageLogger";
 
 /**
  * IMPORTANT: We do NOT constrain what the LLM can *advise* (instruction is always free text).
@@ -143,6 +144,7 @@ export class LLMStrategicPlanner {
   // Strategic plan persistence - LLM analysis guides next N turns
   private activeStrategicPlans: Map<string, LLMStrategicAnalysis> = new Map();
   private leaderProfileService = new LeaderProfileService();
+  private usageLogger = new LLMUsageLogger();
 
   private isTradeAdviceText(text: string): boolean {
     // Identify any instruction that explicitly describes a trade/exchange so it can be filtered out.
@@ -220,6 +222,14 @@ export class LLMStrategicPlanner {
     cities: City[]
   ): Promise<Map<string, LLMStrategicAnalysis>> {
     const results = new Map<string, LLMStrategicAnalysis>();
+    let batchUsage:
+      | {
+          promptLength: number;
+          responseLength: number;
+          inputTokens: number | null;
+          outputTokens: number | null;
+        }
+      | null = null;
     
     // Check if LLM is available
     if (!this.apiKey) {
@@ -277,6 +287,12 @@ export class LLMStrategicPlanner {
       
       // Track costs (Groq pricing: ~$0.20 per 1M input tokens, ~$0.20 per 1M output tokens)
       const usage = data.usage || {};
+      batchUsage = {
+        promptLength: batchPrompt.length,
+        responseLength: responseText.length,
+        inputTokens: usage.prompt_tokens ?? null,
+        outputTokens: usage.completion_tokens ?? null,
+      };
       const inputTokens = usage.prompt_tokens || batchPrompt.length / 4;
       const outputTokens = usage.completion_tokens || responseText.length / 4;
       const inputCost = (inputTokens / 1_000_000) * 0.20;  // Groq input pricing
@@ -330,6 +346,13 @@ export class LLMStrategicPlanner {
         if (retryResponse.ok) {
           const retryData = await retryResponse.json();
           const retryResponseText = retryData.choices?.[0]?.message?.content || "";
+          const retryUsage = retryData.usage || {};
+          batchUsage = {
+            promptLength: retryPrompt.length,
+            responseLength: retryResponseText.length,
+            inputTokens: retryUsage.prompt_tokens ?? null,
+            outputTokens: retryUsage.completion_tokens ?? null,
+          };
           analyses = this.parseBatchStrategicAnalysis(retryResponseText, state.turn, countries);
 
           if (analyses.size > 0) {
@@ -360,6 +383,31 @@ export class LLMStrategicPlanner {
           const planKey = this.getPlanKey(state.gameId, countryId);
           this.activeStrategicPlans.set(planKey, analysis);
           await this.persistStrategicPlan(state.gameId, countryId, analysis);
+
+          if (batchUsage) {
+            const countryCount = Math.max(1, countries.length);
+            const perCountryChars = Math.max(1, Math.floor(batchUsage.promptLength / countryCount));
+            const perCountryOutputChars = Math.max(1, Math.floor(batchUsage.responseLength / countryCount));
+            const perCountryInputTokens =
+              batchUsage.inputTokens !== null
+                ? Math.max(0, Math.round(batchUsage.inputTokens / countryCount))
+                : null;
+            const perCountryOutputTokens =
+              batchUsage.outputTokens !== null
+                ? Math.max(0, Math.round(batchUsage.outputTokens / countryCount))
+                : null;
+
+            await this.usageLogger.log({
+              gameId: state.gameId,
+              playerCountryId: countryId,
+              operation: "strategic_plan",
+              turn: state.turn,
+              inputChars: perCountryChars,
+              outputChars: perCountryOutputChars,
+              inputTokens: perCountryInputTokens,
+              outputTokens: perCountryOutputTokens,
+            });
+          }
           
           results.set(countryId, analysis);
           
@@ -477,9 +525,20 @@ export class LLMStrategicPlanner {
       if (response.ok) {
         const data = await response.json();
         const responseText = data.choices?.[0]?.message?.content || "";
+        const usage = data.usage || {};
+
+        await this.usageLogger.log({
+          gameId: state.gameId,
+          playerCountryId: countryId,
+          operation: "strategic_plan",
+          turn: state.turn,
+          inputChars: prompt.length,
+          outputChars: responseText.length,
+          inputTokens: usage.prompt_tokens ?? null,
+          outputTokens: usage.completion_tokens ?? null,
+        });
         
         // Track costs
-        const usage = data.usage || {};
         const inputTokens = usage.prompt_tokens || prompt.length / 4;
         const outputTokens = usage.completion_tokens || responseText.length / 4;
         const inputCost = (inputTokens / 1_000_000) * 0.20; // Groq input pricing
@@ -551,6 +610,18 @@ export class LLMStrategicPlanner {
           if (retryResponse.ok) {
             const retryData = await retryResponse.json();
             const retryResponseText = retryData.choices?.[0]?.message?.content || "";
+            const retryUsage = retryData.usage || {};
+
+            await this.usageLogger.log({
+              gameId: state.gameId,
+              playerCountryId: countryId,
+              operation: "strategic_plan",
+              turn: state.turn,
+              inputChars: simplifiedPrompt.length,
+              outputChars: retryResponseText.length,
+              inputTokens: retryUsage.prompt_tokens ?? null,
+              outputTokens: retryUsage.completion_tokens ?? null,
+            });
             const analysis = this.parseStrategicAnalysis(retryResponseText, state.turn);
             
             // Validate retry quality

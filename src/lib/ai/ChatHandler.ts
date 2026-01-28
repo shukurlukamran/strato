@@ -449,6 +449,11 @@ CURRENT MARKET RATES:
       chatHistory: context.chatHistory,
       newMessageText: turn.messageText,
       senderCountryId: context.senderCountry.id,
+      usageContext: {
+        gameId: context.gameId,
+        playerCountryId: turn.senderCountryId,
+        turn: context.turn,
+      },
     });
 
     leaderProfile =

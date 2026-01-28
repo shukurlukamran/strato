@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { ChatHandler, ChatTurnSchema } from "@/lib/ai/ChatHandler";
+import { ChatMemoryService } from "@/lib/ai/ChatMemoryService";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 const BodySchema = ChatTurnSchema.extend({
@@ -116,6 +117,11 @@ export async function POST(req: Request) {
       .select("id, chat_id, sender_country_id, message_text, is_ai_generated, created_at")
       .single();
     if (aiInsert.error) throw aiInsert.error;
+
+    if (aiInsert.data?.id) {
+      const memoryService = new ChatMemoryService();
+      await memoryService.setLastMessageId(chatId, aiInsert.data.id);
+    }
 
     const list = await supabase
       .from("chat_messages")

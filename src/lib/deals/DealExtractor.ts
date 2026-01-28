@@ -4,6 +4,7 @@ import { MarketPricing } from "@/lib/game-engine/MarketPricing";
 import type { ChatMessage } from "@/types/chat";
 import type { DealType, DealTerms, DealCommitment } from "@/types/deals";
 import type { Country, CountryStats } from "@/types/country";
+import { LLMUsageLogger } from "@/lib/ai/LLMUsageLogger";
 
 
 export interface DealExtractionResult {
@@ -34,6 +35,7 @@ interface ExtractionContext {
 export class DealExtractor {
   private genAI: GoogleGenerativeAI | null = null;
   private model: ReturnType<GoogleGenerativeAI["getGenerativeModel"]> | null = null;
+  private usageLogger = new LLMUsageLogger();
 
 
   constructor() {
@@ -423,6 +425,12 @@ CURRENT MARKET RATES:
       return null;
     }
 
+    const playerCountryId = context.countryA.isPlayerControlled
+      ? context.countryA.id
+      : context.countryB.isPlayerControlled
+      ? context.countryB.id
+      : context.countryA.id;
+
     const { countryA, countryB } = context;
 
 
@@ -467,6 +475,15 @@ CURRENT MARKET RATES:
       const result = await this.model.generateContent(prompt);
       const response = result.response;
       const responseText = response.text().trim();
+
+      await this.usageLogger.log({
+        gameId: context.gameId,
+        playerCountryId,
+        operation: "deal_extract",
+        turn: context.turn,
+        inputChars: prompt.length,
+        outputChars: responseText.length,
+      });
 
 
       if (process.env.DEAL_DEBUG === "1") {

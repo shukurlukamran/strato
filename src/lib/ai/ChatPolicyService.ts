@@ -98,6 +98,17 @@ export class ChatPolicyService {
         ? 0
         : BUDGET_COST_STEPS[Math.min(usageCountThisTurn - FREE_ALLOWANCE_PER_TURN, BUDGET_COST_STEPS.length - 1)];
 
+    if (budgetCost > 0) {
+      const charged = await this.chargeDiplomacyBudget(gameId, playerCountryId, turn, budgetCost);
+      if (!charged) {
+        return {
+          allow: false,
+          blockReason:
+            "Your diplomacy credits are depleted for this turn. Please wait until the next turn to continue.",
+        };
+      }
+    }
+
     return {
       allow: true,
       budgetCost,
@@ -106,6 +117,54 @@ export class ChatPolicyService {
           ? `You are using extra diplomacy replies this turn. This reply costs ${budgetCost} credits.`
           : "Within your free allowance for this turn.",
     };
+  }
+
+  private async chargeDiplomacyBudget(
+    gameId: string,
+    playerCountryId: string,
+    turn: number,
+    amount: number
+  ): Promise<boolean> {
+    if (amount <= 0) return true;
+    const supabase = getSupabaseServerClient();
+    const statsRes = await supabase
+      .from("country_stats")
+      .select("budget")
+      .eq("game_id", gameId)
+      .eq("country_id", playerCountryId)
+      .eq("turn", turn)
+      .single();
+
+    if (statsRes.error || !statsRes.data) {
+      console.warn("[ChatPolicyService] Could not load budget for charging:", statsRes.error);
+      return false;
+    }
+
+    const currentBudget = Number(statsRes.data.budget ?? 0);
+    if (Number.isNaN(currentBudget) || currentBudget < amount) {
+      return false;
+    }
+
+    const newBudget = currentBudget - amount;
+    const updateRes = await supabase
+      .from("country_stats")
+      .update({
+        budget: newBudget,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("game_id", gameId)
+      .eq("country_id", playerCountryId)
+      .eq("turn", turn)
+      .eq("budget", currentBudget)
+      .select("budget")
+      .maybeSingle();
+
+    if (updateRes.error || !updateRes.data) {
+      console.warn("[ChatPolicyService] Failed to charge diplomacy budget:", updateRes.error);
+      return false;
+    }
+
+    return true;
   }
 
   async logUsage(entry: LLMUsageEntry): Promise<void> {
