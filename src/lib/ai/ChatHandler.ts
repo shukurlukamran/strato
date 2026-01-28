@@ -385,6 +385,14 @@ CURRENT MARKET RATES:
   }
 
   async respond(turn: ChatTurn): Promise<ChatResponse> {
+    console.log(`[ChatHandler] Processing chat turn:`, {
+      gameId: turn.gameId,
+      chatId: turn.chatId,
+      senderCountryId: turn.senderCountryId,
+      receiverCountryId: turn.receiverCountryId,
+      messageLength: turn.messageText?.length,
+    });
+
     const ruleBasedResponse = this.getRuleBasedResponse(turn.messageText);
     if (ruleBasedResponse) {
       console.log(`[ChatHandler] Using rule-based response (saved API call)`);
@@ -397,7 +405,7 @@ CURRENT MARKET RATES:
     let leaderProfile: LeaderProfile | null = null;
 
     if (!this.model) {
-      console.error("ChatHandler: Gemini model not initialized. Check GOOGLE_GEMINI_API_KEY.");
+      console.error("[ChatHandler] Gemini model not initialized. Check GOOGLE_GEMINI_API_KEY.");
       return {
         messageText: `I appreciate your message. Could you clarify what you're proposing?`,
         leaderProfile: undefined,
@@ -405,12 +413,13 @@ CURRENT MARKET RATES:
     }
 
     const context = await this.fetchGameContext(turn);
-    if (!context || !turn.gameId || !turn.chatId || !turn.senderCountryId) {
+    if (!context || !turn.gameId || !turn.senderCountryId) {
       console.error("ChatHandler: Failed to fetch game context.", {
         gameId: turn.gameId,
         senderCountryId: turn.senderCountryId,
         receiverCountryId: turn.receiverCountryId,
         chatId: turn.chatId,
+        contextFetched: !!context,
       });
 
       try {
@@ -437,7 +446,7 @@ Respond in 2-3 sentences. Be responsive to their actual proposal or question.`;
 
     const policyDecision = await this.policyService.evaluate({
       gameId: turn.gameId,
-      chatId: turn.chatId,
+      chatId: turn.chatId || "unknown",
       playerCountryId: turn.senderCountryId,
       turn: context.turn,
       messageText: turn.messageText,
@@ -450,17 +459,24 @@ Respond in 2-3 sentences. Be responsive to their actual proposal or question.`;
       };
     }
 
-    const memorySnapshot = await this.memoryService.captureMemory({
-      chatId: turn.chatId,
-      chatHistory: context.chatHistory,
-      newMessageText: turn.messageText,
-      senderCountryId: context.senderCountry.id,
-      usageContext: {
-        gameId: context.gameId,
-        playerCountryId: turn.senderCountryId,
-        turn: context.turn,
-      },
-    });
+    // Capture memory only if chatId is available
+    const memorySnapshot = turn.chatId 
+      ? await this.memoryService.captureMemory({
+          chatId: turn.chatId,
+          chatHistory: context.chatHistory,
+          newMessageText: turn.messageText,
+          senderCountryId: context.senderCountry.id,
+          usageContext: {
+            gameId: context.gameId,
+            playerCountryId: turn.senderCountryId,
+            turn: context.turn,
+          },
+        })
+      : {
+          summary: null,
+          openThreads: [],
+          relationshipState: { trust: 0.5, grievance: 0, respect: 0.5 },
+        };
 
     leaderProfile =
       (await this.leaderProfileService.getOrCreateProfile({
@@ -529,10 +545,18 @@ Respond in 2-3 sentences. Be responsive to their actual proposal or question.`;
       const responseText = result.response.text().trim() || "I'm considering your proposal.";
       const suggestedDeal = this.extractDealSuggestion(responseText, context);
 
+      console.log(`[ChatHandler] Successfully generated response:`, {
+        gameId: context.gameId,
+        chatId: turn.chatId,
+        responseLength: responseText.length,
+        hasSuggestedDeal: !!suggestedDeal,
+        hasLeaderProfile: !!leaderProfile,
+      });
+
       await this.policyService.logUsage({
         gameId: context.gameId,
         playerCountryId: turn.senderCountryId,
-        chatId: turn.chatId,
+        chatId: turn.chatId || "unknown",
         operation: "chat_reply",
         turn: context.turn,
         inputChars: turn.messageText.length,

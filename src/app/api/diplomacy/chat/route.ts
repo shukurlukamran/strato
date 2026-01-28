@@ -155,6 +155,7 @@ export async function POST(req: Request) {
           response: aiResponse.messageText,
           chatId: chatId || undefined,
           policyMessage: aiResponse.policyMessage ?? null,
+          leaderProfile: aiResponse.leaderProfile ?? null,
         });
       } catch (error) {
         console.error("Error using ChatHandler:", error);
@@ -162,15 +163,22 @@ export async function POST(req: Request) {
         if (error instanceof Error) {
           console.error("Error details:", error.message, error.stack);
         }
-        // Fall through to fallback response
+        // Return error response instead of generic fallback
+        return NextResponse.json(
+          { 
+            error: "Failed to process chat request",
+            details: error instanceof Error ? error.message : "Unknown error"
+          },
+          { status: 500 }
+        );
       }
     }
 
-    // Fallback response if ChatHandler fails or required data is missing
+    // If gameId or playerCountryId is missing, return error
+    console.error("Missing required parameters:", { gameId, playerCountryId, countryId, message });
     return NextResponse.json({
-      response: "I'm interested in your proposal. What terms do you suggest?",
-      chatId: undefined,
-    });
+      error: "gameId and playerCountryId are required for chat",
+    }, { status: 400 });
   } catch (error) {
     console.error("Error in diplomacy chat route:", error);
     return NextResponse.json(

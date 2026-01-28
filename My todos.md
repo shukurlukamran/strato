@@ -63,7 +63,7 @@ Analyze root causes of these, understand what is happening, and create a compreh
 
 Analyze the plan carefully, understand what is happening, and then implement fixes. Feel free to ask me if there's anything unclear or anything you wanna clarify further regarding the plan. Make sure everything we build is also aligned with Supabase database.
 
-P.S. DO NOT Create multiple summary files at the end. Only 1 brief (without repeating same things more than once) summary file that explains everything in simple language concisely is enough!
+CRITICAL: DO NOT CREATE markdown summaries, README files, or documentation. Only output code changes. DO NOT Create summary files at the end AT ALL. Just provide a very brief (NOT COMPREHENSIVE and without repeating same things more than once) summary as a text message that explains everything in simple language concisely at the end is enough! DON'T FUCKING WRITE SUMMARIES - I DON'T WANT YOU TO WRITE ESSAYS HERE!
 
 ----
 
