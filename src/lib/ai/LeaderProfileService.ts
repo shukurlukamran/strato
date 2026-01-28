@@ -167,64 +167,42 @@ const BASE_DECISION_WEIGHTS: LeaderDecisionWeights = {
   greed: 0.5,
 };
 
-const TRAIT_WEIGHT_MAP: Record<keyof LeaderDecisionWeights, Partial<Record<string, number>>> = {
+type TraitInfluenceMap = Partial<Record<keyof LeaderTraits, Partial<Record<string, number>>>>;
+
+const TRAIT_WEIGHT_MAP: Record<keyof LeaderDecisionWeights, TraitInfluenceMap> = {
   aggression: {
-    pacifist: -0.25,
-    defensive: -0.1,
-    expansionist: 0.3,
-    fiery: 0.1,
-    calm: -0.1,
-    daring: 0.15,
-    cautious: -0.15,
-    proud: 0.1,
-    arrogant: 0.2,
-    "high": 0.25, // greed
-    "low": -0.1,
+    aggression_doctrine: { pacifist: -0.25, defensive: -0.1, expansionist: 0.3 },
+    temperament: { fiery: 0.1, calm: -0.1 },
+    risk_appetite: { daring: 0.15, cautious: -0.15 },
+    pride: { proud: 0.1, arrogant: 0.2 },
+    greed: { high: 0.25, low: -0.1 },
   },
   cooperativeness: {
-    coalition_builder: 0.3,
-    transactional: 0.1,
-    isolationist: -0.3,
-    generous: 0.2,
-    market_fair: 0.1,
-    empathetic: 0.2,
-    "high": 0.2, // empathy
-    "medium": 0.1,
+    cooperation_style: { coalition_builder: 0.3, transactional: 0.1, isolationist: -0.3 },
+    fairness: { generous: 0.15, market_fair: 0.08 },
+    empathy: { high: 0.2, medium: 0.1 },
   },
   riskTolerance: {
-    daring: 0.35,
-    cautious: -0.2,
-    measured: 0.1,
-    gambler: 0.25,
-    planner: -0.1,
-    long_game: -0.05,
+    risk_appetite: { daring: 0.35, measured: 0.1, cautious: -0.2 },
+    planning_style: { gambler: 0.25, planner: -0.1 },
+    temperament: { fiery: 0.1, calm: -0.05 },
   },
   honesty: {
-    keeps_word: 0.2,
-    pragmatic: 0.1,
-    vengeful: -0.15,
-    trusting: 0.1,
-    paranoid: -0.15,
+    honor: { keeps_word: 0.2, pragmatic: 0.1, vengeful: -0.15 },
+    paranoia: { trusting: 0.1, paranoia: -0.15, wary: -0.05 },
   },
   patience: {
-    long_game: 0.3,
-    steady: 0.1,
-    impatient: -0.3,
+    patience: { long_game: 0.3, steady: 0.1, impatient: -0.3 },
+    planning_style: { planner: 0.15, improviser: -0.1 },
   },
   fairness: {
-    generous: 0.25,
-    market_fair: 0.1,
-    hard_bargainer: -0.15,
+    fairness: { generous: 0.25, market_fair: 0.1, hard_bargainer: -0.15 },
   },
   empathy: {
-    high: 0.3,
-    medium: 0.1,
-    low: -0.25,
+    empathy: { high: 0.3, medium: 0.1, low: -0.25 },
   },
   greed: {
-    high: 0.3,
-    medium: 0.1,
-    low: -0.2,
+    greed: { high: 0.3, medium: 0.1, low: -0.2 },
   },
 };
 
@@ -297,18 +275,29 @@ function buildLeaderTraits(seed: string, resourceProfileName?: string): LeaderTr
 function deriveDecisionWeights(traits: LeaderTraits): LeaderDecisionWeights {
   const base = { ...BASE_DECISION_WEIGHTS };
 
-  for (const [weightKey, influenceMap] of Object.entries(TRAIT_WEIGHT_MAP) as Array<[keyof LeaderDecisionWeights, Partial<Record<string, number>>]>) {
+  for (const [weightKey, influenceMap] of Object.entries(
+    TRAIT_WEIGHT_MAP
+  ) as Array<[keyof LeaderDecisionWeights, TraitInfluenceMap]>) {
     let delta = 0;
-    for (const [traitName, traitValue] of Object.entries(traits) as Array<[keyof LeaderTraits, string | string[]]>) {
+    for (const [traitName, traitValue] of Object.entries(traits) as Array<
+      [keyof LeaderTraits, string | string[]]
+    >) {
       if (traitName === "speech_tics") continue;
-      const traitBias = influenceMap[String(traitValue)] ?? 0;
-      delta += traitBias;
+      const traitInfluences = influenceMap[traitName];
+      if (!traitInfluences) continue;
+      delta += traitInfluences[String(traitValue)] ?? 0;
     }
     base[weightKey] = clamp01(base[weightKey] + delta * 0.12);
   }
 
-  base.fairness = clamp01(base.fairness + (traits.fairness === "generous" ? 0.2 : traits.fairness === "hard_bargainer" ? -0.1 : 0));
-  base.empathy = clamp01(base.empathy + (traits.empathy === "high" ? 0.2 : traits.empathy === "low" ? -0.2 : 0));
+  base.fairness = clamp01(
+    base.fairness +
+      (traits.fairness === "generous" ? 0.2 : traits.fairness === "hard_bargainer" ? -0.1 : 0),
+  );
+  base.empathy = clamp01(
+    base.empathy +
+      (traits.empathy === "high" ? 0.2 : traits.empathy === "low" ? -0.2 : 0),
+  );
 
   return base;
 }

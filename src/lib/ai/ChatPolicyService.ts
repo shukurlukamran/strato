@@ -20,6 +20,8 @@ export interface ChatPolicyDecision {
 interface PolicyState {
   last_warning_at?: string;
   warning_count?: number;
+  last_message_at?: string;
+  last_message_text?: string;
 }
 
 const MAX_MESSAGE_LENGTH = 1400;
@@ -30,6 +32,22 @@ const BUDGET_COST_STEPS = [5, 8, 12];
 const WARNING_WINDOW_MS = 60_000;
 const TOPIC_KEYWORDS = [
   "trade", "resource", "budget", "war", "alliance", "attack", "military", "city", "turn", "research", "deal", "diplomacy", "technology", "economy", "infrastructure", "quota", "policy"
+];
+
+const OFF_TOPIC_PATTERNS = [
+  /write code/i,
+  /programming/i,
+  /python/i,
+  /javascript/i,
+  /math problem/i,
+  /solve/i,
+  /essay/i,
+  /translate/i,
+  /how to /i,
+  /tutorial/i,
+  /chatgpt/i,
+  /gpt/i,
+  /model/i,
 ];
 
 export class ChatPolicyService {
@@ -57,8 +75,32 @@ export class ChatPolicyService {
     const normalized = messageText.toLowerCase();
     const hasTopic = TOPIC_KEYWORDS.some((keyword) => normalized.includes(keyword));
     const isShort = normalized.split(/\s+/).length <= 3 && normalized.length < 40;
+    const nowIso = now.toISOString();
+    const messageMeta = {
+      last_message_text: normalized,
+      last_message_at: nowIso,
+    };
 
     const policyState = await this.ensurePolicyState(chatId);
+    const lastMessageText = policyState.last_message_text ?? "";
+    const lastMessageAt = policyState.last_message_at ? new Date(policyState.last_message_at) : null;
+
+    if (lastMessageText && lastMessageText === normalized && lastMessageAt && now.getTime() - lastMessageAt.getTime() < MIN_CHAT_INTERVAL_MS) {
+      await this.updatePolicyState(chatId, messageMeta);
+      return {
+        allow: false,
+        blockReason: "Please wait a moment before repeating that message in this chat.",
+      };
+    }
+
+    const isOffTopicPattern = OFF_TOPIC_PATTERNS.some((pattern) => pattern.test(normalized));
+    if (!hasTopic && isOffTopicPattern) {
+      await this.updatePolicyState(chatId, messageMeta);
+      return {
+        allow: false,
+        blockReason: "I'm focused on in-world diplomacy, so I can't handle that topic right now.",
+      };
+    }
 
     if (!hasTopic && !isShort) {
       const lastWarning = policyState.last_warning_at ? new Date(policyState.last_warning_at) : null;
@@ -66,6 +108,7 @@ export class ChatPolicyService {
       const sinceWarning = lastWarning ? now.getTime() - lastWarning.getTime() : Number.POSITIVE_INFINITY;
 
       if (warningCount >= 1 && sinceWarning < WARNING_WINDOW_MS) {
+        await this.updatePolicyState(chatId, messageMeta);
         return {
           allow: false,
           blockReason: "I'm focusing on in-world matters right now. Let's keep the chat about diplomacy.",
@@ -74,7 +117,8 @@ export class ChatPolicyService {
 
       await this.updatePolicyState(chatId, {
         warning_count: warningCount + 1,
-        last_warning_at: now.toISOString(),
+        last_warning_at: nowIso,
+        ...messageMeta,
       });
 
       return {
@@ -86,6 +130,7 @@ export class ChatPolicyService {
 
     const rateLimitIssue = await this.checkRateLimits(chatId, gameId, playerCountryId, now);
     if (rateLimitIssue) {
+      await this.updatePolicyState(chatId, messageMeta);
       return {
         allow: false,
         blockReason: rateLimitIssue,
@@ -101,6 +146,7 @@ export class ChatPolicyService {
     if (budgetCost > 0) {
       const charged = await this.chargeDiplomacyBudget(gameId, playerCountryId, turn, budgetCost);
       if (!charged) {
+        await this.updatePolicyState(chatId, messageMeta);
         return {
           allow: false,
           blockReason:
@@ -109,6 +155,7 @@ export class ChatPolicyService {
       }
     }
 
+    await this.updatePolicyState(chatId, messageMeta);
     return {
       allow: true,
       budgetCost,

@@ -17,6 +17,7 @@ import { ECONOMIC_BALANCE } from "@/lib/game-engine/EconomicBalance";
 import type { City } from "@/types/city";
 import { calculateCityValue } from "@/types/city";
 import { LeaderProfileService } from "./LeaderProfileService";
+import { ChatMemoryService } from "./ChatMemoryService";
 import { LLMUsageLogger } from "./LLMUsageLogger";
 
 /**
@@ -144,6 +145,7 @@ export class LLMStrategicPlanner {
   // Strategic plan persistence - LLM analysis guides next N turns
   private activeStrategicPlans: Map<string, LLMStrategicAnalysis> = new Map();
   private leaderProfileService = new LeaderProfileService();
+  private memoryService = new ChatMemoryService();
   private usageLogger = new LLMUsageLogger();
 
   private isTradeAdviceText(text: string): boolean {
@@ -1006,10 +1008,12 @@ Return ONLY the JSON object. No markdown, no extra text.`;
     const resourcesStr = this.compactResourceString(stats.resources || {});
     const affordabilityStr = this.getAffordabilityBlock(stats);
     const personaBlock = await this.describeLeaderPersona(state.gameId, countryId, stats, country.name);
+    const memoryBlock = await this.describeMemoryBlock(state, countryId);
 
     return `${CACHED_GAME_RULES}
 
 ${personaBlock ? `${personaBlock}\n\n` : ""}
+${memoryBlock ? `${memoryBlock}\n\n` : ""}
 ${country.name} T${state.turn}: Pop ${(stats.population/1000).toFixed(0)}k|$${stats.budget.toFixed(0)}|Tech L${stats.technologyLevel}|Infra L${stats.infrastructureLevel || 0}|Mil ${stats.militaryStrength}(eff ${economicAnalysis.effectiveMilitaryStrength})|${stats.resourceProfile?.name || "Bal"}
 Res: ${resourcesStr}|Afford: ${affordabilityStr}|Inc $${economicAnalysis.netIncome}/t|${economicAnalysis.isUnderDefended ? `⚠DEF-${Math.round(economicAnalysis.militaryDeficit)}` : 'OK'}
 
@@ -1092,6 +1096,19 @@ ${Object.entries(marketPrices.marketPrices).map(([r, p]) =>
       console.warn("[LLM Planner] Could not load leader persona:", error);
       return "";
     }
+  }
+
+  private async describeMemoryBlock(state: GameStateSnapshot, countryId: string): Promise<string> {
+    const player = state.countries.find((c) => c.isPlayerControlled);
+    if (!player) return "";
+    const memory = await this.memoryService.loadMemoryByCountries(state.gameId, countryId, player.id);
+    if (!memory) return "";
+    const threads =
+      memory.openThreads.length > 0 ? memory.openThreads.map((thread) => thread.topic).join(", ") : "None";
+    return `MEMORY SUMMARY:
+- ${memory.summary ?? "Diplomacy memory is not yet recorded."}
+- Relationship → Trust:${memory.relationshipState.trust}, Grievance:${memory.relationshipState.grievance}, Respect:${memory.relationshipState.respect}
+- Open threads: ${threads}`;
   }
 
   /**

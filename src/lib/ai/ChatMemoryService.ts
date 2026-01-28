@@ -2,6 +2,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import type { ChatMessage } from "@/types/chat";
 import { randomUUID } from "node:crypto";
 import { LLMUsageLogger } from "./LLMUsageLogger";
+import { LLMUsageLogger } from "./LLMUsageLogger";
 
 interface RelationshipState {
   trust: number;
@@ -46,6 +47,7 @@ const SUMMARY_TRIGGER_COUNT = Number(process.env.LLM_CHAT_SUMMARY_THRESHOLD ?? 1
 
 export class ChatMemoryService {
   private usageLogger = new LLMUsageLogger();
+  private usageLogger = new LLMUsageLogger();
   async captureMemory(params: {
     chatId: string;
     chatHistory: ChatMessage[];
@@ -56,36 +58,8 @@ export class ChatMemoryService {
     const { chatId, chatHistory, newMessageText, senderCountryId, usageContext } = params;
     const supabase = getSupabaseServerClient();
 
-    let row = await supabase
-      .from("chat_memory_summaries")
-      .select("*")
-      .eq("chat_id", chatId)
-      .maybeSingle();
-
-    if (row.error) {
-      console.error("[ChatMemoryService] Failed to load memory:", row.error);
-    }
-
-    if (!row.data) {
-      const created = await supabase
-        .from("chat_memory_summaries")
-        .insert({ chat_id: chatId })
-        .select("*")
-        .single();
-      if (created.error || !created.data) {
-        throw new Error("Unable to create chat memory row");
-      }
-      row = created;
-    }
-
-    const memory: MemoryRow = {
-      id: row.data.id,
-      summary: row.data.summary,
-      open_threads: Array.isArray(row.data.open_threads) ? row.data.open_threads : [],
-      relationship_state: row.data.relationship_state ?? { trust: 50, grievance: 0, respect: 50 },
-      last_summarized_message_at: row.data.last_summarized_message_at,
-      last_message_id: row.data.last_message_id,
-    };
+    const memoryRow = await this.ensureRow(chatId);
+    const memory = this.normalizeRow(memoryRow);
 
     const updatedRelationships = this.applyRelationshipDelta(memory.relationship_state, newMessageText);
     const updatedThreads = this.updateThreads(memory.open_threads, newMessageText);
@@ -205,6 +179,94 @@ export class ChatMemoryService {
 
   private clamp(value: number): number {
     return Math.max(0, Math.min(100, value));
+  }
+
+  private normalizeRow(row: any): MemoryRow {
+    return {
+      id: row.id,
+      summary: row.summary,
+      open_threads: Array.isArray(row.open_threads) ? row.open_threads : [],
+      relationship_state: row.relationship_state ?? { trust: 50, grievance: 0, respect: 50 },
+      last_summarized_message_at: row.last_summarized_message_at,
+      last_message_id: row.last_message_id,
+    };
+  }
+
+  private toSnapshot(row: MemoryRow): MemorySnapshot {
+    return {
+      summary: row.summary,
+      openThreads: row.open_threads,
+      relationshipState: row.relationship_state,
+      didSummarize: row.last_summarized_message_at !== null,
+    };
+  }
+
+  private async ensureRow(chatId: string): Promise<MemoryRow> {
+    const supabase = getSupabaseServerClient();
+    const row = await supabase
+      .from("chat_memory_summaries")
+      .select("*")
+      .eq("chat_id", chatId)
+      .maybeSingle();
+
+    if (row.error) {
+      console.error("[ChatMemoryService] Failed to load memory:", row.error);
+    }
+
+    if (row.data) {
+      return this.normalizeRow(row.data);
+    }
+
+    const created = await supabase
+      .from("chat_memory_summaries")
+      .insert({ chat_id: chatId })
+      .select("*")
+      .single();
+    if (created.error || !created.data) {
+      throw new Error("Unable to create chat memory row");
+    }
+
+    return this.normalizeRow(created.data);
+  }
+
+  private async fetchRow(chatId: string): Promise<MemoryRow | null> {
+    const supabase = getSupabaseServerClient();
+    const row = await supabase
+      .from("chat_memory_summaries")
+      .select("*")
+      .eq("chat_id", chatId)
+      .maybeSingle();
+    if (row.error || !row.data) {
+      return null;
+    }
+    return this.normalizeRow(row.data);
+  }
+
+  async loadMemoryByChatId(chatId?: string): Promise<MemorySnapshot | null> {
+    if (!chatId) return null;
+    const row = await this.fetchRow(chatId);
+    if (!row) return null;
+    return this.toSnapshot(row);
+  }
+
+  async loadMemoryByCountries(gameId: string, countryAId: string, countryBId: string): Promise<MemorySnapshot | null> {
+    const supabase = getSupabaseServerClient();
+    const chatRes = await supabase
+      .from("diplomacy_chats")
+      .select("id")
+      .eq("game_id", gameId)
+      .or(
+        `and(country_a_id.eq.${countryAId},country_b_id.eq.${countryBId}),and(country_a_id.eq.${countryBId},country_b_id.eq.${countryAId})`
+      )
+      .order("last_message_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (chatRes.error || !chatRes.data?.id) {
+      return null;
+    }
+
+    return this.loadMemoryByChatId(chatRes.data.id);
   }
 
   async setLastMessageId(chatId: string, messageId: string): Promise<void> {

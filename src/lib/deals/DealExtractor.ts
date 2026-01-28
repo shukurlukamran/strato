@@ -4,6 +4,7 @@ import { MarketPricing } from "@/lib/game-engine/MarketPricing";
 import type { ChatMessage } from "@/types/chat";
 import type { DealType, DealTerms, DealCommitment } from "@/types/deals";
 import type { Country, CountryStats } from "@/types/country";
+import { ChatMemoryService, type MemorySnapshot } from "@/lib/ai/ChatMemoryService";
 import { LLMUsageLogger } from "@/lib/ai/LLMUsageLogger";
 
 
@@ -25,6 +26,7 @@ interface ExtractionContext {
   countryAStats: CountryStats;
   countryBStats: CountryStats;
   chatMessages: ChatMessage[];
+  memorySnapshot?: MemorySnapshot | null;
 }
 
 
@@ -35,6 +37,7 @@ interface ExtractionContext {
 export class DealExtractor {
   private genAI: GoogleGenerativeAI | null = null;
   private model: ReturnType<GoogleGenerativeAI["getGenerativeModel"]> | null = null;
+  private memoryService = new ChatMemoryService();
   private usageLogger = new LLMUsageLogger();
 
 
@@ -142,6 +145,8 @@ export class DealExtractor {
       }
 
 
+      const memorySnapshot = await this.memoryService.loadMemoryByChatId(chatId);
+
       return {
         gameId,
         turn: gameRes.data.current_turn,
@@ -202,7 +207,20 @@ export class DealExtractor {
    * Builds the prompt for LLM to extract deal terms
    */
   private async buildExtractionPrompt(context: ExtractionContext): Promise<string> {
-    const { countryA, countryB, countryAStats, countryBStats, chatMessages, turn } = context;
+    const { countryA, countryB, countryAStats, countryBStats, chatMessages, turn, memorySnapshot } = context;
+    const memory = memorySnapshot ?? null;
+
+    const memoryBlock = memory
+      ? `MEMORY SUMMARY:
+- ${memory.summary ?? "No summary recorded yet."}
+- Relationship → Trust:${memory.relationshipState.trust}, Grievance:${memory.relationshipState.grievance}, Respect:${memory.relationshipState.respect}
+- Open threads: ${
+          memory.openThreads.length > 0
+            ? memory.openThreads.map((thread) => thread.topic).join(", ")
+            : "None"
+        }`
+      : `MEMORY SUMMARY:
+- Not enough diplomatic memory yet.`;
 
 
     // Build chat history string with clear formatting
@@ -239,6 +257,8 @@ COUNTRY B (${countryB.name}) RESOURCES:
 
 ${await this.getMarketPricesBlock(context)}
 
+
+${memoryBlock}
 
 CHAT HISTORY:
 ${chatHistory}
