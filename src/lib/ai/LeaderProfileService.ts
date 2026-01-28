@@ -210,7 +210,7 @@ function clamp01(value: number): number {
   return Math.max(0, Math.min(1, value));
 }
 
-function createSeededRNG(seed: string): () => number {
+export function createSeededRNG(seed: string): () => number {
   let hash = 0;
   for (let i = 0; i < seed.length; i++) {
     hash = ((hash << 5) - hash) + seed.charCodeAt(i);
@@ -225,7 +225,7 @@ function createSeededRNG(seed: string): () => number {
   };
 }
 
-function weightedSelect<T>(
+export function weightedSelect<T>(
   options: T[],
   rng: () => number,
   bias: Partial<Record<string, number>> = {}
@@ -245,7 +245,7 @@ function weightedSelect<T>(
   return options[options.length - 1];
 }
 
-function buildLeaderTraits(seed: string, resourceProfileName?: string): LeaderTraits {
+export function buildLeaderTraits(seed: string, resourceProfileName?: string): LeaderTraits {
   const rng = createSeededRNG(seed);
   const traits: Record<string, any> = {};
   const normalizedProfileName = resourceProfileName || "default";

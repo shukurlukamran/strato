@@ -51,11 +51,13 @@ LLM CHAT
 - Add Natural events
 - Food is too abundant and starvation almost never happens especially after a few tech upgrades.
 - If X country upgrades something infra or tech 3 times (more than once) in one turn, history log shows "X built infrastructure Level 4 (their final current level)" 3 times. Instead, it should combine and show it like "X built infrastructure Level 2, 3, 4"
+- Player should define name and LLM Deal chat should refer to player with that name, not the country name.
 
 Also, currently Defense window for the 2nd received attack only appears after submitting allocation to the 1st attack. However, Player should receive them all at the same time so he knows how many attacks he received this turn and decide allocation accordingly.
 -------
 
-Analyze root causes of these, understand what is happening, and then implement fixes. 
+Analyze root causes of these, understand what is happening, and then implement fixes.
+CRITICAL: DO NOT CREATE markdown summaries, README files, or documentation. Only output code changes. DO NOT Create summary files at the end AT ALL. Just provide a very brief (NOT COMPREHENSIVE and without repeating same things more than once) summary as a text message that explains everything in simple language concisely at the end is enough! DON'T FUCKING WRITE SUMMARIES - I DON'T WANT YOU TO WRITE ESSAYS HERE! 
 
 Make sure everything we build is aligned with LLM in both Deals chat and End turn decisions and anywhere else it may be used, tooltips, and also with Supabase database.
 
@@ -63,7 +65,6 @@ Analyze root causes of these, understand what is happening, and create a compreh
 
 Analyze the plan carefully, understand what is happening, and then implement fixes. Feel free to ask me if there's anything unclear or anything you wanna clarify further regarding the plan. Make sure everything we build is also aligned with Supabase database.
 
-CRITICAL: DO NOT CREATE markdown summaries, README files, or documentation. Only output code changes. DO NOT Create summary files at the end AT ALL. Just provide a very brief (NOT COMPREHENSIVE and without repeating same things more than once) summary as a text message that explains everything in simple language concisely at the end is enough! DON'T FUCKING WRITE SUMMARIES - I DON'T WANT YOU TO WRITE ESSAYS HERE!
 
 ----
 
