@@ -2,7 +2,6 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import type { ChatMessage } from "@/types/chat";
 import { randomUUID } from "node:crypto";
 import { LLMUsageLogger } from "./LLMUsageLogger";
-import { LLMUsageLogger } from "./LLMUsageLogger";
 
 interface RelationshipState {
   trust: number;
@@ -46,7 +45,6 @@ const RESOLUTION_KEYWORDS = ["accepted", "agreed", "deal!", "deal.", "confirmed"
 const SUMMARY_TRIGGER_COUNT = Number(process.env.LLM_CHAT_SUMMARY_THRESHOLD ?? 12);
 
 export class ChatMemoryService {
-  private usageLogger = new LLMUsageLogger();
   private usageLogger = new LLMUsageLogger();
   async captureMemory(params: {
     chatId: string;
