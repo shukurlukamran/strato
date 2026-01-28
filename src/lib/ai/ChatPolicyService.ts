@@ -227,6 +227,13 @@ export class ChatPolicyService {
       .maybeSingle();
 
     if (row.error) {
+      // Table doesn't exist - return empty state (migrations not run)
+      if (row.error.code === "PGRST205" || row.error.message?.includes("Could not find the table")) {
+        console.warn("[ChatPolicyService] chat_memory_summaries table not found, using in-memory policy tracking");
+        return {
+          id: chatId,
+        } as PolicyState & { id: string };
+      }
       console.error("[ChatPolicyService] Failed to fetch policy state:", row.error);
     }
 
@@ -237,14 +244,26 @@ export class ChatPolicyService {
         .select("id, policy_state")
         .single();
       if (created.error || !created.data) {
-        throw new Error("Unable to create chat memory row for policy tracking");
+        // If insert fails due to missing table, return empty state
+        if (created.error?.code === "PGRST205" || created.error?.message?.includes("Could not find the table")) {
+          console.warn("[ChatPolicyService] chat_memory_summaries table not found, using in-memory policy tracking");
+          return {
+            id: chatId,
+          } as PolicyState & { id: string };
+        }
+        console.error("[ChatPolicyService] Failed to create policy state:", created.error);
+        return {
+          id: chatId,
+        } as PolicyState & { id: string };
       }
       row = created;
     }
 
     const data = row.data;
     if (!data) {
-      throw new Error("Chat memory policy row missing after creation");
+      return {
+        id: chatId,
+      } as PolicyState & { id: string };
     }
 
     return {
@@ -261,10 +280,20 @@ export class ChatPolicyService {
       .eq("chat_id", chatId)
       .maybeSingle();
 
+    // Skip update if table doesn't exist
+    if (existing.error?.code === "PGRST205" || existing.error?.message?.includes("Could not find the table")) {
+      return;
+    }
+
     const baseState: PolicyState = existing?.data?.policy_state ?? {};
     const merged = { ...baseState, ...updates };
 
-    await supabase.from("chat_memory_summaries").update({ policy_state: merged }).eq("chat_id", chatId);
+    const result = await supabase.from("chat_memory_summaries").update({ policy_state: merged }).eq("chat_id", chatId);
+    
+    // Ignore errors if table doesn't exist
+    if (result.error?.code === "PGRST205" || result.error?.message?.includes("Could not find the table")) {
+      return;
+    }
   }
 
   private async checkRateLimits(
@@ -284,6 +313,12 @@ export class ChatPolicyService {
       .limit(1)
       .maybeSingle();
 
+    // Skip rate limiting if table doesn't exist
+    if (lastEntry.error?.code === "PGRST205" || lastEntry.error?.message?.includes("Could not find the table")) {
+      console.warn("[ChatPolicyService] llm_usage_ledger table not found, skipping rate limit checks");
+      return null;
+    }
+
     if (lastEntry.data && lastEntry.data.created_at) {
       const lastTime = new Date(lastEntry.data.created_at).getTime();
       if (now.getTime() - lastTime < MIN_CHAT_INTERVAL_MS) {
@@ -299,6 +334,11 @@ export class ChatPolicyService {
       .eq("player_country_id", playerCountryId)
       .eq("game_id", gameId)
       .eq("operation", "chat_reply");
+
+    if (burstRes.error?.code === "PGRST205" || burstRes.error?.message?.includes("Could not find the table")) {
+      console.warn("[ChatPolicyService] llm_usage_ledger table not found, skipping rate limit checks");
+      return null;
+    }
 
     if (burstRes.error) {
       console.warn("[ChatPolicyService] Failed to count recent replies:", burstRes.error);
@@ -320,6 +360,12 @@ export class ChatPolicyService {
       .eq("player_country_id", playerCountryId)
       .eq("turn", turn)
       .eq("operation", "chat_reply");
+
+    // Return 0 if table doesn't exist (no usage counted)
+    if (res.error?.code === "PGRST205" || res.error?.message?.includes("Could not find the table")) {
+      console.warn("[ChatPolicyService] llm_usage_ledger table not found, returning 0 usage");
+      return 0;
+    }
 
     if (res.error) {
       console.warn("[ChatPolicyService] Failed to count turn usage:", res.error);

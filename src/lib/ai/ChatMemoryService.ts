@@ -67,7 +67,7 @@ export class ChatMemoryService {
       ? this.buildSummary([...chatHistory, this.mockMessage(newMessageText, senderCountryId)], updatedThreads, updatedRelationships)
       : memory.summary;
 
-    await supabase
+    const updateResult = await supabase
       .from("chat_memory_summaries")
       .update({
         summary,
@@ -76,6 +76,11 @@ export class ChatMemoryService {
         last_summarized_message_at: shouldSummarize ? new Date().toISOString() : memory.last_summarized_message_at,
       })
       .eq("chat_id", chatId);
+    
+    // Ignore errors if table doesn't exist
+    if (updateResult.error?.code === "PGRST205" || updateResult.error?.message?.includes("Could not find the table")) {
+      console.warn("[ChatMemoryService] chat_memory_summaries table not found, skipping update");
+    }
 
     if (shouldSummarize && usageContext) {
       await this.usageLogger.log({
@@ -207,6 +212,19 @@ export class ChatMemoryService {
       .eq("chat_id", chatId)
       .maybeSingle();
 
+    // Return default if table doesn't exist
+    if (row.error?.code === "PGRST205" || row.error?.message?.includes("Could not find the table")) {
+      console.warn("[ChatMemoryService] chat_memory_summaries table not found, using default memory");
+      return {
+        id: chatId,
+        summary: null,
+        open_threads: [],
+        relationship_state: { trust: 0.5, grievance: 0, respect: 0.5 },
+        last_summarized_message_at: null,
+        last_message_id: null,
+      };
+    }
+
     if (row.error) {
       console.error("[ChatMemoryService] Failed to load memory:", row.error);
     }
@@ -220,8 +238,30 @@ export class ChatMemoryService {
       .insert({ chat_id: chatId })
       .select("*")
       .single();
+    
+    // Return default if insert fails due to missing table
+    if (created.error?.code === "PGRST205" || created.error?.message?.includes("Could not find the table")) {
+      console.warn("[ChatMemoryService] chat_memory_summaries table not found, using default memory");
+      return {
+        id: chatId,
+        summary: null,
+        open_threads: [],
+        relationship_state: { trust: 0.5, grievance: 0, respect: 0.5 },
+        last_summarized_message_at: null,
+        last_message_id: null,
+      };
+    }
+    
     if (created.error || !created.data) {
-      throw new Error("Unable to create chat memory row");
+      console.error("[ChatMemoryService] Failed to create chat memory:", created.error);
+      return {
+        id: chatId,
+        summary: null,
+        open_threads: [],
+        relationship_state: { trust: 0.5, grievance: 0, respect: 0.5 },
+        last_summarized_message_at: null,
+        last_message_id: null,
+      };
     }
 
     return this.normalizeRow(created.data);
@@ -269,9 +309,14 @@ export class ChatMemoryService {
 
   async setLastMessageId(chatId: string, messageId: string): Promise<void> {
     const supabase = getSupabaseServerClient();
-    await supabase
+    const result = await supabase
       .from("chat_memory_summaries")
       .update({ last_message_id: messageId, updated_at: new Date().toISOString() })
       .eq("chat_id", chatId);
+    
+    // Ignore errors if table doesn't exist
+    if (result.error?.code === "PGRST205" || result.error?.message?.includes("Could not find the table")) {
+      console.warn("[ChatMemoryService] chat_memory_summaries table not found, skipping setLastMessageId");
+    }
   }
 }
