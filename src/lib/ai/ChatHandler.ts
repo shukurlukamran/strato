@@ -502,8 +502,10 @@ CURRENT MARKET RATES:
       maxHistory: 80,
     });
 
+    // Note: Gemini 2.x API prefers system instructions as history messages
+    // rather than systemInstruction parameter for better context integration
     const historyPackets = [
-      { role: "system", parts: [{ text: promptResult.systemPrompt }] },
+      { role: "user", parts: [{ text: promptResult.systemPrompt }] },
       {
         role: "model",
         parts: [

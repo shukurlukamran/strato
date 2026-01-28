@@ -120,13 +120,13 @@ export class DealExtractor {
       }
 
 
-      // Fetch recent chat messages (last 20 messages)
+      // Fetch recent chat messages (last 80 messages for better context)
       const messagesRes = await supabase
         .from("chat_messages")
         .select("id, chat_id, sender_country_id, message_text, is_ai_generated, created_at")
         .eq("chat_id", chatId)
         .order("created_at", { ascending: false })
-        .limit(20);
+        .limit(80);
       
       const chatMessages: ChatMessage[] = [];
       if (!messagesRes.error && messagesRes.data) {

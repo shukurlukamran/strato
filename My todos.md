@@ -63,6 +63,8 @@ Analyze root causes of these, understand what is happening, and create a compreh
 
 Analyze the plan carefully, understand what is happening, and then implement fixes. Feel free to ask me if there's anything unclear or anything you wanna clarify further regarding the plan. Make sure everything we build is also aligned with Supabase database.
 
+P.S. DO NOT Create multiple summary files at the end. Only 1 brief summary file that explains everything in simple language concisely is enough!
+
 ----
 
 We implemented the plan at @ Analyze and check to verify if these are now implemented correctly. If not, create a comprehensive plan for the implementation for helping other AI models to build it. Make sure everything we build is also aligned with LLM in both Deals chat and End turn decisions and anywhere else it may be used, Tooltips, and also with Supabase database.
@@ -70,3 +72,4 @@ We implemented the plan at @ Analyze and check to verify if these are now implem
 I want you to do a very thourough analysis including verifying calculations and algorithms work as intended. 
 
 Do not report back what is fixed or already implemented. Only provide what is missing, wrong, or should/can be changed/optimized.
+
