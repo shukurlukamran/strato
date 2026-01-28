@@ -5,12 +5,74 @@ import { createPortal } from "react-dom";
 import type { Country, CountryStats } from "@/types/country";
 import type { DealExtractionResult } from "@/lib/deals/DealExtractor";
 import { ResourceProfileBadge } from "./ResourceProfileBadge";
+import { LeaderProfileService, type LeaderProfile } from "@/lib/ai/LeaderProfileService";
+import { Tooltip } from "./Tooltip";
 
 interface ChatMessage {
   id: string;
   sender: "player" | "country";
   text: string;
   timestamp: Date;
+}
+
+// Generate a comprehensive tooltip summary for a leader
+function generateLeaderTooltipContent(profile: LeaderProfile, countryName?: string): string {
+  const { traits, decisionWeights } = profile;
+
+  // Personality summary based on key traits
+  const personalityTraits = [
+    traits.temperament === 'fiery' ? 'passionate and quick-tempered' :
+    traits.temperament === 'icy' ? 'cold and calculating' : 'calm and composed',
+    traits.directness === 'blunt' ? 'straightforward and direct' :
+    traits.directness === 'diplomatic' ? 'diplomatic and tactful' : 'flowery and elaborate',
+    traits.patience === 'impatient' ? 'impatient and quick to act' :
+    traits.patience === 'long_game' ? 'patient and strategic' : 'steady and methodical'
+  ].filter(Boolean);
+
+  // Decision style summary
+  const decisionStyle =
+    decisionWeights.aggression > 0.6 ? 'aggressive and expansionist' :
+    decisionWeights.aggression < 0.4 ? 'peaceful and defensive' : 'balanced in approach';
+
+  const cooperationStyle =
+    decisionWeights.cooperativeness > 0.6 ? 'highly cooperative and alliance-focused' :
+    decisionWeights.cooperativeness < 0.4 ? 'isolationist and independent' : 'transactional in diplomacy';
+
+  const riskStyle =
+    decisionWeights.riskTolerance > 0.6 ? 'bold and risk-taking' :
+    decisionWeights.riskTolerance < 0.4 ? 'cautious and risk-averse' : 'measured in risk assessment';
+
+  // Key behavioral tendencies
+  const keyTendencies = [
+    traits.honor === 'keeps_word' ? 'honorable and reliable in agreements' :
+    traits.honor === 'pragmatic' ? 'pragmatic and flexible with commitments' : 'vengeful toward betrayals',
+    traits.fairness === 'generous' ? 'generous in negotiations' :
+    traits.fairness === 'hard_bargainer' ? 'tough and demanding in deals' : 'fair and market-oriented',
+    traits.paranoia === 'trusting' ? 'trusting of others' :
+    traits.paranoia === 'paranoid' ? 'highly suspicious and distrustful' : 'wary but open to cooperation'
+  ].filter(Boolean);
+
+  // Speech and interaction style
+  const speechStyle = [
+    traits.verbosity === 'expansive' ? 'verbose and detailed in communication' :
+    traits.verbosity === 'terse' ? 'concise and to-the-point' : 'balanced in expression',
+    traits.register === 'formal' ? 'formal and diplomatic in tone' :
+    traits.register === 'streetwise' ? 'pragmatic and direct' : 'conversational and approachable',
+    traits.humor === 'playful' ? 'witty and humorous' :
+    traits.humor === 'dry' ? 'subtly humorous' : 'serious and focused'
+  ].filter(Boolean);
+
+  // Craft 5-6 sentences
+  const sentences = [
+    `${profile.leaderName} is a ${personalityTraits.slice(0, 2).join(' and ')} leader who serves as ${profile.title}.`,
+    `${traits.pride === 'arrogant' ? 'Confident to the point of arrogance' : traits.pride === 'humble' ? 'Humbly aware of their limitations' : 'Proud of their achievements'}, they lead ${profile.publicValues ? `with values emphasizing ${profile.publicValues.toLowerCase()}` : 'with a clear vision for their nation'}.`,
+    `In decision-making, they tend to be ${decisionStyle}, ${cooperationStyle}, and ${riskStyle}.`,
+    `Their approach to diplomacy and agreements shows they are ${keyTendencies.slice(0, 2).join(' and ')}.`,
+    `Communication-wise, they are ${speechStyle.slice(0, 2).join(' and ')}, making them ${traits.empathy === 'high' ? 'attuned to others\' perspectives' : traits.empathy === 'low' ? 'focused on their own objectives' : 'moderately considerate of others\' views'}.`,
+    `Overall, ${profile.leaderName} represents a ${traits.ideology === 'idealist' ? 'principled and values-driven' : traits.ideology === 'opportunist' ? 'opportunistic and adaptable' : 'pragmatic and realistic'} leadership style that shapes ${countryName || 'their nation'}\'s interactions with the world.`
+  ];
+
+  return sentences.join(' ');
 }
 
 export function CountryCard({ 
@@ -41,6 +103,7 @@ export function CountryCard({
   const [confirmingDeal, setConfirmingDeal] = useState(false);
   // Use the chatId from props (from game page state) or local state as fallback
   const [chatId, setChatId] = useState<string>(initialChatId || "");
+  const [leaderProfile, setLeaderProfile] = useState<LeaderProfile | null>(null);
 
   // Update chatId when initialChatId prop changes (e.g., when selecting a different country)
   useEffect(() => {
@@ -57,7 +120,34 @@ export function CountryCard({
     setExtractionError(null);
     setDealExecuted(false);
     setConfirmingDeal(false);
+    setLeaderProfile(null);
   }, [country?.id]);
+
+  // Fetch leader profile for AI countries
+  useEffect(() => {
+    if (!country || country.isPlayerControlled || !gameId) {
+      setLeaderProfile(null);
+      return;
+    }
+
+    const fetchLeaderProfile = async () => {
+      try {
+        const service = new LeaderProfileService();
+        const profile = await service.getOrCreateProfile({
+          gameId,
+          countryId: country.id,
+          resourceProfile: stats?.resourceProfile,
+          countryName: country.name,
+        });
+        setLeaderProfile(profile);
+      } catch (error) {
+        console.error("Failed to fetch leader profile:", error);
+        setLeaderProfile(null);
+      }
+    };
+
+    void fetchLeaderProfile();
+  }, [country, gameId, stats?.resourceProfile]);
 
   if (!country || !stats) {
     return (
@@ -362,7 +452,19 @@ export function CountryCard({
             style={{ backgroundColor: country.color }}
           />
           <div className="flex-1">
-            <div className="text-lg font-bold text-white">{country.name}</div>
+            <div className="text-lg font-bold text-white">
+              {!country.isPlayerControlled && leaderProfile ? (
+                <span>
+                  <Tooltip content={generateLeaderTooltipContent(leaderProfile, country.name)}>
+                    <span className="text-blue-300 cursor-help hover:text-blue-200 transition-colors">
+                      {leaderProfile.leaderName}
+                    </span>
+                  </Tooltip> of {country.name}
+                </span>
+              ) : (
+                country.name
+              )}
+            </div>
             <div className="flex items-center gap-2 mt-1">
               <div className="text-xs text-white/60">{government}</div>
               <ResourceProfileBadge profile={stats.resourceProfile} />

@@ -7,6 +7,35 @@ interface LeaderPersonalityPanelProps {
   profile: LeaderProfile;
 }
 
+// Generate a detailed overview text for the leader personality panel
+function generateLeaderOverviewText(profile: LeaderProfile): string {
+  const { traits, decisionWeights } = profile;
+
+  const temperament = traits.temperament === 'fiery' ? 'passionate and energetic' :
+                     traits.temperament === 'icy' ? 'cool and analytical' : 'calm and measured';
+
+  const patience = traits.patience === 'impatient' ? 'prefers quick decisions' :
+                  traits.patience === 'long_game' ? 'plans far ahead' : 'takes deliberate action';
+
+  const aggression = decisionWeights.aggression > 0.6 ? 'aggressive expansion' :
+                    decisionWeights.aggression < 0.4 ? 'defensive protection' : 'balanced foreign policy';
+
+  const cooperation = decisionWeights.cooperativeness > 0.6 ? 'alliance-building' :
+                     decisionWeights.cooperativeness < 0.4 ? 'independent action' : 'selective partnerships';
+
+  const risk = decisionWeights.riskTolerance > 0.6 ? 'bold risk-taking' :
+               decisionWeights.riskTolerance < 0.4 ? 'cautious approaches' : 'calculated risks';
+
+  const honor = traits.honor === 'keeps_word' ? 'honorable and trustworthy' :
+                traits.honor === 'pragmatic' ? 'flexible with agreements' : 'vengeful toward betrayal';
+
+  const speech = traits.register === 'formal' ? 'formal diplomatic language' :
+                 traits.register === 'streetwise' ? 'direct pragmatic speech' :
+                 traits.register === 'folksy' ? 'conversational storytelling' : 'casual everyday talk';
+
+  return `${profile.leaderName} is a ${temperament} leader who ${patience}. Their foreign policy emphasizes ${aggression} and ${cooperation}, with a tendency toward ${risk}. In diplomacy, they are known for being ${honor}, communicating through ${speech}. This unique combination shapes their nation's strategic decisions and international relations.`;
+}
+
 // Trait descriptions for tooltips
 const TRAIT_DESCRIPTIONS: Record<string, Record<string, string>> = {
   register: {
@@ -107,6 +136,14 @@ export function LeaderPersonalityPanel({ profile }: LeaderPersonalityPanelProps)
         {profile.publicValues && (
           <p className="mt-1 text-xs italic text-gray-700">{profile.publicValues}</p>
         )}
+      </div>
+
+      {/* Personality Overview */}
+      <div className="mb-3 rounded-lg bg-amber-100/50 p-3 border border-amber-200">
+        <p className="text-sm font-semibold text-amber-800 mb-2">LEADER PROFILE</p>
+        <p className="text-xs text-amber-700 leading-relaxed">
+          {generateLeaderOverviewText(profile)}
+        </p>
       </div>
 
       {/* Personality Traits Grid */}
