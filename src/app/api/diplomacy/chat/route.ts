@@ -116,7 +116,8 @@ export async function POST(req: Request) {
               is_ai_generated: true,
               created_at: new Date().toISOString(),
             })
-            .select("id");
+            .select("id")
+            .single();
           
           if (aiInsert.error) {
             console.error("Failed to save AI message:", aiInsert.error);
