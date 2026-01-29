@@ -74,7 +74,7 @@ interface SummaryContext {
 }
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_MODEL_NAME = "openai/gpt-oss-20b";
+const GROQ_MODEL_NAME = "llama-3.3-70b-versatile";
 
 function formatTraitsForPrompt(traits: LeaderTraits) {
   return Object.entries(traits)
@@ -244,22 +244,25 @@ function buildLeaderSummaryPrompt(context: SummaryContext, traits: LeaderTraits,
   ];
 
   const instructions = [
-    `Generate a JSON response about this leader:`,
+    `You must respond with ONLY a valid JSON object. Do not include any text before or after the JSON.`,
     ``,
+    `Create a character description for this leader:`,
     `Leader: ${context.leaderName} (${context.title || "Leader"})`,
     `Country: ${context.countryName || "Unknown"}`,
     `Most distinctive trait: ${dominantTrait} (${dominantValue.toFixed(2)})`,
     `Key traits: ${topTraits.join(", ")}`,
     "",
-    "Identify what makes this leader UNIQUE and interesting (not all traits).",
-    "Write 45-55 simple words about their STANDOUT personality and style.",
-    "Add a one-line quote they'd say.",
+    "Focus on what makes this leader UNIQUE and interesting.",
+    "Write 45-55 simple words about their standout personality and leadership style.",
+    "Create a memorable one-line quote they would say.",
     "",
-    "Return JSON with this structure:",
+    "Your response must be a valid JSON object with exactly this structure:",
     "{",
-    "  \"summary\": \"45-55 word paragraph about their personality\",",
-    "  \"quote\": \"A one-line quote they would say\"",
-    "}"
+    '  "summary": "45-55 word description of their personality and leadership style",',
+    '  "quote": "A memorable one-line quote they would say"',
+    "}",
+    "",
+    "Remember: Output ONLY the JSON object, nothing else."
   ].join("\n");
 
   return instructions;
@@ -632,6 +635,8 @@ export class LeaderProfileService {
     this.groqApiKey = process.env.GROQ_API_KEY || null;
     if (!this.groqApiKey) {
       console.warn("[LeaderProfileService] GROQ_API_KEY not configured; leader summaries will use fallback text.");
+    } else {
+      console.log(`[LeaderProfileService] Using Groq model: ${this.groqModelName}`);
     }
   }
 
@@ -657,16 +662,16 @@ export class LeaderProfileService {
             {
               role: "system",
               content:
-                "You are a concise narrator. Always respond with valid JSON only. Generate character descriptions in JSON format.",
+                "You are a creative character writer who generates concise leader descriptions. You MUST respond with ONLY valid JSON. Never include explanations, markdown formatting, or any text outside the JSON object.",
             },
             {
               role: "user",
               content: prompt,
             },
           ],
-          temperature: 0.45,
-          top_p: 0.9,
-          max_tokens: 400,
+          temperature: 0.7,
+          top_p: 0.95,
+          max_tokens: 500,
           response_format: { type: "json_object" },
         }),
       });
@@ -682,11 +687,14 @@ export class LeaderProfileService {
       const data = await response.json();
       const rawText = data?.choices?.[0]?.message?.content;
       const reasoningText = data?.choices?.[0]?.message?.reasoning;
+      const finishReason = data?.choices?.[0]?.finish_reason;
 
       console.log("[LeaderProfileService] Groq response:", {
         hasContent: !!rawText,
         hasReasoning: !!reasoningText,
         contentLength: rawText?.length || 0,
+        finishReason,
+        model: data?.model,
       });
 
       const candidateTexts: string[] = [];
@@ -695,6 +703,11 @@ export class LeaderProfileService {
       }
       if (typeof reasoningText === "string" && reasoningText.trim() !== "") {
         candidateTexts.push(reasoningText);
+      }
+
+      if (candidateTexts.length === 0) {
+        console.error("[LeaderProfileService] No content returned from Groq API");
+        return null;
       }
 
       for (const candidate of candidateTexts) {
