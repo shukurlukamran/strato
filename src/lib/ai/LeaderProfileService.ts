@@ -138,30 +138,92 @@ function extractSummaryFromReasoning(reasoning: string): string {
 }
 
 function extractJsonBlock(text: string): string | null {
+  // Try to find JSON block with proper brace matching
   const start = text.indexOf("{");
+  if (start === -1) return null;
+  
+  let depth = 0;
+  let inString = false;
+  let escapeNext = false;
+  
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+    
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    
+    if (char === '\\') {
+      escapeNext = true;
+      continue;
+    }
+    
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    
+    if (!inString) {
+      if (char === '{') {
+        depth++;
+      } else if (char === '}') {
+        depth--;
+        if (depth === 0) {
+          return text.slice(start, i + 1);
+        }
+      }
+    }
+  }
+  
+  // Fallback to simple extraction
   const end = text.lastIndexOf("}");
-  if (start !== -1 && end !== -1 && end > start) {
+  if (end !== -1 && end > start) {
     return text.slice(start, end + 1);
   }
+  
   return null;
 }
 
 function parseSummaryJson(raw: string): { summary: string; quote: string } | null {
   try {
-    const payload = extractJsonBlock(raw) ?? raw;
-    const parsed = JSON.parse(payload);
+    // Try direct parsing first
+    let parsed: any;
+    try {
+      parsed = JSON.parse(raw.trim());
+    } catch {
+      // Try extracting JSON block
+      const jsonBlock = extractJsonBlock(raw);
+      if (!jsonBlock) {
+        console.log("[parseSummaryJson] No JSON block found");
+        return null;
+      }
+      parsed = JSON.parse(jsonBlock);
+    }
+    
     if (!parsed || typeof parsed !== "object") {
+      console.log("[parseSummaryJson] Parsed value is not an object");
       return null;
     }
 
     const summary = typeof parsed.summary === "string" ? parsed.summary.trim() : "";
     const quote = typeof parsed.quote === "string" ? parsed.quote.trim() : "";
+    
+    console.log("[parseSummaryJson] Extracted fields:", {
+      hasSummary: !!summary,
+      hasQuote: !!quote,
+      summaryLength: summary.length,
+      quoteLength: quote.length,
+    });
+    
     if (!summary || !quote) {
+      console.log("[parseSummaryJson] Missing summary or quote");
       return null;
     }
 
     return { summary, quote };
-  } catch {
+  } catch (error) {
+    console.log("[parseSummaryJson] Parse error:", error instanceof Error ? error.message : String(error));
     return null;
   }
 }
@@ -588,7 +650,7 @@ export class LeaderProfileService {
             {
               role: "system",
               content:
-                "You are a concise narrator. Output JSON with keys 'summary' (40-60 word paragraph) and 'quote' (one-line quoted sentence). No extra text before or after JSON.",
+                "You are a concise narrator. Output JSON with keys 'summary' (40-60 word paragraph) and 'quote' (one-line quoted sentence).",
             },
             {
               role: "user",
@@ -598,6 +660,7 @@ export class LeaderProfileService {
           temperature: 0.45,
           top_p: 0.9,
           max_tokens: 400,
+          response_format: { type: "json_object" },
         }),
       });
 
@@ -635,7 +698,11 @@ export class LeaderProfileService {
         }
       }
 
-      console.warn("[LeaderProfileService] JSON parse failed, using fallback");
+      // Log the actual content to debug parsing issues
+      console.warn("[LeaderProfileService] JSON parse failed, raw content:", {
+        rawText: rawText?.substring(0, 500),
+        reasoningText: reasoningText?.substring(0, 500),
+      });
       return null;
     } catch (error) {
       console.error("[LeaderProfileService] Groq summary request threw an error:", error);
