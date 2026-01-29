@@ -482,13 +482,37 @@ export class LeaderProfileService {
       }
 
       const data = await response.json();
-      const content = data?.choices?.[0]?.message?.content;
-      if (!content || typeof content !== "string") {
-        console.warn("[LeaderProfileService] Groq returned empty summary content");
+      const choice = data?.choices?.[0];
+      let content: string | null = null;
+
+      if (choice) {
+        if (typeof choice?.message?.content === "string" && choice.message.content.trim() !== "") {
+          content = choice.message.content;
+        } else if (typeof choice?.content === "string" && choice.content.trim() !== "") {
+          content = choice.content;
+        } else if (typeof choice?.text === "string" && choice.text.trim() !== "") {
+          content = choice.text;
+        }
+      }
+
+      if (!content) {
+        console.warn("[LeaderProfileService] Groq returned empty summary content", {
+          choice,
+          choices: data?.choices,
+        });
         return null;
       }
 
-      return content.replace(/\s+/g, " ").trim();
+      const trimmed = content.replace(/\s+/g, " ").trim();
+      if (!trimmed) {
+        console.warn("[LeaderProfileService] Groq summary trimmed to empty string", {
+          original: content,
+          choice,
+        });
+        return null;
+      }
+
+      return trimmed;
     } catch (error) {
       console.error("[LeaderProfileService] Groq summary request threw an error:", error);
       return null;
