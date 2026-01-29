@@ -142,7 +142,7 @@ export function LeaderPersonalityPanel({ profile }: LeaderPersonalityPanelProps)
       <div className="mb-3 rounded-lg bg-amber-100/50 p-3 border border-amber-200">
         <p className="text-sm font-semibold text-amber-800 mb-2">LEADER PROFILE</p>
         <p className="text-xs text-amber-700 leading-relaxed">
-          {generateLeaderOverviewText(profile)}
+          {profile.summary?.trim() || generateLeaderOverviewText(profile)}
         </p>
       </div>
 

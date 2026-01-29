@@ -17,6 +17,10 @@
 - Log in system and saving games to profiles
 - **Prevent abuse in the LLM chat (It shouldn't be possible to use it for anything unrelated to game - we also need to have some hard limits to prevent spamming, but this limit shouldn't interrupt gameplay. And negotiations may even cost some small money in the game to slightly discourage people to overuse it unnecessarily - Come up with a rational fair plan)**
 - **Each country's LLM should have a random character (affecting decisions, talking style, etc.)**
+- Review characters / maybe generate them with LLM and shorten them
+- Analyze chat restriction mechanisms and verify if they work as expected. Cost deduction for messages doesn't work, i guess
+
+
 - Diplomacy system (simple for now) (non-agression pact, trade should increase relationship, ask for help, alliance)
 - Define a few winning conditions - and let LLM know them
 

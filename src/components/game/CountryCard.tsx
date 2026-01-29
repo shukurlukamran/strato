@@ -82,7 +82,8 @@ export function CountryCard({
   playerCountryId,
   chatId: initialChatId,
   onChatIdCreated,
-  onStatsUpdate
+  onStatsUpdate,
+  preloadedLeaderProfile,
 }: { 
   country: Country | null;
   stats: CountryStats | null;
@@ -91,6 +92,7 @@ export function CountryCard({
   chatId?: string;
   onChatIdCreated?: (countryId: string, chatId: string) => void;
   onStatsUpdate?: (countryIds: string[]) => void;
+  preloadedLeaderProfile?: LeaderProfile | null;
 }) {
   const [showChat, setShowChat] = useState(false);
   const [chatMessage, setChatMessage] = useState("");
@@ -103,7 +105,7 @@ export function CountryCard({
   const [confirmingDeal, setConfirmingDeal] = useState(false);
   // Use the chatId from props (from game page state) or local state as fallback
   const [chatId, setChatId] = useState<string>(initialChatId || "");
-  const [leaderProfile, setLeaderProfile] = useState<LeaderProfile | null>(null);
+  const [leaderProfile, setLeaderProfile] = useState<LeaderProfile | null>(preloadedLeaderProfile ?? null);
 
   // Update chatId when initialChatId prop changes (e.g., when selecting a different country)
   useEffect(() => {
@@ -120,13 +122,23 @@ export function CountryCard({
     setExtractionError(null);
     setDealExecuted(false);
     setConfirmingDeal(false);
-    setLeaderProfile(null);
-  }, [country?.id]);
+    if (!preloadedLeaderProfile) {
+      setLeaderProfile(null);
+    }
+  }, [country?.id, preloadedLeaderProfile]);
+
+  useEffect(() => {
+    setLeaderProfile(preloadedLeaderProfile ?? null);
+  }, [preloadedLeaderProfile]);
 
   // Fetch leader profile for AI countries
   useEffect(() => {
     if (!country || country.isPlayerControlled || !gameId) {
       setLeaderProfile(null);
+      return;
+    }
+
+    if (preloadedLeaderProfile) {
       return;
     }
 
@@ -163,7 +175,7 @@ export function CountryCard({
     };
 
     void fetchLeaderProfile();
-  }, [country, gameId, stats?.resourceProfile]);
+  }, [country, gameId, stats?.resourceProfile, preloadedLeaderProfile]);
 
   if (!country || !stats) {
     return (
@@ -458,6 +470,9 @@ export function CountryCard({
 
   // Map existing data to display format
   const government = country.isPlayerControlled ? "Your Country" : "AI Controlled";
+  const leaderTooltipContent =
+    leaderProfile?.summary?.trim() ||
+    (leaderProfile && country ? generateLeaderTooltipContent(leaderProfile, country.name) : "");
 
   return (
     <>
@@ -471,7 +486,7 @@ export function CountryCard({
             <div className="text-lg font-bold text-white">
               {!country.isPlayerControlled && leaderProfile ? (
                 <span>
-                  <Tooltip content={generateLeaderTooltipContent(leaderProfile, country.name)}>
+                  <Tooltip content={leaderTooltipContent}>
                     <span className="text-blue-300 cursor-help hover:text-blue-200 transition-colors">
                       {leaderProfile.leaderName}
                     </span>

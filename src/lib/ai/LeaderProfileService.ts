@@ -49,6 +49,7 @@ export interface LeaderProfile {
   leaderName: string;
   title: string | null;
   publicValues: string | null;
+  summary: string | null;
   traits: LeaderTraits;
   decisionWeights: LeaderDecisionWeights;
   voiceProfile: LeaderVoiceProfile;
@@ -62,6 +63,70 @@ interface LeaderProfileRequest {
   countryId: string;
   resourceProfile?: ResourceProfile | null;
   countryName?: string;
+}
+
+interface SummaryContext {
+  leaderName: string;
+  title?: string | null;
+  publicValues?: string | null;
+  countryName?: string;
+  resourceProfileName?: string | null;
+}
+
+const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_MODEL_NAME = "openai/gpt-oss-20b";
+
+function formatTraitsForPrompt(traits: LeaderTraits) {
+  return Object.entries(traits)
+    .filter(([key]) => key !== "speech_tics")
+    .map(([key, value]) => `${key.replace(/_/g, " ")}=${value}`)
+    .join(", ");
+}
+
+function formatDecisionWeightsForPrompt(weights: LeaderDecisionWeights) {
+  return Object.entries(weights)
+    .map(([key, value]) => `${key.replace(/_/g, " ")}=${value.toFixed(2)}`)
+    .join(", ");
+}
+
+function buildLeaderSummaryPrompt(context: SummaryContext, traits: LeaderTraits, decisionWeights: LeaderDecisionWeights) {
+  const traitSummary = formatTraitsForPrompt(traits);
+  const decisionSummary = formatDecisionWeightsForPrompt(decisionWeights);
+  const instructions = [
+    `Leader: ${context.leaderName}${context.title ? ` (${context.title})` : ""}`,
+    `Country: ${context.countryName ?? "Unnamed nation"}`,
+    `Resource profile: ${context.resourceProfileName ?? "Balanced"}`,
+    `Public values: ${context.publicValues ?? "Not provided"}`,
+    `Traits: ${traitSummary}`,
+    `Decision weights: ${decisionSummary}`,
+    "",
+    "Write a single paragraph (40-60 words) describing this leader's personality, tone, and decision-making tendencies.",
+    "Do not use bullet points, tables, or quotes—just natural prose.",
+    "Emphasize their defining traits, how they communicate, and what drives their choices."
+  ].join("\n");
+
+  return instructions;
+}
+
+function buildSummaryFallback(context: SummaryContext, traits: LeaderTraits, decisionWeights: LeaderDecisionWeights) {
+  const temperament = traits.temperament === "fiery" ? "fiery and passionate" : traits.temperament === "icy" ? "cool and analytical" : "calm and steady";
+  const patience = traits.patience === "impatient" ? "pushes for quick decisions" : traits.patience === "long_game" ? "plans far ahead" : "takes deliberate action";
+  const aggression = decisionWeights.aggression > 0.6 ? "drives aggressive expansion" : decisionWeights.aggression < 0.4 ? "prioritizes defensive protection" : "keeps a balanced foreign policy";
+  const cooperation = decisionWeights.cooperativeness > 0.6 ? "seeks alliances" : decisionWeights.cooperativeness < 0.4 ? "stays independently minded" : "makes selective partnerships";
+  const risk = decisionWeights.riskTolerance > 0.6 ? "embraces bold risk-taking" : decisionWeights.riskTolerance < 0.4 ? "prefers cautious moves" : "plays calculated risks";
+  const speechStyle =
+    traits.register === "formal"
+      ? "formal, diplomatic language"
+      : traits.register === "streetwise"
+        ? "direct, pragmatic speech"
+        : traits.register === "folksy"
+          ? "conversational storytelling"
+          : "casual, approachable tone";
+  const values = context.publicValues ? context.publicValues.split(",")[0] : "a steady vision for their nation";
+  const titleClause = context.title ? `${context.leaderName}, ${context.title},` : `${context.leaderName}`;
+  const summary = `${titleClause} is ${temperament} who ${patience}. They ${aggression} yet ${cooperation}, while ${risk}. Their voice is ${speechStyle}, reinforcing ${values}${context.countryName ? ` for ${context.countryName}` : ""}.`;
+
+  return summary;
 }
 
 const TRAIT_OPTIONS: Record<keyof Omit<LeaderTraits, "speech_tics">, string[]> = {
@@ -350,6 +415,7 @@ function normalizeRow(row: any): LeaderProfile {
     leaderName: row.leader_name,
     title: row.title,
     publicValues: row.public_values,
+    summary: row.summary ?? null,
     traits: row.traits,
     decisionWeights: row.decision_weights,
     voiceProfile: row.voice_profile,
@@ -361,9 +427,114 @@ function normalizeRow(row: any): LeaderProfile {
 
 export class LeaderProfileService {
   private cache = new Map<string, LeaderProfile>();
+  private groqApiKey: string | null;
+  private groqModelName = GROQ_MODEL_NAME;
+  private groqApiUrl = GROQ_API_URL;
+
+  constructor() {
+    this.groqApiKey = process.env.GROQ_API_KEY || null;
+    if (!this.groqApiKey) {
+      console.warn("[LeaderProfileService] GROQ_API_KEY not configured; leader summaries will use fallback text.");
+    }
+  }
 
   private getSupabase() {
     return getSupabaseServerClient();
+  }
+
+  private async callGroqForSummary(prompt: string): Promise<string | null> {
+    if (!this.groqApiKey) {
+      return null;
+    }
+
+    try {
+      const response = await fetch(this.groqApiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.groqApiKey}`,
+        },
+        body: JSON.stringify({
+          model: this.groqModelName,
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a concise narrator summarizing political leaders. Respond with a single paragraph of 40-60 words. No quotes, lists, or annotations—just natural prose describing the leader's personality, communication, and strategic tilt.",
+            },
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          temperature: 0.45,
+          top_p: 0.9,
+          max_tokens: 300,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(
+          `[LeaderProfileService] Groq summary request failed: ${response.status} ${response.statusText} - ${errorText}`
+        );
+        return null;
+      }
+
+      const data = await response.json();
+      const content = data?.choices?.[0]?.message?.content;
+      if (!content || typeof content !== "string") {
+        console.warn("[LeaderProfileService] Groq returned empty summary content");
+        return null;
+      }
+
+      return content.replace(/\s+/g, " ").trim();
+    } catch (error) {
+      console.error("[LeaderProfileService] Groq summary request threw an error:", error);
+      return null;
+    }
+  }
+
+  private async generateLeaderSummaryFromTraits(
+    context: SummaryContext,
+    traits: LeaderTraits,
+    decisionWeights: LeaderDecisionWeights
+  ): Promise<string> {
+    const prompt = buildLeaderSummaryPrompt(context, traits, decisionWeights);
+    const groqSummary = await this.callGroqForSummary(prompt);
+    if (groqSummary) {
+      return groqSummary;
+    }
+
+    return buildSummaryFallback(context, traits, decisionWeights);
+  }
+
+  private async ensureSummary(profile: LeaderProfile, context: SummaryContext): Promise<void> {
+    if (profile.summary) {
+      return;
+    }
+
+    const summary = await this.generateLeaderSummaryFromTraits(context, profile.traits, profile.decisionWeights);
+    if (!summary) {
+      return;
+    }
+
+    try {
+      const supabase = this.getSupabase();
+      const update = await supabase
+        .from("leader_profiles")
+        .update({ summary })
+        .eq("id", profile.id);
+
+      if (update.error) {
+        console.error("[LeaderProfileService] Failed to persist leader summary:", update.error);
+        return;
+      }
+
+      profile.summary = summary;
+    } catch (error) {
+      console.error("[LeaderProfileService] Error persisting leader summary:", error);
+    }
   }
 
   async getOrCreateProfile(request: LeaderProfileRequest): Promise<LeaderProfile | null> {
@@ -386,6 +557,13 @@ export class LeaderProfileService {
 
     if (existing.data) {
       const profile = normalizeRow(existing.data);
+      await this.ensureSummary(profile, {
+        leaderName: profile.leaderName,
+        title: profile.title,
+        publicValues: profile.publicValues,
+        countryName: request.countryName,
+        resourceProfileName: request.resourceProfile?.name ?? null,
+      });
       this.cache.set(cacheKey, profile);
       return profile;
     }
@@ -397,6 +575,14 @@ export class LeaderProfileService {
     const leaderName = buildLeaderName(seed);
     const title = buildTitle(request.resourceProfile?.name);
     const publicValues = buildPublicValues(traits, request.countryName);
+    const summaryContext = {
+      leaderName,
+      title,
+      publicValues,
+      countryName: request.countryName,
+      resourceProfileName: request.resourceProfile?.name ?? null,
+    };
+    const summary = await this.generateLeaderSummaryFromTraits(summaryContext, traits, decisionWeights);
 
     const insertPayload = {
       game_id: request.gameId,
@@ -404,6 +590,7 @@ export class LeaderProfileService {
       leader_name: leaderName,
       title,
       public_values: publicValues,
+      summary,
       traits,
       decision_weights: decisionWeights,
       voice_profile: voiceProfile,

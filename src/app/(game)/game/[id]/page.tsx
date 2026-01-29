@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import type { Country, CountryStats } from "@/types/country";
+import type { LeaderProfile } from "@/lib/ai/LeaderProfileService";
 import type { City } from "@/types/city";
 import type { Deal } from "@/types/deals";
 import type { ChatMessage } from "@/types/chat";
@@ -72,6 +73,7 @@ export default function GamePage() {
   const [deals, setDeals] = useState<Deal[]>([]);
   const [showSidebar, setShowSidebar] = useState(true);
   const [showHistoryLog, setShowHistoryLog] = useState(true);
+  const [leaderProfilesByCountryId, setLeaderProfilesByCountryId] = useState<Record<string, LeaderProfile>>({});
   const [showDiplomacyModal, setShowDiplomacyModal] = useState(false);
   const [showMarketRatesModal, setShowMarketRatesModal] = useState(false);
   const [endingTurn, setEndingTurn] = useState(false);
@@ -111,7 +113,57 @@ export default function GamePage() {
     }
   }
 
+  async function preloadLeaderProfiles(
+    apiCountries: ApiCountry[],
+    statsMap: Record<string, CountryStats>
+  ) {
+    if (!gameId) return;
+
+    const aiCountries = apiCountries.filter((country) => !country.is_player_controlled);
+    if (aiCountries.length === 0) {
+      setLeaderProfilesByCountryId({});
+      return;
+    }
+
+    const fetchedProfiles: Record<string, LeaderProfile> = {};
+    await Promise.all(
+      aiCountries.map(async (country) => {
+        try {
+          const stats = statsMap[country.id];
+          const resourceProfileName = stats?.resourceProfile?.name || "";
+          const url = new URL("/api/leader", window.location.origin);
+          url.searchParams.set("gameId", gameId);
+          url.searchParams.set("countryId", country.id);
+          if (resourceProfileName) {
+            url.searchParams.set("resourceProfile", resourceProfileName);
+          }
+          url.searchParams.set("countryName", country.name);
+
+          const response = await fetch(url.toString());
+          if (!response.ok) {
+            throw new Error(await response.text());
+          }
+
+          const data = await response.json();
+          if (data.profile) {
+            fetchedProfiles[country.id] = data.profile;
+          }
+        } catch (error) {
+          console.error(`[GamePage] Failed to preload leader profile for ${country.name}:`, error);
+        }
+      })
+    );
+
+    if (Object.keys(fetchedProfiles).length > 0) {
+      setLeaderProfilesByCountryId((prev) => ({ ...prev, ...fetchedProfiles }));
+    }
+  }
+
   useEffect(() => setGameId(gameId), [gameId, setGameId]);
+
+  useEffect(() => {
+    setLeaderProfilesByCountryId({});
+  }, [gameId]);
 
   async function loadGameData(showLoadingScreen = true) {
     if (showLoadingScreen) {
@@ -119,6 +171,7 @@ export default function GamePage() {
       setError(null);
       setGameExists(null);
     }
+    setLeaderProfilesByCountryId({});
     
     // Validate gameId format first
     if (!gameId || typeof gameId !== 'string' || gameId.trim() === '') {
@@ -261,6 +314,7 @@ export default function GamePage() {
         };
       }
       setStatsByCountryId(statsMap);
+      void preloadLeaderProfiles(data.countries, statsMap);
       
       console.log("GamePage: Stats loaded for turn", data.game.current_turn, ":", 
         Object.entries(statsMap).map(([countryId, stats]) => ({
@@ -854,6 +908,7 @@ export default function GamePage() {
               stats={selectedStats}
               gameId={gameId}
               playerCountryId={playerCountryId}
+              preloadedLeaderProfile={selectedCountry ? leaderProfilesByCountryId[selectedCountry.id] : undefined}
               chatId={selectedCountry ? chatByCounterpartCountryId[selectedCountry.id] : undefined}
               onChatIdCreated={(countryId: string, newChatId: string) => {
                 // Update the chat mapping when a new chat is created

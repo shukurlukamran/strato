@@ -289,6 +289,7 @@ CURRENT MARKET RATES:
       leaderName: `${countryName} Representative`,
       title: "Envoy",
       publicValues: "Committed to steady diplomacy and fair deals.",
+      summary: null,
       traits: fallbackTraits,
       decisionWeights: {
         aggression: 0.45,
