@@ -172,41 +172,87 @@ function formatQuoteForOutput(quote: string): string {
 }
 
 function buildLeaderSummaryPrompt(context: SummaryContext, traits: LeaderTraits, decisionWeights: LeaderDecisionWeights) {
-  const traitSummary = formatTraitsForPrompt(traits);
-  const decisionSummary = formatDecisionWeightsForPrompt(decisionWeights);
+  const dominantTrait = getDominantDecisionWeight(decisionWeights);
+  const dominantValue = decisionWeights[dominantTrait];
+  
+  const topTraits = [
+    `${traits.temperament} temperament`,
+    `${traits.cooperation_style} cooperation`,
+    `${traits.aggression_doctrine} military stance`,
+  ];
+
   const instructions = [
-    `Leader: ${context.leaderName}${context.title ? ` (${context.title})` : ""}`,
-    `Country: ${context.countryName ?? "Unnamed nation"}`,
-    `Traits: ${traitSummary}`,
-    `Decision weights: ${decisionSummary}`,
+    `Leader: ${context.leaderName} (${context.title || "Leader"})`,
+    `Country: ${context.countryName || "Unknown"}`,
+    `Most distinctive trait: ${dominantTrait} (${dominantValue.toFixed(2)})`,
+    `Key traits: ${topTraits.join(", ")}`,
     "",
-    "Write 40-60 words highlighting standout character and decision style in simple language.",
-    "Then write a one-line quote (in quotation marks) that this leader might say.",
-    "Return as JSON: {\"summary\":\"...\",\"quote\":\"...\"}"
+    "Identify what makes this leader UNIQUE and interesting (not all traits).",
+    "Write 45-55 simple words about their STANDOUT personality and style.",
+    "Add a one-line quote they'd say (in quotes).",
+    "JSON: {\"summary\":\"...\",\"quote\":\"...\"}"
   ].join("\n");
 
   return instructions;
 }
 
 function buildSummaryFallback(context: SummaryContext, traits: LeaderTraits, decisionWeights: LeaderDecisionWeights) {
-  const temperament = traits.temperament === "fiery" ? "fiery and passionate" : traits.temperament === "icy" ? "cool and analytical" : "calm and steady";
-  const patience = traits.patience === "impatient" ? "pushes for quick decisions" : traits.patience === "long_game" ? "plans far ahead" : "takes deliberate action";
-  const aggression = decisionWeights.aggression > 0.6 ? "drives aggressive expansion" : decisionWeights.aggression < 0.4 ? "prioritizes defensive protection" : "keeps a balanced foreign policy";
-  const cooperation = decisionWeights.cooperativeness > 0.6 ? "seeks alliances" : decisionWeights.cooperativeness < 0.4 ? "stays independently minded" : "makes selective partnerships";
-  const risk = decisionWeights.riskTolerance > 0.6 ? "embraces bold risk-taking" : decisionWeights.riskTolerance < 0.4 ? "prefers cautious moves" : "plays calculated risks";
-  const speechStyle =
-    traits.register === "formal"
-      ? "formal, diplomatic language"
-      : traits.register === "streetwise"
-        ? "direct, pragmatic speech"
-        : traits.register === "folksy"
-          ? "conversational storytelling"
-          : "casual, approachable tone";
-  const values = context.publicValues ? context.publicValues.split(",")[0] : "a steady vision for their nation";
-  const titleClause = context.title ? `${context.leaderName}, ${context.title},` : `${context.leaderName}`;
-  const highlight = buildDominantTraitPhrase(decisionWeights);
-  const summary = `${titleClause} is ${temperament} who ${patience}. They ${aggression} yet ${cooperation}, while ${risk}. Their voice is ${speechStyle}, reinforcing ${values}${context.countryName ? ` for ${context.countryName}` : ""}.`;
-  const quote = `\"I lead because ${highlight},\" they might declare.`;
+  const dominantKey = getDominantDecisionWeight(decisionWeights);
+  const dominantValue = decisionWeights[dominantKey];
+  
+  let focusTrait = "";
+  let quoteContent = "";
+  
+  if (dominantKey === "aggression") {
+    if (dominantValue > 0.6) {
+      focusTrait = "boldly expansionist, always seeking opportunities to grow their power";
+      quoteContent = "We grow or we stagnate—there is no middle ground.";
+    } else {
+      focusTrait = "carefully defensive, protecting what they've built";
+      quoteContent = "Security comes before ambition, always.";
+    }
+  } else if (dominantKey === "cooperativeness") {
+    if (dominantValue > 0.6) {
+      focusTrait = "alliance-minded, building networks of mutual benefit";
+      quoteContent = "Together we're stronger than any of us alone.";
+    } else {
+      focusTrait = "self-reliant, trusting their own judgment above all";
+      quoteContent = "I decide our path—no one else.";
+    }
+  } else if (dominantKey === "riskTolerance") {
+    if (dominantValue > 0.6) {
+      focusTrait = "daring, willing to gamble for big wins";
+      quoteContent = "Fortune favors the bold.";
+    } else {
+      focusTrait = "cautious, preferring sure paths over risky moves";
+      quoteContent = "Slow and steady keeps us alive.";
+    }
+  } else if (dominantKey === "honesty") {
+    if (dominantValue > 0.6) {
+      focusTrait = "straightforward and honest in all dealings";
+      quoteContent = "My word is my bond.";
+    } else {
+      focusTrait = "pragmatic, bending rules when needed";
+      quoteContent = "Principles are fine, but survival matters more.";
+    }
+  } else if (dominantKey === "patience") {
+    if (dominantValue > 0.6) {
+      focusTrait = "strategic thinker who plans many steps ahead";
+      quoteContent = "I'm building something that will last generations.";
+    } else {
+      focusTrait = "quick to act, demanding swift results";
+      quoteContent = "We move now, or we lose our chance.";
+    }
+  } else {
+    focusTrait = "pragmatic leader balancing multiple priorities";
+    quoteContent = "I do what works.";
+  }
+
+  const temperamentNote = traits.temperament === "fiery" ? "Their fiery temperament" : 
+                          traits.temperament === "icy" ? "Their cool demeanor" : "Their calm presence";
+  
+  const summary = `${context.leaderName}, ${context.title || "leader"} of ${context.countryName || "their nation"}, is ${focusTrait}. ${temperamentNote} shapes every interaction.`;
+  const quote = `"${quoteContent}"`;
 
   return `${summary}\n\n${quote}`;
 }
@@ -567,6 +613,12 @@ export class LeaderProfileService {
       const rawText = data?.choices?.[0]?.message?.content;
       const reasoningText = data?.choices?.[0]?.message?.reasoning;
 
+      console.log("[LeaderProfileService] Groq response:", {
+        hasContent: !!rawText,
+        hasReasoning: !!reasoningText,
+        contentLength: rawText?.length || 0,
+      });
+
       const candidateTexts: string[] = [];
       if (typeof rawText === "string" && rawText.trim() !== "") {
         candidateTexts.push(rawText);
@@ -578,22 +630,12 @@ export class LeaderProfileService {
       for (const candidate of candidateTexts) {
         const parsed = parseSummaryJson(candidate.trim());
         if (parsed) {
+          console.log("[LeaderProfileService] Parsed JSON successfully");
           return `${parsed.summary}\n\n${formatQuoteForOutput(parsed.quote)}`;
         }
       }
 
-      const fallbackCandidate = reasoningText || rawText;
-      if (fallbackCandidate && typeof fallbackCandidate === "string") {
-        const summaryText = extractSummaryFromReasoning(fallbackCandidate);
-        const trimmed = summaryText.replace(/\s+/g, " ").trim();
-        if (trimmed) {
-          return trimmed;
-        }
-      }
-
-      console.warn("[LeaderProfileService] Groq returned empty summary content", {
-        choices: data?.choices,
-      });
+      console.warn("[LeaderProfileService] JSON parse failed, using fallback");
       return null;
     } catch (error) {
       console.error("[LeaderProfileService] Groq summary request threw an error:", error);
@@ -606,25 +648,32 @@ export class LeaderProfileService {
     traits: LeaderTraits,
     decisionWeights: LeaderDecisionWeights
   ): Promise<string> {
+    console.log("[LeaderProfileService] Generating summary for:", context.leaderName);
     const prompt = buildLeaderSummaryPrompt(context, traits, decisionWeights);
     const groqSummary = await this.callGroqForSummary(prompt);
     if (groqSummary) {
+      console.log("[LeaderProfileService] Using Groq summary");
       return groqSummary;
     }
 
+    console.log("[LeaderProfileService] Using fallback summary");
     return buildSummaryFallback(context, traits, decisionWeights);
   }
 
   private async ensureSummary(profile: LeaderProfile, context: SummaryContext): Promise<void> {
     if (profile.summary) {
+      console.log("[LeaderProfileService] Summary already exists for:", profile.leaderName);
       return;
     }
 
+    console.log("[LeaderProfileService] No summary, generating for:", profile.leaderName);
     const summary = await this.generateLeaderSummaryFromTraits(context, profile.traits, profile.decisionWeights);
     if (!summary) {
+      console.error("[LeaderProfileService] Failed to generate summary");
       return;
     }
 
+    console.log("[LeaderProfileService] Summary generated, persisting to DB");
     try {
       const supabase = this.getSupabase();
       const update = await supabase
@@ -638,6 +687,7 @@ export class LeaderProfileService {
       }
 
       profile.summary = summary;
+      console.log("[LeaderProfileService] Summary persisted successfully");
     } catch (error) {
       console.error("[LeaderProfileService] Error persisting leader summary:", error);
     }

@@ -10,7 +10,10 @@ export async function GET(request: NextRequest) {
     const resourceProfileName = searchParams.get("resourceProfile");
     const countryName = searchParams.get("countryName");
 
+    console.log("[API /leader] Request:", { gameId, countryId, resourceProfileName, countryName });
+
     if (!gameId || !countryId) {
+      console.error("[API /leader] Missing required params");
       return NextResponse.json(
         { error: "Missing gameId or countryId" },
         { status: 400 }
@@ -25,6 +28,7 @@ export async function GET(request: NextRequest) {
       resourceProfile = RESOURCE_PROFILES.find(p => p.name === resourceProfileName);
     }
 
+    console.log("[API /leader] Calling service.getOrCreateProfile");
     const profile = await service.getOrCreateProfile({
       gameId,
       countryId,
@@ -33,15 +37,17 @@ export async function GET(request: NextRequest) {
     });
 
     if (!profile) {
+      console.error("[API /leader] Service returned null profile");
       return NextResponse.json(
         { error: "Failed to create or fetch leader profile" },
         { status: 500 }
       );
     }
 
+    console.log("[API /leader] Success:", { leaderName: profile.leaderName, hasSummary: !!profile.summary });
     return NextResponse.json({ profile });
   } catch (error) {
-    console.error("Failed to fetch leader profile:", error);
+    console.error("[API /leader] Error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Unknown error" },
       { status: 500 }
