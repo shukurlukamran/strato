@@ -252,13 +252,15 @@ function buildLeaderSummaryPrompt(context: SummaryContext, traits: LeaderTraits,
     `Most distinctive trait: ${dominantTrait} (${dominantValue.toFixed(2)})`,
     `Key traits: ${topTraits.join(", ")}`,
     "",
-    "Focus on what makes this leader UNIQUE and interesting.",
-    "Write 45-55 simple words about their standout personality and leadership style.",
-    "Create a memorable one-line quote they would say.",
+    "Write a SHORT NARRATIVE portrait (2–3 sentences) that brings this leader to life.",
+    "Do NOT list traits or characteristics (e.g. avoid 'empathetic calm, isolationist tendencies, expansionist ambitions').",
+    "Instead: paint a vivid picture of how they lead, what they care about, how others experience them, or a telling moment or habit.",
+    "Use the traits only as inspiration—turn them into something interesting and human.",
+    "Then add a memorable one-line quote they would say.",
     "",
     "Your response must be a valid JSON object with exactly this structure:",
     "{",
-    '  "summary": "45-55 word description of their personality and leadership style",',
+    '  "summary": "2–3 sentences: an interesting narrative portrait (not a trait list)",',
     '  "quote": "A memorable one-line quote they would say"',
     "}",
     "",
@@ -272,58 +274,37 @@ function buildSummaryFallback(context: SummaryContext, traits: LeaderTraits, dec
   const dominantKey = getDominantDecisionWeight(decisionWeights);
   const dominantValue = decisionWeights[dominantKey];
   
-  let focusTrait = "";
   let quoteContent = "";
-  
   if (dominantKey === "aggression") {
-    if (dominantValue > 0.6) {
-      focusTrait = "boldly expansionist, always seeking opportunities to grow their power";
-      quoteContent = "We grow or we stagnate—there is no middle ground.";
-    } else {
-      focusTrait = "carefully defensive, protecting what they've built";
-      quoteContent = "Security comes before ambition, always.";
-    }
+    quoteContent = dominantValue > 0.6 ? "We grow or we stagnate—there is no middle ground." : "Security comes before ambition, always.";
   } else if (dominantKey === "cooperativeness") {
-    if (dominantValue > 0.6) {
-      focusTrait = "alliance-minded, building networks of mutual benefit";
-      quoteContent = "Together we're stronger than any of us alone.";
-    } else {
-      focusTrait = "self-reliant, trusting their own judgment above all";
-      quoteContent = "I decide our path—no one else.";
-    }
+    quoteContent = dominantValue > 0.6 ? "Together we're stronger than any of us alone." : "I decide our path—no one else.";
   } else if (dominantKey === "riskTolerance") {
-    if (dominantValue > 0.6) {
-      focusTrait = "daring, willing to gamble for big wins";
-      quoteContent = "Fortune favors the bold.";
-    } else {
-      focusTrait = "cautious, preferring sure paths over risky moves";
-      quoteContent = "Slow and steady keeps us alive.";
-    }
+    quoteContent = dominantValue > 0.6 ? "Fortune favors the bold." : "Slow and steady keeps us alive.";
   } else if (dominantKey === "honesty") {
-    if (dominantValue > 0.6) {
-      focusTrait = "straightforward and honest in all dealings";
-      quoteContent = "My word is my bond.";
-    } else {
-      focusTrait = "pragmatic, bending rules when needed";
-      quoteContent = "Principles are fine, but survival matters more.";
-    }
+    quoteContent = dominantValue > 0.6 ? "My word is my bond." : "Principles are fine, but survival matters more.";
   } else if (dominantKey === "patience") {
-    if (dominantValue > 0.6) {
-      focusTrait = "strategic thinker who plans many steps ahead";
-      quoteContent = "I'm building something that will last generations.";
-    } else {
-      focusTrait = "quick to act, demanding swift results";
-      quoteContent = "We move now, or we lose our chance.";
-    }
+    quoteContent = dominantValue > 0.6 ? "I'm building something that will last generations." : "We move now, or we lose our chance.";
   } else {
-    focusTrait = "pragmatic leader balancing multiple priorities";
     quoteContent = "I do what works.";
   }
 
-  const temperamentNote = traits.temperament === "fiery" ? "Their fiery temperament" : 
-                          traits.temperament === "icy" ? "Their cool demeanor" : "Their calm presence";
-  
-  const summary = `${context.leaderName}, ${context.title || "leader"} of ${context.countryName || "their nation"}, is ${focusTrait}. ${temperamentNote} shapes every interaction.`;
+  const firstSentence = `${context.leaderName} has led ${context.countryName || "their nation"} as ${context.title || "leader"} long enough that allies and rivals alike know what to expect.`;
+  const secondSentence = traits.temperament === "fiery"
+    ? "In the council chamber they lean forward when they speak; their opponents have learned to read the silence before the storm."
+    : traits.temperament === "icy"
+    ? "They rarely raise their voice, which makes the rare crack in their composure all the more memorable."
+    : "They have a way of making even tense negotiations feel like a shared problem to solve.";
+  const reputationLine =
+    dominantKey === "aggression" && dominantValue > 0.6
+      ? "Borders have shifted under their watch—and so have the stories."
+      : dominantKey === "cooperativeness" && dominantValue > 0.6
+      ? "The alliances they have brokered tend to outlast those of their peers."
+      : dominantKey === "honesty" && dominantValue > 0.6
+      ? "When they give their word, the other side usually stops worrying."
+      : "They get results, one way or another.";
+
+  const summary = `${firstSentence} ${secondSentence} ${reputationLine}`;
   const quote = `"${quoteContent}"`;
 
   return `${summary}\n\n${quote}`;
