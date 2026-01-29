@@ -137,6 +137,40 @@ function extractSummaryFromReasoning(reasoning: string): string {
   return reasoning;
 }
 
+function extractJsonBlock(text: string): string | null {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start !== -1 && end !== -1 && end > start) {
+    return text.slice(start, end + 1);
+  }
+  return null;
+}
+
+function parseSummaryJson(raw: string): { summary: string; quote: string } | null {
+  try {
+    const payload = extractJsonBlock(raw) ?? raw;
+    const parsed = JSON.parse(payload);
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+
+    const summary = typeof parsed.summary === "string" ? parsed.summary.trim() : "";
+    const quote = typeof parsed.quote === "string" ? parsed.quote.trim() : "";
+    if (!summary || !quote) {
+      return null;
+    }
+
+    return { summary, quote };
+  } catch {
+    return null;
+  }
+}
+
+function formatQuoteForOutput(quote: string): string {
+  const trimmed = quote.replace(/^"+|"+$/g, "").trim();
+  return `"${trimmed}"`;
+}
+
 function buildLeaderSummaryPrompt(context: SummaryContext, traits: LeaderTraits, decisionWeights: LeaderDecisionWeights) {
   const traitSummary = formatTraitsForPrompt(traits);
   const decisionSummary = formatDecisionWeightsForPrompt(decisionWeights);
@@ -148,8 +182,9 @@ function buildLeaderSummaryPrompt(context: SummaryContext, traits: LeaderTraits,
     `Traits: ${traitSummary}`,
     `Decision weights: ${decisionSummary}`,
     "",
-    "Write a single paragraph (40-60 words) describing the standout character, tone, and decision style. Keep the language simple, engaging, and interesting—avoid reciting every trait.",
-    "After that, include a second paragraph with a short quoted sentence (in quotation marks) that feels like something this leader would say, inspired by their most dominant trait."
+    "Write a single paragraph (40-60 words) describing the standout character and decision style in simple, engaging language—do not list every trait.",
+    "Follow it with a quoted sentence (in quotation marks) that might come from this leader, inspired by the dominant trait or decision weight.",
+    "Return the entire response as JSON with keys \"summary\" and \"quote\", and do not include any extra explanation."
   ].join("\n");
 
   return instructions;
@@ -518,7 +553,15 @@ export class LeaderProfileService {
           ],
           temperature: 0.45,
           top_p: 0.9,
-          max_tokens: 300,
+          max_tokens: 400,
+          response_format: {
+            type: "json_object",
+            properties: {
+              summary: { type: "string" },
+              quote: { type: "string" },
+            },
+            required: ["summary", "quote"],
+          },
         }),
       });
 
@@ -531,39 +574,37 @@ export class LeaderProfileService {
       }
 
       const data = await response.json();
-      const choice = data?.choices?.[0];
-      let content: string | null = null;
+      const rawText = data?.choices?.[0]?.message?.content;
+      const reasoningText = data?.choices?.[0]?.message?.reasoning;
 
-      if (choice) {
-        if (typeof choice?.message?.content === "string" && choice.message.content.trim() !== "") {
-          content = choice.message.content;
-        } else if (typeof choice?.message?.reasoning === "string" && choice.message.reasoning.trim() !== "") {
-          content = extractSummaryFromReasoning(choice.message.reasoning);
-        } else if (typeof choice?.content === "string" && choice.content.trim() !== "") {
-          content = choice.content;
-        } else if (typeof choice?.text === "string" && choice.text.trim() !== "") {
-          content = choice.text;
+      const candidateTexts: string[] = [];
+      if (typeof rawText === "string" && rawText.trim() !== "") {
+        candidateTexts.push(rawText);
+      }
+      if (typeof reasoningText === "string" && reasoningText.trim() !== "") {
+        candidateTexts.push(reasoningText);
+      }
+
+      for (const candidate of candidateTexts) {
+        const parsed = parseSummaryJson(candidate.trim());
+        if (parsed) {
+          return `${parsed.summary}\n\n${formatQuoteForOutput(parsed.quote)}`;
         }
       }
 
-      if (!content) {
-        console.warn("[LeaderProfileService] Groq returned empty summary content", {
-          choice,
-          choices: data?.choices,
-        });
-        return null;
+      const fallbackCandidate = reasoningText || rawText;
+      if (fallbackCandidate && typeof fallbackCandidate === "string") {
+        const summaryText = extractSummaryFromReasoning(fallbackCandidate);
+        const trimmed = summaryText.replace(/\s+/g, " ").trim();
+        if (trimmed) {
+          return trimmed;
+        }
       }
 
-      const trimmed = content.replace(/\s+/g, " ").trim();
-      if (!trimmed) {
-        console.warn("[LeaderProfileService] Groq summary trimmed to empty string", {
-          original: content,
-          choice,
-        });
-        return null;
-      }
-
-      return trimmed;
+      console.warn("[LeaderProfileService] Groq returned empty summary content", {
+        choices: data?.choices,
+      });
+      return null;
     } catch (error) {
       console.error("[LeaderProfileService] Groq summary request threw an error:", error);
       return null;
