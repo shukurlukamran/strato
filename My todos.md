@@ -58,6 +58,11 @@ LLM CHAT
 - Player should define name and LLM Deal chat should refer to player with that name, not the country name.
 
 Also, currently Defense window for the 2nd received attack only appears after submitting allocation to the 1st attack. However, Player should receive them all at the same time so he knows how many attacks he received this turn and decide allocation accordingly.
+- Update @LeaderProfileService.ts based on the comments at @aliveleaders.md to make them more real-life-like
+
+
+
+
 -------
 
 Analyze root causes of these, understand what is happening, and then implement fixes.
