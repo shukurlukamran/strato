@@ -244,6 +244,8 @@ function buildLeaderSummaryPrompt(context: SummaryContext, traits: LeaderTraits,
   ];
 
   const instructions = [
+    `Generate a JSON response about this leader:`,
+    ``,
     `Leader: ${context.leaderName} (${context.title || "Leader"})`,
     `Country: ${context.countryName || "Unknown"}`,
     `Most distinctive trait: ${dominantTrait} (${dominantValue.toFixed(2)})`,
@@ -251,8 +253,13 @@ function buildLeaderSummaryPrompt(context: SummaryContext, traits: LeaderTraits,
     "",
     "Identify what makes this leader UNIQUE and interesting (not all traits).",
     "Write 45-55 simple words about their STANDOUT personality and style.",
-    "Add a one-line quote they'd say (in quotes).",
-    "JSON: {\"summary\":\"...\",\"quote\":\"...\"}"
+    "Add a one-line quote they'd say.",
+    "",
+    "Return JSON with this structure:",
+    "{",
+    "  \"summary\": \"45-55 word paragraph about their personality\",",
+    "  \"quote\": \"A one-line quote they would say\"",
+    "}"
   ].join("\n");
 
   return instructions;
@@ -650,7 +657,7 @@ export class LeaderProfileService {
             {
               role: "system",
               content:
-                "You are a concise narrator. Output JSON with keys 'summary' (40-60 word paragraph) and 'quote' (one-line quoted sentence).",
+                "You are a concise narrator. Always respond with valid JSON only. Generate character descriptions in JSON format.",
             },
             {
               role: "user",
