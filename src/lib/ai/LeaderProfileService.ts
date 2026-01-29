@@ -89,6 +89,20 @@ function formatDecisionWeightsForPrompt(weights: LeaderDecisionWeights) {
     .join(", ");
 }
 
+function extractSummaryFromReasoning(reasoning: string): string {
+  const draftMatch = reasoning.match(/Draft:\s*"([^"]+)"/i);
+  if (draftMatch && draftMatch[1]) {
+    return draftMatch[1];
+  }
+
+  const quoteMatch = reasoning.match(/"([^"]+)"/);
+  if (quoteMatch && quoteMatch[1]) {
+    return quoteMatch[1];
+  }
+
+  return reasoning;
+}
+
 function buildLeaderSummaryPrompt(context: SummaryContext, traits: LeaderTraits, decisionWeights: LeaderDecisionWeights) {
   const traitSummary = formatTraitsForPrompt(traits);
   const decisionSummary = formatDecisionWeightsForPrompt(decisionWeights);
@@ -488,6 +502,8 @@ export class LeaderProfileService {
       if (choice) {
         if (typeof choice?.message?.content === "string" && choice.message.content.trim() !== "") {
           content = choice.message.content;
+        } else if (typeof choice?.message?.reasoning === "string" && choice.message.reasoning.trim() !== "") {
+          content = extractSummaryFromReasoning(choice.message.reasoning);
         } else if (typeof choice?.content === "string" && choice.content.trim() !== "") {
           content = choice.content;
         } else if (typeof choice?.text === "string" && choice.text.trim() !== "") {
