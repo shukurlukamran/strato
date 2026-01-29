@@ -177,14 +177,12 @@ function buildLeaderSummaryPrompt(context: SummaryContext, traits: LeaderTraits,
   const instructions = [
     `Leader: ${context.leaderName}${context.title ? ` (${context.title})` : ""}`,
     `Country: ${context.countryName ?? "Unnamed nation"}`,
-    `Resource profile: ${context.resourceProfileName ?? "Balanced"}`,
-    `Public values: ${context.publicValues ?? "Not provided"}`,
     `Traits: ${traitSummary}`,
     `Decision weights: ${decisionSummary}`,
     "",
-    "Write a single paragraph (40-60 words) describing the standout character and decision style in simple, engaging language—do not list every trait.",
-    "Follow it with a quoted sentence (in quotation marks) that might come from this leader, inspired by the dominant trait or decision weight.",
-    "Return the entire response as JSON with keys \"summary\" and \"quote\", and do not include any extra explanation."
+    "Write 40-60 words highlighting standout character and decision style in simple language.",
+    "Then write a one-line quote (in quotation marks) that this leader might say.",
+    "Return as JSON: {\"summary\":\"...\",\"quote\":\"...\"}"
   ].join("\n");
 
   return instructions;
@@ -544,7 +542,7 @@ export class LeaderProfileService {
             {
               role: "system",
               content:
-                "You are a concise narrator summarizing political leaders. Respond with a single paragraph of 40-60 words. No quotes, lists, or annotations—just natural prose describing the leader's personality, communication, and strategic tilt.",
+                "You are a concise narrator. Output JSON with keys 'summary' (40-60 word paragraph) and 'quote' (one-line quoted sentence). No extra text before or after JSON.",
             },
             {
               role: "user",
@@ -554,14 +552,6 @@ export class LeaderProfileService {
           temperature: 0.45,
           top_p: 0.9,
           max_tokens: 400,
-          response_format: {
-            type: "json_object",
-            properties: {
-              summary: { type: "string" },
-              quote: { type: "string" },
-            },
-            required: ["summary", "quote"],
-          },
         }),
       });
 
