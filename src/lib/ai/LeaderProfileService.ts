@@ -89,6 +89,40 @@ function formatDecisionWeightsForPrompt(weights: LeaderDecisionWeights) {
     .join(", ");
 }
 
+function getDominantDecisionWeight(weights: LeaderDecisionWeights) {
+  let dominantKey: keyof LeaderDecisionWeights = "aggression";
+  let maxDiff = 0;
+
+  for (const [key, value] of Object.entries(weights) as Array<[keyof LeaderDecisionWeights, number]>) {
+    const diff = Math.abs(value - 0.5);
+    if (diff > maxDiff) {
+      maxDiff = diff;
+      dominantKey = key;
+    }
+  }
+
+  return dominantKey;
+}
+
+function buildDominantTraitPhrase(weights: LeaderDecisionWeights) {
+  const key = getDominantDecisionWeight(weights);
+  const value = weights[key];
+
+  const phrases: Record<keyof LeaderDecisionWeights, { high: string; low: string }> = {
+    aggression: { high: "boldly assertive", low: "carefully defensive" },
+    cooperativeness: { high: "alliance-minded", low: "self-reliant" },
+    riskTolerance: { high: "comfortable with daring moves", low: "prefers safe choices" },
+    honesty: { high: "unwaveringly honest", low: "pragmatically flexible" },
+    patience: { high: "plans far ahead", low: "pushes for swift action" },
+    fairness: { high: "treats others generously", low: "hard-nosed when bargaining" },
+    empathy: { high: "deeply tuned to others", low: "focused on their own vision" },
+    greed: { high: "driven by accumulation", low: "content with steadiness" },
+  };
+
+  const { high, low } = phrases[key];
+  return value >= 0.5 ? high : low;
+}
+
 function extractSummaryFromReasoning(reasoning: string): string {
   const draftMatch = reasoning.match(/Draft:\s*"([^"]+)"/i);
   if (draftMatch && draftMatch[1]) {
@@ -114,9 +148,8 @@ function buildLeaderSummaryPrompt(context: SummaryContext, traits: LeaderTraits,
     `Traits: ${traitSummary}`,
     `Decision weights: ${decisionSummary}`,
     "",
-    "Write a single paragraph (40-60 words) describing this leader's personality, tone, and decision-making tendencies.",
-    "Do not use bullet points, tables, or quotes—just natural prose.",
-    "Emphasize their defining traits, how they communicate, and what drives their choices."
+    "Write a single paragraph (40-60 words) describing the standout character, tone, and decision style. Keep the language simple, engaging, and interesting—avoid reciting every trait.",
+    "After that, include a second paragraph with a short quoted sentence (in quotation marks) that feels like something this leader would say, inspired by their most dominant trait."
   ].join("\n");
 
   return instructions;
@@ -138,9 +171,11 @@ function buildSummaryFallback(context: SummaryContext, traits: LeaderTraits, dec
           : "casual, approachable tone";
   const values = context.publicValues ? context.publicValues.split(",")[0] : "a steady vision for their nation";
   const titleClause = context.title ? `${context.leaderName}, ${context.title},` : `${context.leaderName}`;
+  const highlight = buildDominantTraitPhrase(decisionWeights);
   const summary = `${titleClause} is ${temperament} who ${patience}. They ${aggression} yet ${cooperation}, while ${risk}. Their voice is ${speechStyle}, reinforcing ${values}${context.countryName ? ` for ${context.countryName}` : ""}.`;
+  const quote = `\"I lead because ${highlight},\" they might declare.`;
 
-  return summary;
+  return `${summary}\n\n${quote}`;
 }
 
 const TRAIT_OPTIONS: Record<keyof Omit<LeaderTraits, "speech_tics">, string[]> = {
